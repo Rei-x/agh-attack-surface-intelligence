@@ -58,12 +58,12 @@ func LooksLikeSCBFindings(data []byte) bool {
 }
 
 type scbRawFinding struct {
-	Name         string         `json:"name"`
-	Category     string         `json:"category"`
-	Severity     string         `json:"severity"`
-	Location     string         `json:"location"`
-	Attributes   map[string]any `json:"attributes"`
-	Port         any            `json:"port"`
+	Name       string         `json:"name"`
+	Category   string         `json:"category"`
+	Severity   string         `json:"severity"`
+	Location   string         `json:"location"`
+	Attributes map[string]any `json:"attributes"`
+	Port       any            `json:"port"`
 }
 
 var scbSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
