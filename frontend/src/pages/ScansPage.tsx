@@ -687,10 +687,10 @@ export function ScansPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="w-28">Chunks</TableHead>
-                    <TableHead className="text-right">IPs</TableHead>
+                    <TableHead className="hidden text-right min-[1400px]:table-cell">IPs</TableHead>
                     <TableHead className="text-right">Hosts</TableHead>
                     <TableHead className="text-right">Services</TableHead>
-                    <TableHead className="text-right">Changes</TableHead>
+                    <TableHead className="hidden text-right min-[1400px]:table-cell">Changes</TableHead>
                     <TableHead className="text-right">Duration</TableHead>
                     <TableHead className="text-right">Rate</TableHead>
                     <TableHead>Started</TableHead>
@@ -756,7 +756,7 @@ export function ScansPage() {
                               <Progress value={pct} />
                             </div>
                           </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
+                          <TableCell className="hidden text-right font-mono text-xs min-[1400px]:table-cell">
                             {scan.scanned_ips}/{scan.total_ips}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs">
@@ -765,7 +765,7 @@ export function ScansPage() {
                           <TableCell className="text-right font-mono text-xs">
                             {scan.services_found}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
+                          <TableCell className="hidden text-right font-mono text-xs min-[1400px]:table-cell">
                             {scan.changes_detected}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs whitespace-nowrap">

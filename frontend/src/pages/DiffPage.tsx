@@ -419,8 +419,8 @@ export function DiffPage() {
           <RiCheckboxCircleLine className="size-3" /> Ack
         </Pill>
       ) : canWrite && ch.id ? (
-        <Button variant="outline" size="xs" disabled={ackingId === ch.id} onClick={() => handleAck(ch)}>
-          {ackingId === ch.id ? '…' : 'Acknowledge'}
+        <Button variant="outline" size="xs" title="Acknowledge: mark as reviewed" disabled={ackingId === ch.id} onClick={() => handleAck(ch)}>
+          {ackingId === ch.id ? '…' : 'Ack'}
         </Button>
       ) : null}
     </div>
@@ -677,13 +677,13 @@ export function DiffPage() {
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-24">Severity</TableHead>
-                    <TableHead className="w-32">Type</TableHead>
+                    <TableHead className="w-20">Severity</TableHead>
+                    <TableHead className="w-28">Type</TableHead>
                     <TableHead className="w-36">Host</TableHead>
                     <TableHead>Change</TableHead>
-                    <TableHead className="w-40">Owner</TableHead>
+                    <TableHead className="w-36">Owner</TableHead>
                     <TableHead className="w-28">Time</TableHead>
-                    <TableHead className="w-52 text-right" />
+                    <TableHead className="w-36 text-right" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
