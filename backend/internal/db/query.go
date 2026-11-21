@@ -17,6 +17,7 @@ import (
 //
 //	port:3389 tech:wordpress tag:wi state:new cidr:10.66.0.0/24 env:staging title:"admin" cert:expired
 //	eol:true (end-of-life version, offline table in internal/eol) vuln:true (passive known-CVE hint)
+//	db:true (exposed database) iot:true staging:true cleartext:true (telnet/ftp/r-services)
 //
 // Terms are AND-ed. A comma inside a value is an OR (port:80,443). A leading "-" negates a
 // term (-env:prod). Quoted values may contain spaces. Anything that is not a known key:value
@@ -72,16 +73,24 @@ var queryKeyAliases = map[string]string{
 	"outdated": "eol",
 	"vuln":     "vuln",
 	"cve":      "vuln",
+	// Quick-filter flags (one-click chips in the asset list).
+	"db":        "db",
+	"database":  "db",
+	"iot":       "iot",
+	"staging":   "staging",
+	"cleartext": "cleartext",
+	"plaintext": "cleartext",
 }
 
 // serviceLevelKeys are evaluated per service (all must match one service).
 var serviceLevelKeys = map[string]bool{
 	"port": true, "tech": true, "title": true, "cert": true, "service": true,
 	"product": true, "version": true, "admin": true, "eol": true, "vuln": true,
+	"db": true, "iot": true, "staging": true, "cleartext": true,
 }
 
 // QueryKeys lists the canonical keys (used by the UI help and error messages).
-var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score", "eol", "vuln"}
+var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score", "eol", "vuln", "db", "iot", "staging", "cleartext"}
 
 // ParseAssetQuery parses a search expression. It returns an error for malformed values of
 // known keys (bad port, bad CIDR, unknown cert condition, unterminated quote) so the API can
@@ -114,7 +123,7 @@ func ParseAssetQuery(input string) (*AssetQuery, error) {
 		}
 		val := strings.TrimSpace(raw[idx+1:])
 		if val == "" {
-			return nil, fmt.Errorf("pusta wartość dla %q", key+":")
+			return nil, fmt.Errorf("empty value for %q", key+":")
 		}
 		term := QueryTerm{Key: key, Negate: neg}
 		if key == "title" || key == "owner" {
@@ -139,10 +148,22 @@ type queryToken struct {
 	quoted bool // whole token was a quoted phrase
 }
 
+// quoteClosers maps an opening quote to the quotes that may close it. Typographic quotes
+// are accepted because values pasted from chat or docs (tech:„Server BMC”, tech:“Server
+// BMC”) otherwise end up as a literal quote character and silently match nothing.
+var quoteClosers = map[rune]string{
+	'"':  `"”“`,
+	'\'': `'`,
+	'“':  `”“"`,
+	'”':  `”"`,
+	'„':  `”“"`,
+	'«':  `»"`,
+}
+
 func tokenizeQuery(s string) ([]queryToken, error) {
 	var out []queryToken
 	var cur strings.Builder
-	inQuote := false
+	closers := "" // non-empty while inside a quoted phrase
 	wholeQuoted := false
 	flush := func() {
 		if cur.Len() > 0 {
@@ -153,22 +174,37 @@ func tokenizeQuery(s string) ([]queryToken, error) {
 	}
 	for _, r := range s {
 		switch {
-		case r == '"':
-			if !inQuote && cur.Len() == 0 {
+		case closers != "":
+			if strings.ContainsRune(closers, r) {
+				closers = ""
+			} else {
+				cur.WriteRune(r)
+			}
+		case quoteClosers[r] != "" && quoteMayOpen(r, cur.String()):
+			if cur.Len() == 0 {
 				wholeQuoted = true
 			}
-			inQuote = !inQuote
-		case (r == ' ' || r == '\t' || r == '\n') && !inQuote:
+			closers = quoteClosers[r]
+		case r == ' ' || r == '\t' || r == '\n':
 			flush()
 		default:
 			cur.WriteRune(r)
 		}
 	}
-	if inQuote {
-		return nil, fmt.Errorf("niezamknięty cudzysłów w zapytaniu")
+	if closers != "" {
+		return nil, fmt.Errorf("unterminated quote in query")
 	}
 	flush()
 	return out, nil
+}
+
+// quoteMayOpen: a quote opens a phrase at the start of a token, after "key:" or after a
+// comma inside a list value. An apostrophe inside a word ("o'reilly") stays literal.
+func quoteMayOpen(r rune, cur string) bool {
+	if cur == "" || cur == "-" || strings.HasSuffix(cur, ":") || strings.HasSuffix(cur, ",") {
+		return true
+	}
+	return r != '\''
 }
 
 func compileTerm(t *QueryTerm) error {
@@ -177,7 +213,7 @@ func compileTerm(t *QueryTerm) error {
 		for _, v := range t.Values {
 			p, err := strconv.Atoi(v)
 			if err != nil || p < 0 || p > 65535 {
-				return fmt.Errorf("nieprawidłowy port %q", v)
+				return fmt.Errorf("invalid port %q", v)
 			}
 			t.ports = append(t.ports, p)
 		}
@@ -186,7 +222,7 @@ func compileTerm(t *QueryTerm) error {
 			if !strings.Contains(v, "/") {
 				ip := net.ParseIP(v)
 				if ip == nil {
-					return fmt.Errorf("nieprawidłowy adres/CIDR %q", v)
+					return fmt.Errorf("invalid address/CIDR %q", v)
 				}
 				bits := 32
 				if ip.To4() == nil {
@@ -196,7 +232,7 @@ func compileTerm(t *QueryTerm) error {
 			}
 			_, n, err := net.ParseCIDR(v)
 			if err != nil {
-				return fmt.Errorf("nieprawidłowy CIDR %q", v)
+				return fmt.Errorf("invalid CIDR %q", v)
 			}
 			t.nets = append(t.nets, n)
 		}
@@ -205,24 +241,24 @@ func compileTerm(t *QueryTerm) error {
 			switch v {
 			case "expired", "selfsigned", "self-signed", "expiring", "any", "valid":
 			default:
-				return fmt.Errorf("cert: dozwolone expired, expiring, selfsigned, valid, any (podano %q)", v)
+				return fmt.Errorf("cert: use expired, expiring, selfsigned, valid or any (got %q)", v)
 			}
 		}
 	case "score":
 		v := strings.TrimLeft(t.Values[0], ">=")
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			return fmt.Errorf("score: oczekiwano liczby, np. score:>=70")
+			return fmt.Errorf("score: expected a number, e.g. score:>=70")
 		}
 		t.minimum = n
-	case "admin", "eol", "vuln":
+	case "admin", "eol", "vuln", "db", "iot", "staging", "cleartext":
 		switch t.Values[0] {
 		case "true", "yes", "1", "tak":
 			t.Values = []string{"true"}
 		case "false", "no", "0", "nie":
 			t.Values = []string{"false"}
 		default:
-			return fmt.Errorf("%s: oczekiwano true/false", t.Key)
+			return fmt.Errorf("%s: expected true/false", t.Key)
 		}
 	}
 	return nil
@@ -405,6 +441,14 @@ func (t *QueryTerm) matchService(s *domain.Service, now time.Time) bool {
 			}
 		}
 		return false
+	case "db":
+		return IsDatabaseService(s) == (t.Values[0] == "true")
+	case "iot":
+		return s.IsIoT == (t.Values[0] == "true")
+	case "staging":
+		return s.IsStagingEnv == (t.Values[0] == "true")
+	case "cleartext":
+		return IsCleartextAdminService(s) == (t.Values[0] == "true")
 	case "title":
 		return s.HTTP != nil && strings.Contains(strings.ToLower(s.HTTP.Title), t.Values[0])
 	case "service":
@@ -535,4 +579,50 @@ func cachedAssetQuery(s string) *AssetQuery {
 	}
 	queryCache[s] = q
 	return q
+}
+
+var databaseServiceNames = map[string]bool{
+	"mysql": true, "postgresql": true, "postgres": true, "ms-sql-s": true, "mssql": true,
+	"oracle": true, "oracle-tns": true, "mongodb": true, "mongod": true, "redis": true,
+	"elasticsearch": true, "couchdb": true, "memcache": true, "memcached": true,
+	"cassandra": true, "influxdb": true, "clickhouse": true, "neo4j": true,
+}
+
+var databasePorts = map[int]bool{
+	3306: true, 5432: true, 1433: true, 1521: true, 27017: true, 6379: true,
+	9200: true, 5984: true, 11211: true, 9042: true, 8086: true,
+}
+
+// IsDatabaseService reports a database listener reachable from the scanner (the "exposed
+// DB" quick filter): by nmap service name, the "Exposed Database Service" signature, or a
+// well-known database port.
+func IsDatabaseService(s *domain.Service) bool {
+	if databaseServiceNames[strings.ToLower(s.ServiceName)] || databasePorts[s.Port] {
+		return true
+	}
+	for _, sig := range s.MatchedSignatures {
+		if strings.Contains(strings.ToLower(sig), "exposed database") {
+			return true
+		}
+	}
+	for _, t := range s.Technologies {
+		if strings.Contains(strings.ToLower(t.Name), "exposed database") {
+			return true
+		}
+	}
+	return false
+}
+
+var cleartextAdminNames = map[string]bool{
+	"telnet": true, "ftp": true, "rlogin": true, "login": true, "shell": true, "exec": true, "tftp": true,
+}
+
+// IsCleartextAdminService reports management protocols that send credentials in clear text
+// (telnet, ftp, r-services).
+func IsCleartextAdminService(s *domain.Service) bool {
+	name := strings.ToLower(s.ServiceName)
+	if cleartextAdminNames[name] {
+		return true
+	}
+	return name == "" && (s.Port == 21 || s.Port == 23)
 }

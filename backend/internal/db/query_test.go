@@ -57,6 +57,7 @@ func queryHosts() []domain.Host {
 				{ID: "s1", Port: 443, ServiceName: "https", Technologies: []domain.DetectedTechnology{{Name: "WordPress"}},
 					HTTP: &domain.HTTPFingerprint{Title: "WI Admin Panel", TLS: &domain.TLSInfo{IsExpired: true, NotAfter: now.Add(-time.Hour)}}},
 				{ID: "s2", Port: 3389, ServiceName: "ms-wbt-server"},
+				{ID: "s5", Port: 23, ServiceName: "telnet"},
 			},
 		},
 		{
@@ -64,6 +65,9 @@ func queryHosts() []domain.Host {
 			Services: []domain.Service{
 				{ID: "s3", Port: 3389, ServiceName: "ms-wbt-server"},
 				{ID: "s4", Port: 80, Technologies: []domain.DetectedTechnology{{Name: "WordPress"}}},
+				{ID: "s6", Port: 443, ServiceName: "https", IsIoT: true,
+					MatchedSignatures: []string{"Server BMC (Dell iDRAC / HPE iLO)"}},
+				{ID: "s7", Port: 5432, ServiceName: "postgresql"},
 			},
 		},
 	}
@@ -103,6 +107,18 @@ func TestAssetQueryMatchHost(t *testing.T) {
 		"tech:wordpress port:3389":            nil, // no single service has both
 		"state:new,active port:3389 ms-wbt":   {"h1", "h2"},
 		"hostname:wi-portal cert:expired 443": {"h1"},
+		// Quoted multi-word values, including typographic quotes pasted from docs/chat.
+		`tech:"Server BMC"`:                   {"h2"},
+		`tech:“Server BMC”`:                   {"h2"},
+		`tech:„server bmc”`:                   {"h2"},
+		`tech:'Server BMC'`:                   {"h2"},
+		`-tech:"Server BMC" port:443`:         {"h1"},
+		`tech:"server bmc",wordpress port:80`: {"h2"},
+		// Quick-filter flags.
+		"db:true":        {"h2"},
+		"cleartext:true": {"h1"},
+		"iot:true":       {"h2"},
+		"staging:true":   nil,
 	}
 	for q, want := range cases {
 		got := matchIDs(t, q)
