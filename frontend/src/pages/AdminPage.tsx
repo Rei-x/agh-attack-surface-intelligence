@@ -77,6 +77,9 @@ const AUDIT_RESOURCES: [RegExp, string][] = [
   [/^\/api\/v1\/admin\/users/, 'User'],
   [/^\/api\/v1\/admin\/roles/, 'Role'],
   [/^\/api\/v1\/admin\/crypto/, 'Encryption key'],
+  [/^\/api\/v1\/integrations\/defectdojo\/sync$/, 'DefectDojo sync started'],
+  [/^\/api\/v1\/integrations\/defectdojo\/test$/, 'DefectDojo connection tested'],
+  [/^\/api\/v1\/integrations\/defectdojo\/push-/, 'Manual DefectDojo push started'],
   [/^\/api\/v1\/integrations\/defectdojo/, 'DefectDojo integration'],
   [/^\/api\/v1\/integrations\/webhook/, 'Alert webhook'],
   [/^\/api\/v1\/agents/, 'Scanning agent'],
@@ -93,7 +96,7 @@ function auditActionLabel(log: AuditLog): string {
   if (!hit) return log.action;
   const what = hit[1];
   if (what === 'Login') return log.status === 'success' ? 'Login' : 'Failed login';
-  if (/started|stopped|paused|resumed/.test(what)) return what;
+  if (/started|stopped|paused|resumed|tested/.test(what)) return what;
   const verb = method === 'POST' ? 'created' : method === 'DELETE' ? 'deleted' : method === 'PUT' || method === 'PATCH' ? 'changed' : '';
   return verb ? `${what} ${verb}` : what;
 }
@@ -749,13 +752,13 @@ export function AdminPage() {
                               href={ex.external_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                              className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline"
                             >
                               {ex.export_type === 'finding' ? `finding #${ex.external_id || '?'}` : `test #${ex.external_id || '?'}`}{' '}
                               <RiExternalLinkLine className="size-3" />
                             </a>
                           ) : (
-                            <span className="text-muted-foreground">
+                            <span className="block max-w-[28rem] truncate text-muted-foreground" title={ex.error_message || ex.external_id}>
                               {ex.error_message || ex.external_id || 'n/a'}
                             </span>
                           )}

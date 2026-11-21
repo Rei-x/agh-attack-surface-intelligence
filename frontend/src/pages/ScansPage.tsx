@@ -14,7 +14,6 @@ import {
   RiPauseLine,
   RiPlayLine,
   RiSaveLine,
-  RiStackLine,
   RiStopLine,
   RiTimeLine,
   RiUploadCloud2Line,
@@ -26,6 +25,7 @@ import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
 import { PERMISSIONS } from '@/lib/permissions';
 import {
   formatDateTime,
+  formatShortTime,
   formatDurationSeconds,
   formatNumber,
   scanStatusMeta,
@@ -686,7 +686,7 @@ export function ScansPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="w-36">Chunks</TableHead>
+                    <TableHead className="w-28">Chunks</TableHead>
                     <TableHead className="text-right">IPs</TableHead>
                     <TableHead className="text-right">Hosts</TableHead>
                     <TableHead className="text-right">Services</TableHead>
@@ -769,10 +769,10 @@ export function ScansPage() {
                             {scan.changes_detected}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs whitespace-nowrap">
-                            {scan.duration_ms > 0 ? formatDurationSeconds(scan.duration_ms / 1000) : ''}
+                            {scan.duration_ms >= 1000 ? formatDurationSeconds(scan.duration_ms / 1000) : scan.duration_ms > 0 ? "<1s" : ''}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs whitespace-nowrap">
-                            <div>{scan.hosts_per_sec > 0 ? `${scan.hosts_per_sec.toFixed(1)} IP/s` : ''}</div>
+                            <div>{scan.hosts_per_sec > 0 ? `${scan.hosts_per_sec < 1 ? scan.hosts_per_sec.toFixed(2) : scan.hosts_per_sec.toFixed(1)} IP/s` : ''}</div>
                             {(scan.telemetry?.throttle_count ?? 0) > 0 && (
                               <div
                                 className="text-[10px] text-amber-600 dark:text-amber-400"
@@ -783,19 +783,10 @@ export function ScansPage() {
                             )}
                           </TableCell>
                           <TableCell className="font-mono text-xs whitespace-nowrap text-muted-foreground">
-                            {formatDateTime(scan.started_at)}
+                            <span title={formatDateTime(scan.started_at)}>{formatShortTime(scan.started_at)}</span>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-end gap-0.5">
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                aria-label="Coverage Ledger"
-                                title="Coverage Ledger"
-                                onClick={() => handleToggleScanDetail(scan.id)}
-                              >
-                                <RiStackLine />
-                              </Button>
                               {canWriteScans && (
                                 <Button
                                   variant="ghost"

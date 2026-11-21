@@ -364,7 +364,7 @@ function NodeShell({
     <div
       className={cn(
         'relative h-full w-full border bg-card text-card-foreground shadow-xs transition-[box-shadow,border-color] hover:border-foreground/30',
-        selected ? 'border-primary ring-2 ring-primary/30' : 'border-border',
+        selected ? 'border-foreground/70 ring-2 ring-foreground/20' : 'border-border',
         className
       )}
     >
@@ -803,7 +803,7 @@ function GraphCanvas() {
           ...e,
           animated: risky || fresh || lit,
           style: {
-            stroke: lit ? 'var(--primary)' : fresh ? '#10b981' : 'var(--muted-foreground)',
+            stroke: lit ? 'var(--foreground)' : fresh ? '#10b981' : 'var(--muted-foreground)',
             strokeWidth: lit ? 2 : risky ? 1.5 : 1,
             opacity: dim ? 0.08 : lit ? 1 : risky ? 0.7 : 0.35,
             transition: 'opacity 200ms',
@@ -963,7 +963,7 @@ function GraphCanvas() {
           />
 
           {/* Floating toolbar */}
-          <Panel position="top-left" className="!m-3 max-w-[calc(100%-1.5rem)]">
+          <Panel position="top-left" className={cn('!m-3', selected ? 'max-w-[calc(100%-22.5rem)]' : 'max-w-[calc(100%-1.5rem)]')}>
             <div className="flex flex-wrap items-center gap-2 border border-border bg-card/95 p-1.5 shadow-sm backdrop-blur">
               <div className="relative w-52">
                 <RiSearchLine className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -1190,8 +1190,7 @@ function GraphCanvas() {
                   {selectedServiceIds.length > 0 && can(PERMISSIONS.DEFECTDOJO_PUSH) && (
                     <Button size="sm" variant="ghost" disabled={pushing} onClick={pushToDojo}>
                       {pushing ? <PeckSpinner className="h-3.5" /> : <RiSendPlaneLine />}
-                      Push {selectedServiceIds.length === 1 ? 'service' : `${selectedServiceIds.length} services`} to
-                      DefectDojo now
+                      Push {selectedServiceIds.length === 1 ? "1 service" : `${selectedServiceIds.length} services`} to DefectDojo
                     </Button>
                   )}
                 </div>

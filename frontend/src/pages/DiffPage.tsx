@@ -203,11 +203,14 @@ function ownerNote(ch: ChangeLike): string {
 /** Latest completed scan vs the previous completed scan of the same profile (or any). */
 function defaultPair(scans: ScanRun[]): [string, string] | null {
   const done = scans.filter((x) => x.status === 'COMPLETED');
-  if (done.length >= 2) {
-    const to = done[0];
-    const from = done.slice(1).find((x) => to.profile_id && x.profile_id === to.profile_id) || done[1];
-    return [from.id, to.id];
+  // Same profile (imports group by type): the newest run that has an older sibling wins, so
+  // a one-off scan of another scope never becomes the baseline.
+  const key = (x: ScanRun) => x.profile_id || `type:${x.run_type}`;
+  for (let i = 0; i < done.length; i++) {
+    const prev = done.slice(i + 1).find((x) => key(x) === key(done[i]));
+    if (prev) return [prev.id, done[i].id];
   }
+  if (done.length >= 2) return [done[1].id, done[0].id];
   if (scans.length >= 2) return [scans[1].id, scans[0].id];
   if (scans.length === 1) return [scans[0].id, scans[0].id];
   return null;
@@ -678,9 +681,9 @@ export function DiffPage() {
                     <TableHead className="w-32">Type</TableHead>
                     <TableHead className="w-36">Host</TableHead>
                     <TableHead>Change</TableHead>
-                    <TableHead className="w-44">Owner</TableHead>
-                    <TableHead className="w-40">Time</TableHead>
-                    <TableHead className="w-44 text-right" />
+                    <TableHead className="w-40">Owner</TableHead>
+                    <TableHead className="w-28">Time</TableHead>
+                    <TableHead className="w-52 text-right" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -707,7 +710,7 @@ export function DiffPage() {
                           {ownerOf(ch) || <span className="opacity-60">none</span>}
                         </TableCell>
                         <TableCell className="font-mono text-[11px] text-muted-foreground">
-                          {formatDateTime(ch.created_at)}
+                          <span title={formatDateTime(ch.created_at)}>{formatShortTime(ch.created_at)}</span>
                         </TableCell>
                         <TableCell>{rowActions(ch)}</TableCell>
                       </TableRow>
