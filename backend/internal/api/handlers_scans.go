@@ -321,12 +321,15 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 
 	exclusions, _ := s.store.ListExclusions(r.Context())
 	bgCtx := context.Background()
+	// The runner mutates the run it is given while this handler encodes the response: give the
+	// background goroutine its own copy (was a data race).
+	bgRun := *run
 	go func() {
-		if err := s.runner.StartScan(bgCtx, run, profile, exclusions); err != nil {
+		if err := s.runner.StartScan(bgCtx, &bgRun, profile, exclusions); err != nil {
 			now := time.Now().UTC()
-			run.Status = domain.ScanStatusFailed
-			run.FinishedAt = &now
-			_ = s.store.UpdateScanRun(bgCtx, run)
+			bgRun.Status = domain.ScanStatusFailed
+			bgRun.FinishedAt = &now
+			_ = s.store.UpdateScanRun(bgCtx, &bgRun)
 		}
 	}()
 
