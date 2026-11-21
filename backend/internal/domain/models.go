@@ -389,17 +389,16 @@ type Host struct {
 }
 
 type Service struct {
-	ID          string `json:"id"`
-	HostID      string `json:"host_id"`
-	HostIP      string `json:"host_ip,omitempty"`
-	Port        int    `json:"port"`
-	Protocol    string `json:"protocol"`
-	State       string `json:"state"` // open, closed, filtered
-	ServiceName string `json:"service_name"`
-	Product     string `json:"product,omitempty"`
-	Version     string `json:"version,omitempty"`
-	// Where Product / Version came from: nmap, cpe, banner, http-server-header, http-page.
-	ProductSource      string                  `json:"product_source,omitempty"`
+	ID                 string                  `json:"id"`
+	HostID             string                  `json:"host_id"`
+	HostIP             string                  `json:"host_ip,omitempty"`
+	Port               int                     `json:"port"`
+	Protocol           string                  `json:"protocol"`
+	State              string                  `json:"state"` // open, closed, filtered
+	ServiceName        string                  `json:"service_name"`
+	Product            string                  `json:"product,omitempty"`
+	Version            string                  `json:"version,omitempty"`
+	ProductSource      string                  `json:"product_source,omitempty"` // nmap, cpe, banner, http-server-header, http-page
 	VersionSource      string                  `json:"version_source,omitempty"`
 	CPE                string                  `json:"cpe,omitempty"`
 	Banner             string                  `json:"banner,omitempty"`
