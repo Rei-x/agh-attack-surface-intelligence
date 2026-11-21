@@ -32,22 +32,116 @@ func NoisyOR(weights []float64) float64 {
 	return 1.0 - prod
 }
 
-// FuseConfidence computes a 0..100 integer confidence using Noisy-OR fusion,
-// temporal stability boost (when seen consistently across scans), and conflict dampening.
-func FuseConfidence(evidence []domain.TechEvidence, temporalScansSeen int, hasConflict bool) int {
-	if len(evidence) == 0 {
-		return 0
+// Evidence channels and their likelihood weights.
+//
+// In the noisy-OR model each piece of evidence i is an independent "cause" that
+// would reveal the technology with probability w_i, so
+//
+//	P(tech | evidence) = 1 - prod_channels (1 - w_channel)
+//
+// Two corrections make it honest:
+//  1. Evidence from the SAME channel is correlated (three regexes over one HTML
+//     body are not three independent witnesses). Within a channel we noisy-OR the
+//     items but never exceed the channel cap; only DIFFERENT channels multiply.
+//  2. Each channel's cap is its calibrated reliability: the observed precision of
+//     detections supported by that channel alone (lab/scale ground truth, see
+//     cmd/calibrate and docs/RESEARCH.md), bounded by a policy ceiling of 0.80 for
+//     anything a single HTTP response can fake. So one weak signal (a safe-path
+//     hit, a generic header) can never exceed 80%; >80% needs corroboration from
+//     an independent channel or a protocol banner.
+//
+// A signature's own confidence_weight expresses its specificity and is used as
+// the item weight, clamped by the cap of the channel it matched on.
+type ChannelWeight struct {
+	Cap       float64 // maximum weight of this channel alone
+	Rationale string
+}
+
+// EvidenceChannels documents the likelihood weight of every evidence type.
+var EvidenceChannels = map[string]ChannelWeight{
+	"banner":    {0.90, "nmap -sV / protocol banner: the service identifies itself on its own protocol"},
+	"favicon":   {0.80, "exact favicon MMH3/SHA-256 of a vendor product; favicons are sometimes copied"},
+	"header":    {0.80, "Server / X-Powered-By / vendor headers; lab precision 100% (n=1420) but headers are trivially rewritten by proxies/WAFs -> policy ceiling"},
+	"html":      {0.80, "meta generator / title / body markers; lab precision 88% (n=252)"},
+	"cookie":    {0.75, "framework session-cookie names; lab precision 100% (n=44), generic names collide"},
+	"tls":       {0.60, "certificate CN/issuer or JARM: identifies the TLS stack or vendor appliance, not the application"},
+	"path":      {0.25, "a safe-path hit (status/title of e.g. /metrics) alone; lab precision 0% (n=23, Grafana also serves /metrics): many apps expose the same paths"},
+	"signature": {0.70, "signature without a typed matcher"},
+}
+
+// SingleChannelCeiling is the maximum confidence any single non-banner channel can produce.
+const SingleChannelCeiling = 0.80
+
+func channelCap(signalType string) float64 {
+	if c, ok := EvidenceChannels[signalType]; ok {
+		return c.Cap
 	}
-	weights := make([]float64, 0, len(evidence))
+	return EvidenceChannels["signature"].Cap
+}
+
+type channelScore struct {
+	name string
+	w    float64
+}
+
+// fuseChannels groups evidence per channel (within-channel noisy-OR, capped) and
+// returns channel scores sorted by weight (descending).
+func fuseChannels(evidence []domain.TechEvidence) []channelScore {
+	byCh := map[string][]float64{}
 	for _, ev := range evidence {
-		if ev.SignalType == "conflict" {
+		if ev.SignalType == "conflict" || ev.Weight <= 0 {
 			continue
 		}
-		weights = append(weights, ev.Weight)
+		cp := channelCap(ev.SignalType)
+		w := ev.Weight
+		if w > cp {
+			w = cp
+		}
+		byCh[ev.SignalType] = append(byCh[ev.SignalType], w)
+	}
+	out := make([]channelScore, 0, len(byCh))
+	for ch, ws := range byCh {
+		w := NoisyOR(ws)
+		if cp := channelCap(ch); w > cp {
+			w = cp
+		}
+		out = append(out, channelScore{ch, w})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].w != out[j].w {
+			return out[i].w > out[j].w
+		}
+		return out[i].name < out[j].name
+	})
+	return out
+}
+
+// FuseConfidence computes a 0..100 integer confidence using channel-aware Noisy-OR
+// fusion, a small temporal stability boost and conflict dampening.
+func FuseConfidence(evidence []domain.TechEvidence, temporalScansSeen int, hasConflict bool) int {
+	score, _ := FuseConfidenceExplained(evidence, temporalScansSeen, hasConflict)
+	return score
+}
+
+// FuseConfidenceExplained is FuseConfidence plus a human-readable derivation.
+func FuseConfidenceExplained(evidence []domain.TechEvidence, temporalScansSeen int, hasConflict bool) (int, string) {
+	chans := fuseChannels(evidence)
+	if len(chans) == 0 {
+		return 0, ""
+	}
+	weights := make([]float64, len(chans))
+	terms := make([]string, len(chans))
+	factors := make([]string, len(chans))
+	for i, c := range chans {
+		weights[i] = c.w
+		terms[i] = fmt.Sprintf("%s %.2f", c.name, c.w)
+		factors[i] = fmt.Sprintf("%.2f", 1-c.w)
 	}
 	p := NoisyOR(weights)
+	expl := fmt.Sprintf("%s → 1-(%s) = %d%%", strings.Join(terms, " ⊕ "), strings.Join(factors, "·"), int(math.Round(p*100)))
 
-	// Temporal stability boost: repeated consistent observations increase confidence smoothly.
+	// Temporal stability: the same evidence seen again in later scans adds a little
+	// certainty (it is not independent evidence, hence small and bounded).
 	if temporalScansSeen >= 2 && p > 0 {
 		extraScans := temporalScansSeen - 1
 		if extraScans > 4 {
@@ -55,24 +149,33 @@ func FuseConfidence(evidence []domain.TechEvidence, temporalScansSeen int, hasCo
 		}
 		boost := 0.03 * float64(extraScans)
 		p = 1.0 - (1.0-p)*(1.0-boost)
+		expl += fmt.Sprintf("; stabilne w %d skanach +%.0f%%", temporalScansSeen, boost*100)
 	}
-
-	// Conflicting signals reduce certainty (e.g. two different versions or contradictory server banners).
+	// One channel alone never exceeds its cap / the single-channel ceiling.
+	if len(chans) == 1 {
+		ceil := chans[0].w
+		if chans[0].name != "banner" && ceil > SingleChannelCeiling {
+			ceil = SingleChannelCeiling
+		}
+		if p > ceil {
+			p = ceil
+			expl += fmt.Sprintf("; jeden kanał → limit %.0f%%", ceil*100)
+		}
+	}
+	// Conflicting signals reduce certainty (two versions / contradictory servers).
 	if hasConflict {
 		p *= 0.80
+		expl += "; konflikt sygnałów ×0.8"
 	}
 
 	score := int(math.Round(p * 100.0))
 	if score < 0 {
 		score = 0
 	}
-	if score > 99 && hasConflict {
-		score = 99
+	if score > 99 {
+		score = 99 // never claim certainty
 	}
-	if score > 100 {
-		score = 100
-	}
-	return score
+	return score, expl + fmt.Sprintf(" ⇒ %d%%", score)
 }
 
 type techBucket struct {
@@ -158,7 +261,7 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 				addSignal(m[1], "server", ver, domain.TechEvidence{
 					SignalType: "header",
 					Detail:     "Server: " + svc.HTTP.ServerHeader,
-					Weight:     0.72,
+					Weight:     0.80, // calibrated: lab precision 100% -> channel cap
 				})
 			}
 		}
@@ -171,7 +274,7 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 				addSignal(m[1], "framework", ver, domain.TechEvidence{
 					SignalType: "header",
 					Detail:     "X-Powered-By: " + powered,
-					Weight:     0.68,
+					Weight:     0.78, // calibrated: lab precision 100%, slightly below Server (often proxied/stale)
 				})
 			}
 		}
@@ -212,13 +315,14 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 		}
 
 		dedupEv := dedupeEvidence(b.evidence)
-		conf := FuseConfidence(dedupEv, temporalScansSeen, b.hasConflict)
+		conf, expl := FuseConfidenceExplained(dedupEv, temporalScansSeen, b.hasConflict)
 		out = append(out, domain.DetectedTechnology{
-			Name:       b.name,
-			Category:   b.category,
-			Version:    version,
-			Confidence: conf,
-			Evidence:   dedupEv,
+			Name:        b.name,
+			Category:    b.category,
+			Version:     version,
+			Confidence:  conf,
+			Evidence:    dedupEv,
+			Explanation: expl,
 		})
 	}
 

@@ -210,6 +210,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			StateTransitions:  trans.StateTransitions,
 			StabilityScore:    trans.StabilityScore,
 			TimeOfDayStats:    trans.TimeOfDayStats,
+			Liveness:          trans.Liveness,
 		}
 		if prevHost != nil {
 			host.ID = prevHost.ID
@@ -277,7 +278,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 				IsExpectedSchedule: trans.IsExpectedSchedule,
 				IsTimeAnomaly:      trans.IsTimeAnomaly,
 				Before:             map[string]any{"lifecycle_state": prevHost.LifecycleState},
-				After:              map[string]any{"lifecycle_state": trans.NewState},
+				After:              livenessAfter(map[string]any{"lifecycle_state": trans.NewState}, trans.Liveness),
 			})
 		}
 
@@ -478,6 +479,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			h.StateTransitions = trans.StateTransitions
 			h.StabilityScore = trans.StabilityScore
 			h.TimeOfDayStats = trans.TimeOfDayStats
+			h.Liveness = trans.Liveness
 			_, _ = p.store.UpsertObservedHost(ctx, h)
 
 			if trans.Changed || trans.IsTimeAnomaly {
@@ -502,7 +504,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 					TimeSlot:           domain.TimeSlotFor(now),
 					IsExpectedSchedule: trans.IsExpectedSchedule,
 					IsTimeAnomaly:      trans.IsTimeAnomaly,
-					After:              map[string]any{"lifecycle_state": trans.NewState, "consecutive_misses": trans.ConsecutiveMisses},
+					After:              livenessAfter(map[string]any{"lifecycle_state": trans.NewState, "consecutive_misses": trans.ConsecutiveMisses}, trans.Liveness),
 				})
 			}
 		}
@@ -715,4 +717,15 @@ func nonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// livenessAfter attaches the Bayesian liveness explanation to a change event payload.
+func livenessAfter(after map[string]any, l *domain.LivenessEstimate) map[string]any {
+	if l == nil {
+		return after
+	}
+	after["p_alive"] = l.PAlive
+	after["p_up_slot"] = l.PUpSlot
+	after["liveness_reason"] = l.Reason
+	return after
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/intelligence"
 )
 
 func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +61,11 @@ func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeStoreErr(w, err)
 		return
+	}
+	if len(host.TimeOfDayStats) > 0 {
+		// Bayesian liveness is derived from persisted slot posteriors; evaluate at read time.
+		l := intelligence.EstimateLiveness(*host, time.Now().UTC(), intelligence.LifecycleConfig{})
+		host.Liveness = &l
 	}
 	allChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{HostID: host.ID, Limit: 20})
 	hostChanges := make([]domain.ChangeEvent, 0)

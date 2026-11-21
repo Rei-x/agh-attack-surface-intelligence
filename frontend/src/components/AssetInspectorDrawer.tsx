@@ -730,6 +730,11 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                                   </span>
                                                 </div>
                                               ))}
+                                              {tech.explanation && (
+                                                <div className="pt-1 font-mono text-[11px] text-muted-foreground">
+                                                  noisy-OR: {tech.explanation}
+                                                </div>
+                                              )}
                                             </div>
                                           )}
                                         </div>
@@ -933,6 +938,16 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                             {tls.sha256}
                                           </span>
                                         </KV>
+                                        {tls.jarm && (
+                                          <KV label="JARM (stos TLS)">
+                                            <span
+                                              className="block truncate font-mono"
+                                              title={`${tls.jarm} — ten sam JARM = ta sama biblioteka/konfiguracja TLS`}
+                                            >
+                                              {tls.jarm}
+                                            </span>
+                                          </KV>
+                                        )}
                                       </div>
                                       {(tls.sans?.length || 0) > 0 && (
                                         <div className="flex flex-wrap gap-1">
@@ -1014,6 +1029,21 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                   <KV label="Histereza">
                     {host.state_transitions} przejść · {host.consecutive_misses} braków
                   </KV>
+                  {host.liveness && (
+                    <div className="col-span-2">
+                      <KV label="P(host nadal działa) — model Bayesa">
+                        <span title={host.liveness.model}>
+                          <span className="font-mono tabular-nums">
+                            {Math.round(host.liveness.p_alive * 100)}%
+                          </span>{' '}
+                          <span className="text-muted-foreground">
+                            (próg INACTIVE {Math.round(host.liveness.threshold * 100)}%) ·{' '}
+                            {host.liveness.reason}
+                          </span>
+                        </span>
+                      </KV>
+                    </div>
+                  )}
                 </div>
 
                 {(host.interesting_factors?.length || 0) > 0 && (

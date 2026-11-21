@@ -224,6 +224,7 @@ export interface TLSInfo {
   is_self_signed: boolean;
   is_expired: boolean;
   sha256: string;
+  jarm?: string;
 }
 
 export interface SafePathHit {
@@ -266,6 +267,7 @@ export interface DetectedTechnology {
   version?: string;
   confidence: number;
   evidence?: TechEvidence[];
+  explanation?: string;
 }
 
 export interface InterestingnessFactor {
@@ -278,6 +280,21 @@ export interface TimeSlotStat {
   seen: number;
   total: number;
   ratio: number;
+  alpha?: number;
+  beta?: number;
+  p_up?: number;
+  streak_misses?: number;
+  updated_at?: string;
+}
+
+export interface LivenessEstimate {
+  p_alive: number;
+  p_up_slot: number;
+  slot: string;
+  streak_misses: number;
+  threshold: number;
+  reason: string;
+  model: string;
 }
 
 export interface Service {
@@ -332,6 +349,7 @@ export interface Host {
   interestingness: number;
   interesting_factors?: InterestingnessFactor[];
   time_of_day_stats?: TimeSlotStat[];
+  liveness?: LivenessEstimate;
   locked_fields?: string[];
   scanner_observed?: Record<string, unknown>;
   services?: Service[];
