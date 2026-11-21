@@ -5,6 +5,7 @@ import { useToast } from '@/context/ToastContext';
 import { Button } from '@/components/ui/button';
 import { SectionTitle } from '@/components/common';
 import type { ScanChunk, ScanRun } from '@/types/api';
+import { collapseCommands } from '@/lib/scanTelemetry';
 
 /**
  * Exact nmap command lines executed for a run (per chunk), copyable as a shell script,
@@ -22,6 +23,8 @@ export function NmapCommandsPanel({ scan, chunks }: { scan: ScanRun; chunks: Sca
         .flatMap((c) => c.nmap_commands || []),
     [chunks]
   );
+  // A re-probe retry runs the identical command again: show it once with the count.
+  const lines = useMemo(() => collapseCommands(commands), [commands]);
 
   if (commands.length === 0 && !scan.has_raw_nmap_xml) return null;
 
@@ -31,7 +34,7 @@ export function NmapCommandsPanel({ scan, chunks }: { scan: ScanRun; chunks: Sca
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error('Nie udało się skopiować', 'Schowek niedostępny w tej przeglądarce');
+      toast.error('Could not copy', 'Clipboard is not available in this browser');
     }
   };
 
@@ -40,7 +43,7 @@ export function NmapCommandsPanel({ scan, chunks }: { scan: ScanRun; chunks: Sca
     try {
       await api.downloadScanNmapXml(scan.id);
     } catch (err) {
-      toast.error('Błąd pobierania', (err as Error).message);
+      toast.error('Download failed', (err as Error).message);
     } finally {
       setDownloading(false);
     }
@@ -58,13 +61,13 @@ export function NmapCommandsPanel({ scan, chunks }: { scan: ScanRun; chunks: Sca
                 ) : (
                   <RiFileCopyLine data-icon="inline-start" />
                 )}
-                {copied ? 'Skopiowano' : 'Kopiuj'}
+                {copied ? 'Copied' : 'Copy'}
               </Button>
             )}
             {scan.has_raw_nmap_xml && (
               <Button variant="outline" size="xs" disabled={downloading} onClick={download}>
                 <RiDownload2Line data-icon="inline-start" />
-                Pobierz nmap XML
+                Download nmap XML
               </Button>
             )}
           </div>
@@ -72,21 +75,24 @@ export function NmapCommandsPanel({ scan, chunks }: { scan: ScanRun; chunks: Sca
       >
         <span className="inline-flex items-center gap-1.5">
           <RiTerminalBoxLine className="size-3.5" />
-          Polecenia nmap · {commands.length}
+          nmap commands · {lines.length}
         </span>
       </SectionTitle>
       {commands.length > 0 ? (
         <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-muted-foreground">
-          {commands.map((cmd, i) => (
+          {lines.map((l, i) => (
             <div key={i}>
               <span className="select-none text-foreground/60">$ </span>
-              {cmd}
+              {l.cmd}
+              {l.times > 1 && (
+                <span className="ml-2 select-none text-foreground/70">({l.times} attempts, re-probe retry)</span>
+              )}
             </div>
           ))}
         </pre>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Wyniki zaimportowane z nmap XML. Oryginalny plik można pobrać powyżej.
+          Results were imported from nmap XML. The original file can be downloaded above.
         </p>
       )}
     </div>

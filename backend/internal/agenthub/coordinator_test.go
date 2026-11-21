@@ -197,6 +197,7 @@ func TestJobQueueNoDoubleAssignment(t *testing.T) {
 	a1, _ := f.enroll("a1")
 	a2, _ := f.enroll("a2")
 	r1 := f.queue(a1, "10.0.0.1")
+	f.clock.Add(time.Second) // distinct queue times: "oldest" must be well defined
 	r2 := f.queue(a1, "10.0.0.2")
 
 	// Another agent never sees a1's jobs.
@@ -367,7 +368,7 @@ func TestOfflineAgentPausesRunAndResumesFromCheckpoint(t *testing.T) {
 		t.Fatalf("checkpoint not preserved: %+v", spec)
 	}
 	run = f.run(r.ID)
-	if run.Status != domain.ScanStatusRunning || !strings.Contains(run.Notes, "wznowił") {
+	if run.Status != domain.ScanStatusRunning || !strings.Contains(run.Notes, "resumed") {
 		t.Fatalf("after resume: %s %q", run.Status, run.Notes)
 	}
 	c1.Status = domain.ChunkStatusDone

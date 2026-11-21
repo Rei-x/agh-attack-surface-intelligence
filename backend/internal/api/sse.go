@@ -15,6 +15,8 @@ type SSEHub struct {
 	mu      sync.RWMutex
 	clients map[chan domain.LiveEvent]struct{}
 	recent  []domain.LiveEvent
+	// observer sees every published event (run telemetry persistence); set once at wiring.
+	observer func(domain.LiveEvent)
 }
 
 // NewSSEHub returns an empty hub for server-sent live events.
@@ -43,6 +45,12 @@ func (h *SSEHub) Publish(ev domain.LiveEvent) {
 		}
 	}
 	h.mu.Unlock()
+	h.mu.RLock()
+	obs := h.observer
+	h.mu.RUnlock()
+	if obs != nil {
+		obs(ev)
+	}
 }
 
 // Subscribe registers a listener channel.

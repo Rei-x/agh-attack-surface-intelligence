@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
@@ -7,7 +7,6 @@ import { LiveEventsProvider } from './context/LiveEventsContext';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { GraphPage } from './pages/GraphPage';
 import { AssetsPage } from './pages/AssetsPage';
 import { DiffPage } from './pages/DiffPage';
 import { ScansPage } from './pages/ScansPage';
@@ -17,6 +16,9 @@ import { PoliciesPage } from './pages/PoliciesPage';
 import { PERMISSIONS } from './lib/permissions';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PeckLoader } from '@/components/Woodpecker';
+
+// React Flow is the heaviest dependency; load the graph page only when it is opened.
+const GraphPage = lazy(() => import('./pages/GraphPage').then((m) => ({ default: m.GraphPage })));
 
 function ProtectedRoute({
   children,
@@ -43,7 +45,7 @@ function ProtectedRoute({
     return (
       <div className="mx-auto mt-24 max-w-sm space-y-2 text-center">
         <div className="font-mono text-3xl font-semibold text-rose-600 dark:text-rose-400">403</div>
-        <p className="text-xs tracking-wider text-muted-foreground uppercase">Brak uprawnień RBAC</p>
+        <p className="text-xs tracking-wider text-muted-foreground uppercase">Missing permission (RBAC)</p>
       </div>
     );
   }
@@ -81,7 +83,15 @@ function AppRoutes() {
           path="graph"
           element={
             <ProtectedRoute anyPerms={[PERMISSIONS.ASSETS_READ]}>
-              <GraphPage />
+              <Suspense
+                fallback={
+                  <div className="flex min-h-[60vh] items-center justify-center">
+                    <PeckLoader />
+                  </div>
+                }
+              >
+                <GraphPage />
+              </Suspense>
             </ProtectedRoute>
           }
         />

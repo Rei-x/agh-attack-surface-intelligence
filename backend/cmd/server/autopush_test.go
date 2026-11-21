@@ -51,14 +51,16 @@ func TestAutoPushDefectDojoAfterCompletedRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Disabled: nothing is sent.
+	// Both switches off: nothing is sent (auto_push_findings defaults to on).
 	_ = store.SaveDefectDojoConfig(ctx, &domain.DefectDojoConfig{URL: dd.URL, APIToken: "t", AutoPushNmap: false})
+	_ = db.SaveDefectDojoOptions(ctx, store, &domain.DefectDojoConfig{AutoPushFindings: false})
 	runner.autoPushDefectDojo(ctx, run.ID)
 	if len(calls) != 0 {
 		t.Fatalf("auto push disabled but DefectDojo was called: %+v", calls)
 	}
 
 	_ = store.SaveDefectDojoConfig(ctx, &domain.DefectDojoConfig{URL: dd.URL, APIToken: "t", AutoPushNmap: true})
+	_ = db.SaveDefectDojoOptions(ctx, store, &domain.DefectDojoConfig{AutoPushFindings: true})
 	runner.autoPushDefectDojo(ctx, run.ID)
 	// Raw Nmap XML first, then the actionable "Dzięcioł changes" Generic Findings test.
 	if len(calls) != 2 || calls[0]["scan_type"] != "Nmap Scan" || calls[0]["test_title"] != "Dzięcioł Nmap: Kampus nocny" || calls[0]["version"] != "Run #7" ||

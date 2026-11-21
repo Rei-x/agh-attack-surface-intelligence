@@ -152,10 +152,123 @@ func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter
 	})
 
 	useClustered := mode == "clustered" || (mode == "auto" && len(matched) > limit)
+	var resp GraphResponse
 	if useClustered {
-		return buildClusteredGraph(hosts, matched, subnets, targets, limit)
+		resp = buildClusteredGraph(hosts, matched, subnets, targets, limit)
+	} else {
+		resp = buildDetailedGraph(hosts, matched, subnets, targets, limit)
 	}
-	return buildDetailedGraph(hosts, matched, subnets, targets, limit)
+	attachTechHosts(resp.Nodes, matched)
+	return resp
+}
+
+// maxNodeHosts caps the host list embedded in one cluster/technology node; host_count and
+// host_ids still carry the full membership.
+const maxNodeHosts = 100
+
+// GraphHostRef is one member host of a clustered service or technology node: enough for the
+// side panel to list it (IP, title, score) and open the asset inspector.
+type GraphHostRef struct {
+	HostID    string `json:"host_id"`
+	IP        string `json:"ip"`
+	Hostname  string `json:"hostname,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Score     int    `json:"score"`
+	ServiceID string `json:"service_id,omitempty"`
+	Port      int    `json:"port,omitempty"`
+	Owner     string `json:"owner,omitempty"`
+}
+
+// nodeMembers accumulates the hosts/services behind an aggregated graph node.
+type nodeMembers struct {
+	refs       []GraphHostRef
+	hostSeen   map[string]bool
+	serviceIDs []string
+}
+
+func (m *nodeMembers) add(h *domain.Host, s *domain.Service) {
+	if m.hostSeen == nil {
+		m.hostSeen = map[string]bool{}
+	}
+	if s != nil && s.ID != "" {
+		m.serviceIDs = append(m.serviceIDs, s.ID)
+	}
+	if m.hostSeen[h.ID] {
+		return
+	}
+	m.hostSeen[h.ID] = true
+	ref := GraphHostRef{HostID: h.ID, IP: h.IP, Hostname: h.Hostname, Score: h.Interestingness, Owner: h.Owner}
+	if s != nil {
+		ref.ServiceID, ref.Port = s.ID, s.Port
+		if s.HTTP != nil {
+			ref.Title = s.HTTP.Title
+		}
+	}
+	m.refs = append(m.refs, ref)
+}
+
+// writeMeta stores host_ids / service_ids / hosts (sorted by score, capped) / host_count.
+func (m *nodeMembers) writeMeta(dst map[string]any) {
+	sort.SliceStable(m.refs, func(i, j int) bool {
+		if m.refs[i].Score != m.refs[j].Score {
+			return m.refs[i].Score > m.refs[j].Score
+		}
+		return m.refs[i].IP < m.refs[j].IP
+	})
+	ids := make([]string, len(m.refs))
+	for i, r := range m.refs {
+		ids[i] = r.HostID
+	}
+	refs := m.refs
+	if len(refs) > maxNodeHosts {
+		refs = refs[:maxNodeHosts]
+	}
+	if refs == nil {
+		refs = []GraphHostRef{}
+	}
+	dst["host_ids"] = ids
+	dst["service_ids"] = append([]string{}, m.serviceIDs...)
+	dst["hosts"] = refs
+	dst["host_count"] = len(ids)
+}
+
+func techNodeID(name string) string {
+	return "tech:" + strings.ToLower(strings.ReplaceAll(name, " ", "_"))
+}
+
+// attachTechHosts gives every technology/signature node the full list of matched hosts
+// running it (not only the rendered ones), so the side panel can list and open them.
+func attachTechHosts(nodes []domain.GraphNode, matched []domain.Host) {
+	idx := map[string]*nodeMembers{}
+	for i := range nodes {
+		if nodes[i].Kind == "technology" || nodes[i].Kind == "signature" {
+			idx[nodes[i].ID] = &nodeMembers{}
+		}
+	}
+	if len(idx) == 0 {
+		return
+	}
+	for hi := range matched {
+		h := &matched[hi]
+		for si := range h.Services {
+			s := &h.Services[si]
+			for _, t := range s.Technologies {
+				if m, ok := idx[techNodeID(t.Name)]; ok {
+					m.add(h, s)
+				}
+			}
+		}
+	}
+	for i := range nodes {
+		m, ok := idx[nodes[i].ID]
+		if !ok {
+			continue
+		}
+		if nodes[i].Meta == nil {
+			nodes[i].Meta = map[string]any{}
+		}
+		m.writeMeta(nodes[i].Meta)
+	}
 }
 
 func buildClusteredGraph(
@@ -190,9 +303,9 @@ func buildClusteredGraph(
 	}
 
 	rootID := "scope:all"
-	rootLabel := fmt.Sprintf("Infrastruktura (%d hostów)", len(matched))
+	rootLabel := fmt.Sprintf("All targets (%d hosts)", len(matched))
 	if len(targets) == 1 && targets[0].Value != "" {
-		rootLabel = fmt.Sprintf("%s (%d hostów)", targets[0].Value, len(matched))
+		rootLabel = fmt.Sprintf("%s (%d hosts)", targets[0].Value, len(matched))
 	}
 	addNode(domain.GraphNode{
 		ID:    rootID,
@@ -222,14 +335,14 @@ func buildClusteredGraph(
 		addNode(domain.GraphNode{
 			ID:              subNodeID,
 			Kind:            "host",
-			Label:           fmt.Sprintf("%s (%d hostów)", ss.Subnet, ss.HostCount),
+			Label:           fmt.Sprintf("%s (%d hosts)", ss.Subnet, ss.HostCount),
 			State:           state,
 			Interestingness: ss.MaxScore,
 			Meta: map[string]any{
 				"is_cluster":      true,
 				"subnet":          ss.Subnet,
 				"ip":              ss.Subnet,
-				"hostname":        fmt.Sprintf("%d aktywnych · %d wysokiego ryzyka", ss.ActiveCount, ss.HighRiskCount),
+				"hostname":        fmt.Sprintf("%d active · %d high risk", ss.ActiveCount, ss.HighRiskCount),
 				"host_count":      ss.HostCount,
 				"active_count":    ss.ActiveCount,
 				"high_risk_count": ss.HighRiskCount,
@@ -240,23 +353,23 @@ func buildClusteredGraph(
 
 	// Aggregate services per subnet by (port, product/service) so each subnet shows its top service clusters.
 	type svcBucket struct {
-		subnet       string
-		port         int
-		proto        string
-		product      string
-		serviceName  string
-		count        int
-		maxScore     int
-		isAdmin      bool
-		isStaging    bool
-		isIoT        bool
-		sampleHostID string
-		sampleSvcID  string
-		techs        map[string]domain.DetectedTechnology
+		subnet      string
+		port        int
+		proto       string
+		product     string
+		serviceName string
+		count       int
+		maxScore    int
+		isAdmin     bool
+		isStaging   bool
+		isIoT       bool
+		members     nodeMembers
+		techs       map[string]domain.DetectedTechnology
 	}
 	bySubnetBuckets := make(map[string]map[string]*svcBucket)
 
-	for _, h := range matched {
+	for hi := range matched {
+		h := &matched[hi]
 		sub := subnet24(h.IP)
 		if !allowedSubnets[sub] {
 			continue
@@ -266,7 +379,8 @@ func buildClusteredGraph(
 			bmap = make(map[string]*svcBucket)
 			bySubnetBuckets[sub] = bmap
 		}
-		for _, s := range h.Services {
+		for si := range h.Services {
+			s := &h.Services[si]
 			prod := s.Product
 			if prod == "" {
 				prod = s.ServiceName
@@ -275,18 +389,17 @@ func buildClusteredGraph(
 			b, exists := bmap[key]
 			if !exists {
 				b = &svcBucket{
-					subnet:       sub,
-					port:         s.Port,
-					proto:        s.Protocol,
-					product:      s.Product,
-					serviceName:  s.ServiceName,
-					sampleHostID: h.ID,
-					sampleSvcID:  s.ID,
-					techs:        make(map[string]domain.DetectedTechnology),
+					subnet:      sub,
+					port:        s.Port,
+					proto:       s.Protocol,
+					product:     s.Product,
+					serviceName: s.ServiceName,
+					techs:       make(map[string]domain.DetectedTechnology),
 				}
 				bmap[key] = b
 			}
 			b.count++
+			b.members.add(h, s)
 			if s.Interestingness > b.maxScore {
 				b.maxScore = s.Interestingness
 			}
@@ -325,25 +438,27 @@ func buildClusteredGraph(
 				name = b.serviceName
 			}
 			svcID := fmt.Sprintf("service:cluster:%s:%d:%s", sub, b.port, strings.ToLower(strings.ReplaceAll(name, " ", "_")))
+			svcMeta := map[string]any{
+				"is_cluster":     true,
+				"subnet":         sub,
+				"port":           b.port,
+				"protocol":       b.proto,
+				"product":        name,
+				"count":          b.count,
+				"is_admin_panel": b.isAdmin,
+				"is_staging_env": b.isStaging,
+				"is_iot":         b.isIoT,
+			}
+			// Full membership instead of one representative host/service: the inspector and
+			// the DefectDojo push act on every service of the cluster.
+			b.members.writeMeta(svcMeta)
 			addNode(domain.GraphNode{
 				ID:              svcID,
 				Kind:            "service",
 				Label:           fmt.Sprintf(":%d %s (%d×)", b.port, name, b.count),
 				State:           "open",
 				Interestingness: b.maxScore,
-				Meta: map[string]any{
-					"is_cluster":     true,
-					"subnet":         sub,
-					"service_id":     b.sampleSvcID,
-					"host_id":        b.sampleHostID,
-					"port":           b.port,
-					"protocol":       b.proto,
-					"product":        name,
-					"count":          b.count,
-					"is_admin_panel": b.isAdmin,
-					"is_staging_env": b.isStaging,
-					"is_iot":         b.isIoT,
-				},
+				Meta:            svcMeta,
 			})
 			addEdge(subNodeID, svcID, fmt.Sprintf("%d× :%d", b.count, b.port))
 
@@ -357,7 +472,7 @@ func buildClusteredGraph(
 				tlist = tlist[:2]
 			}
 			for _, tech := range tlist {
-				techID := "tech:" + strings.ToLower(strings.ReplaceAll(tech.Name, " ", "_"))
+				techID := techNodeID(tech.Name)
 				techLabel := tech.Name
 				if tech.Version != "" {
 					techLabel += " " + tech.Version
@@ -372,6 +487,7 @@ func buildClusteredGraph(
 					Label:           techLabel,
 					Interestingness: tech.Confidence,
 					Meta: map[string]any{
+						"name":       tech.Name,
 						"category":   tech.Category,
 						"confidence": tech.Confidence,
 						"version":    tech.Version,
@@ -528,7 +644,7 @@ func buildDetailedGraph(
 			addEdge(hostID, svcNodeID, fmt.Sprintf("port %d", s.Port))
 
 			for _, tech := range s.Technologies {
-				techID := "tech:" + strings.ToLower(strings.ReplaceAll(tech.Name, " ", "_"))
+				techID := techNodeID(tech.Name)
 				techLabel := tech.Name
 				if tech.Version != "" {
 					techLabel += " " + tech.Version

@@ -83,12 +83,12 @@ func (s *Server) handleCreateAgentToken(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if len(req.Name) > 80 || len(req.Site) > 80 {
-		writeErr(w, http.StatusBadRequest, "nazwa/lokalizacja za długa / name or site too long")
+		writeErr(w, http.StatusBadRequest, "name or site too long")
 		return
 	}
 	ttl := time.Duration(req.TTLHours * float64(time.Hour))
 	if req.TTLHours < 0 || req.TTLHours > 24*30 {
-		writeErr(w, http.StatusBadRequest, "ważność tokenu: 0-720 h / ttl_hours must be 0..720")
+		writeErr(w, http.StatusBadRequest, "ttl_hours must be 0..720")
 		return
 	}
 	token, rec, err := s.agents.CreateEnrollToken(r.Context(), req.Name, req.Site, ttl, currentUsername(r))
@@ -129,7 +129,7 @@ func (s *Server) validateProfileAgent(ctx context.Context, p *domain.ScanProfile
 	if p.AgentID == "" || s.agents.AgentExists(ctx, p.AgentID) {
 		return ""
 	}
-	return "nieznany agent skanujący / unknown scanning agent"
+	return "unknown scanning agent"
 }
 
 // publicBaseURL is the URL agents should use to reach this server: DZIECIOL_PUBLIC_URL, else the

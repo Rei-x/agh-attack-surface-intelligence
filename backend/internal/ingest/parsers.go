@@ -225,7 +225,7 @@ func ParseCSV(r io.Reader) ([]domain.ObservedHost, error) {
 const MaxImportBytes int64 = 64 << 20
 
 // ErrImportTooLarge is returned instead of silently truncating an oversized import.
-var ErrImportTooLarge = fmt.Errorf("plik importu jest za duży (limit %d MB) / import file too large (limit %d MB)", MaxImportBytes>>20, MaxImportBytes>>20)
+var ErrImportTooLarge = fmt.Errorf("import file too large (limit %d MB)", MaxImportBytes>>20)
 
 // sniffCSVDelimiter picks the most frequent of , ; and TAB in the first non-"sep=" line.
 func sniffCSVDelimiter(raw []byte) rune {

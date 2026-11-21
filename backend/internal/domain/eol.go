@@ -14,7 +14,7 @@ type OutdatedComponent struct {
 	SupportedBranch string `json:"supported_branch,omitempty"` // newest supported branch (upgrade target)
 	Via             string `json:"via"`                        // where the version came from (nmap, http-server-header, x-powered-by, technology)
 	DistroPackaged  bool   `json:"distro_packaged,omitempty"`  // distro build (Ubuntu/Debian/RHEL...): fixes may be backported
-	Label           string `json:"label"`                      // short badge text, e.g. "nginx 1.14 – gałąź EOL od 2019-04"
+	Label           string `json:"label"`                      // short badge text, e.g. "nginx 1.14: branch EOL since 2019-04"
 	Evidence        string `json:"evidence"`                   // full explanation with source and data date
 	Source          string `json:"source"`                     // citation URL of the EOL date
 	DataAsOf        string `json:"data_as_of"`                 // date the EOL table was curated

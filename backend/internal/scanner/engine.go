@@ -30,7 +30,7 @@ type RunResult struct {
 	GovernorStats  GovernorStats         `json:"governor_stats"`
 	PausedByWindow bool                  `json:"paused_by_window"`
 	// ScannedIPs lists the IPs of chunks completed during THIS Execute call (one window
-	// segment). Callers must use it — not the full scope — when marking hosts missing,
+	// segment). Callers must use it (not the full scope) when marking hosts missing,
 	// otherwise hosts scanned in an earlier window would be wrongly flagged as gone.
 	ScannedIPs []string `json:"-"`
 	// ChunkWorkers is the number of concurrent chunk workers used in this segment.

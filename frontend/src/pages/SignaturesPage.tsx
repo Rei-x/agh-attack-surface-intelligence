@@ -136,7 +136,7 @@ export function SignaturesPage() {
       const list = await api.listSignatures();
       setSignatures(list);
     } catch (err) {
-      toast.error('Błąd pobierania', (err as Error).message);
+      toast.error('Could not load signatures', (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -222,12 +222,12 @@ export function SignaturesPage() {
       const res = await api.validateSignature(payload);
       setValidation(res);
       if (res.valid) {
-        toast.success('Validator: OK');
+        toast.success('Signature is valid');
       } else {
         toast.warning('Validator: odrzucono', res.reason || res.errors?.join('; '));
       }
     } catch (err) {
-      toast.error('Błąd walidacji', (err as Error).message);
+      toast.error('Validation failed', (err as Error).message);
     } finally {
       setValidating(false);
     }
@@ -239,9 +239,9 @@ export function SignaturesPage() {
       const payload = getCurrentPayload();
       const res = await api.testSignature(payload);
       setTestResult(res);
-      toast.info('Test zakończony', `${res.matches?.length ?? res.total_matches ?? 0} dopasowań`);
+      toast.info('Test finished', `${res.matches?.length ?? res.total_matches ?? 0} matches`);
     } catch (err) {
-      toast.error('Błąd testu', (err as Error).message);
+      toast.error('Test failed', (err as Error).message);
     } finally {
       setTesting(false);
     }
@@ -252,34 +252,34 @@ export function SignaturesPage() {
     try {
       const payload = getCurrentPayload();
       if (!payload.name?.trim()) {
-        toast.error('Podaj nazwę');
+        toast.error('Enter a name');
         return;
       }
       if (selectedId) {
         const updated = await api.updateSignature(selectedId, payload);
-        toast.success('Zapisano', updated.name);
+        toast.success('Saved', updated.name);
       } else {
         const created = await api.createSignature(payload);
         setSelectedId(created.id);
-        toast.success('Utworzono', created.name);
+        toast.success('Created', created.name);
       }
       await loadSignatures();
     } catch (err) {
-      toast.error('Błąd zapisu', (err as Error).message);
+      toast.error('Save failed', (err as Error).message);
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (sig: Signature) => {
-    if (!window.confirm(`Usunąć sygnaturę "${sig.name}"?`)) return;
+    if (!window.confirm(`Delete signature "${sig.name}"?`)) return;
     try {
       await api.deleteSignature(sig.id);
-      toast.success('Usunięto', sig.name);
+      toast.success('Deleted', sig.name);
       if (selectedId === sig.id) startNewSignature();
       loadSignatures();
     } catch (err) {
-      toast.error('Błąd usuwania', (err as Error).message);
+      toast.error('Delete failed', (err as Error).message);
     }
   };
 
@@ -290,10 +290,10 @@ export function SignaturesPage() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       await api.importSignatures(parsed);
-      toast.success('Zaimportowano');
+      toast.success('Imported');
       loadSignatures();
     } catch (err) {
-      toast.error('Błąd importu', (err as Error).message);
+      toast.error('Import failed', (err as Error).message);
     } finally {
       e.target.value = '';
     }
@@ -336,13 +336,13 @@ export function SignaturesPage() {
     ...CATEGORIES.map((c) => ({ value: c, label: c })),
   ];
 
-  /** Shared signature editor (visual / JSON) — rendered in Editor and Playground tabs. */
+  /** Shared signature editor (visual / JSON), rendered in the Editor and Playground tabs. */
   const editorCard = (
     <Card size="sm" className="min-w-0">
       <CardHeader className="border-b">
         <CardTitle className="flex min-w-0 items-center gap-2 text-sm">
-          <span className="truncate">{selectedId ? draft.name || 'Sygnatura' : 'Nowa sygnatura'}</span>
-          {draft.is_builtin && <Pill>builtin</Pill>}
+          <span className="truncate">{selectedId ? draft.name || 'Signature' : 'New signature'}</span>
+          {draft.is_builtin && <Pill title="Shipped with Dzięcioł; duplicate it to change it">Built-in</Pill>}
         </CardTitle>
         <CardAction>
           <div className="inline-flex border border-border">
@@ -352,7 +352,7 @@ export function SignaturesPage() {
               variant={editorMode === 'visual' ? 'secondary' : 'ghost'}
               onClick={() => switchEditorMode('visual')}
             >
-              Kreator
+              Form
             </Button>
             <Button
               type="button"
@@ -370,7 +370,7 @@ export function SignaturesPage() {
         {editorMode === 'visual' ? (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-3">
-              <Field label="Nazwa *" htmlFor="sig-name" className="sm:col-span-2">
+              <Field label="Name *" htmlFor="sig-name" className="sm:col-span-2">
                 <Input
                   id="sig-name"
                   value={draft.name || ''}
@@ -378,21 +378,21 @@ export function SignaturesPage() {
                   placeholder="AGH Staging Debug Header"
                 />
               </Field>
-              <Field label="Kategoria">
+              <Field label="Category">
                 <SimpleSelect
                   value={draft.category || 'custom'}
                   onValueChange={(v) => setDraft((d) => ({ ...d, category: v }))}
                   options={toOptions(CATEGORIES, draft.category)}
                 />
               </Field>
-              <Field label="Opis" htmlFor="sig-desc" className="sm:col-span-3">
+              <Field label="Description" htmlFor="sig-desc" className="sm:col-span-3">
                 <Input
                   id="sig-desc"
                   value={draft.description || ''}
                   onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
                 />
               </Field>
-              <Field label="Tryb">
+              <Field label="Match mode">
                 <SimpleSelect
                   value={draft.match_mode || 'any'}
                   onValueChange={(v) => setDraft((d) => ({ ...d, match_mode: v }))}
@@ -402,7 +402,7 @@ export function SignaturesPage() {
                   ]}
                 />
               </Field>
-              <Field label="Confidence (0.1–0.98)" htmlFor="sig-weight">
+              <Field label="Evidence weight (0.1 to 0.98)" htmlFor="sig-weight">
                 <Input
                   id="sig-weight"
                   type="number"
@@ -416,7 +416,7 @@ export function SignaturesPage() {
                   className="font-mono"
                 />
               </Field>
-              <Field label="Punkty" htmlFor="sig-points">
+              <Field label="Risk points (added to the score)" htmlFor="sig-points">
                 <Input
                   id="sig-points"
                   type="number"
@@ -429,7 +429,7 @@ export function SignaturesPage() {
                   className="font-mono"
                 />
               </Field>
-              <Field label="Tagi" htmlFor="sig-tags" className="sm:col-span-3">
+              <Field label="Tags" htmlFor="sig-tags" className="sm:col-span-3">
                 <Input
                   id="sig-tags"
                   value={tagsText}
@@ -451,7 +451,7 @@ export function SignaturesPage() {
               </SectionTitle>
 
               <div className="divide-y divide-border border border-border">
-                {(draft.matchers || []).length === 0 && <Empty>Brak matcherów</Empty>}
+                {(draft.matchers || []).length === 0 && <Empty>No matchers</Empty>}
                 {(draft.matchers || []).map((m, idx) => (
                   <div
                     key={idx}
@@ -467,13 +467,13 @@ export function SignaturesPage() {
                     <Input
                       value={m.key || ''}
                       onChange={(e) => updateMatcher(idx, { key: e.target.value })}
-                      placeholder="Klucz"
+                      placeholder="Key"
                       className="h-9 font-mono text-xs sm:col-span-3"
                     />
                     <Input
                       value={m.pattern}
                       onChange={(e) => updateMatcher(idx, { pattern: e.target.value })}
-                      placeholder="Wzorzec / regex"
+                      placeholder="Pattern / regex"
                       className="h-9 font-mono text-xs sm:col-span-4"
                     />
                     <label className="flex items-center gap-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase sm:col-span-1">
@@ -490,7 +490,7 @@ export function SignaturesPage() {
                         type="button"
                         variant="ghost"
                         size="icon-xs"
-                        aria-label="Usuń matcher"
+                        aria-label="Delete matcher"
                         onClick={() => removeMatcher(idx)}
                         className="text-muted-foreground hover:text-destructive"
                       >
@@ -522,13 +522,13 @@ export function SignaturesPage() {
               size="sm"
               onClick={() => handleDelete(draft as Signature)}
             >
-              <RiDeleteBinLine /> Usuń
+              <RiDeleteBinLine /> Delete
             </Button>
           )}
           {canWrite && (
             <Button type="button" size="sm" disabled={saving} onClick={handleSave}>
               <RiSave3Line />
-              {saving ? 'Zapisywanie…' : 'Zapisz'}
+              {saving ? 'Saving…' : 'Save'}
             </Button>
           )}
         </CardFooter>
@@ -539,7 +539,7 @@ export function SignaturesPage() {
   return (
     <div>
       <PageHeader
-        title="Sygnatury"
+        title="Signatures"
         meta={`${signatures.length}`}
         actions={
           <>
@@ -558,11 +558,11 @@ export function SignaturesPage() {
               </>
             )}
             <Button type="button" variant="outline" size="sm" onClick={() => api.exportSignatures()}>
-              <RiDownload2Line /> Eksport
+              <RiDownload2Line /> Export
             </Button>
             {canWrite && (
               <Button type="button" size="sm" onClick={openNew}>
-                <RiAddLine /> Nowa
+                <RiAddLine /> New signature
               </Button>
             )}
           </>
@@ -571,8 +571,8 @@ export function SignaturesPage() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as SigTab)} className="gap-6">
         <TabsList variant="line">
-          <TabsTrigger value="list">Sygnatury</TabsTrigger>
-          <TabsTrigger value="editor">Edytor / Validator</TabsTrigger>
+          <TabsTrigger value="list">Signatures</TabsTrigger>
+          <TabsTrigger value="editor">Editor / validator</TabsTrigger>
           <TabsTrigger value="playground">Playground</TabsTrigger>
         </TabsList>
 
@@ -585,7 +585,7 @@ export function SignaturesPage() {
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Szukaj…"
+                  placeholder="Search…"
                   className="pl-6"
                 />
               </div>
@@ -600,16 +600,16 @@ export function SignaturesPage() {
             {loading ? (
               <PeckLoader />
             ) : filteredSignatures.length === 0 ? (
-              <Empty icon={RiSearchLine}>Brak wyników</Empty>
+              <Empty icon={RiSearchLine}>No results</Empty>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-5">Nazwa</TableHead>
-                    <TableHead>Kategoria</TableHead>
-                    <TableHead>Typ</TableHead>
-                    <TableHead className="text-right">Weight</TableHead>
-                    <TableHead className="pr-5 text-right">Pkt</TableHead>
+                    <TableHead className="pl-5">Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead className="text-right" title="Evidence weight in the Noisy-OR confidence (0.1 to 0.98)">Evidence weight</TableHead>
+                    <TableHead className="pr-5 text-right" title="Points added to the risk score when it matches">Risk points</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -633,7 +633,7 @@ export function SignaturesPage() {
                           {sig.category}
                         </TableCell>
                         <TableCell>
-                          {sig.is_builtin ? <Pill>builtin</Pill> : <Pill tone="violet">custom</Pill>}
+                          {sig.is_builtin ? <Pill>Built-in</Pill> : <Pill tone="violet">Custom</Pill>}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs tabular-nums">
                           {sig.confidence_weight}
@@ -667,20 +667,20 @@ export function SignaturesPage() {
                     onClick={handleValidate}
                   >
                     <RiShieldCheckLine />
-                    {validating ? 'Sprawdzanie…' : 'Waliduj'}
+                    {validating ? 'Checking…' : 'Validate'}
                   </Button>
                 </CardAction>
               </CardHeader>
               <CardContent>
                 {!validation ? (
-                  <Empty icon={RiShieldCheckLine}>Brak walidacji</Empty>
+                  <Empty icon={RiShieldCheckLine}>Not validated yet</Empty>
                 ) : (
                   <Notice
                     tone={validation.valid ? 'success' : 'danger'}
                     icon={validation.valid ? RiCheckboxCircleLine : RiErrorWarningLine}
                   >
                     <div className="font-semibold">
-                      {validation.valid ? 'Bezpieczna (read-only)' : 'Naruszenie polityki'}
+                      {validation.valid ? 'Safe (read-only checks only)' : 'Policy violation'}
                     </div>
                     {validation.reason && <p className="mt-1">{validation.reason}</p>}
                     {(validation.errors?.length || 0) > 0 && (
@@ -715,28 +715,28 @@ export function SignaturesPage() {
                 <CardAction>
                   <Button type="button" size="xs" disabled={testing} onClick={handleRetroactiveTest}>
                     <RiPlayLine />
-                    {testing ? 'Testowanie…' : 'Uruchom'}
+                    {testing ? 'Testing…' : 'Run test'}
                   </Button>
                 </CardAction>
               </CardHeader>
               <CardContent className="space-y-3">
                 {testResult?.tested_services !== undefined && (
                   <div className="text-xs text-muted-foreground">
-                    Przeszukano {testResult.tested_services} usług
+                    Checked {testResult.tested_services} services
                   </div>
                 )}
                 {!testResult ? (
-                  <Empty icon={RiFlaskLine}>Uruchom test</Empty>
+                  <Empty icon={RiFlaskLine}>Run the test against the current inventory</Empty>
                 ) : (testResult.matches?.length || 0) === 0 ? (
-                  <Empty>Brak dopasowań</Empty>
+                  <Empty>No matches</Empty>
                 ) : (
                   <div className="max-h-[32rem] overflow-y-auto border border-border">
                     <Table>
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead>Usługa</TableHead>
-                          <TableHead>Tytuł</TableHead>
-                          <TableHead>Wersja</TableHead>
+                          <TableHead>Service</TableHead>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Version</TableHead>
                           <TableHead className="text-right">Conf.</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -747,13 +747,13 @@ export function SignaturesPage() {
                               {m.host_ip}:{m.port}
                             </TableCell>
                             <TableCell className="max-w-[14rem] truncate text-xs">
-                              {m.http_title || '—'}
+                              {m.http_title || ''}
                             </TableCell>
                             <TableCell>
-                              {m.version ? <Pill tone="success">v{m.version}</Pill> : '—'}
+                              {m.version ? <Pill tone="success">v{m.version}</Pill> : null}
                             </TableCell>
                             <TableCell className="text-right font-mono text-xs tabular-nums">
-                              {m.confidence !== undefined ? `${m.confidence}%` : '—'}
+                              {m.confidence !== undefined ? `${m.confidence}%` : ''}
                             </TableCell>
                           </TableRow>
                         ))}

@@ -28,12 +28,12 @@ func (s *Server) handleIngestManual(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ingest.NormalizeIP(obs.IP) == "" {
-		writeErr(w, http.StatusBadRequest, fmt.Sprintf("%q nie jest poprawnym adresem IPv4/IPv6 / not a valid IP address", obs.IP))
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("%q is not a valid IPv4/IPv6 address", obs.IP))
 		return
 	}
 	for _, svc := range obs.Services {
 		if svc.Port < 1 || svc.Port > 65535 {
-			writeErr(w, http.StatusBadRequest, fmt.Sprintf("port %d poza zakresem 1-65535 / port out of range", svc.Port))
+			writeErr(w, http.StatusBadRequest, fmt.Sprintf("port %d out of range 1-65535", svc.Port))
 			return
 		}
 	}
@@ -96,7 +96,7 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 		}
 		data, err = io.ReadAll(io.LimitReader(file, maxImportFileBytes+1))
 		if err != nil {
-			writeErr(w, http.StatusBadRequest, "nie udało się odczytać pliku / failed reading uploaded file")
+			writeErr(w, http.StatusBadRequest, "failed reading the uploaded file")
 			return
 		}
 	} else {
@@ -142,7 +142,7 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 	}
 	data = ingest.StripNUL(ingest.DecodeText(data))
 	if len(bytes.TrimSpace(bytes.TrimPrefix(data, []byte("\ufeff")))) == 0 {
-		writeErr(w, http.StatusBadRequest, "plik jest pusty / the file is empty")
+		writeErr(w, http.StatusBadRequest, "the file is empty")
 		return
 	}
 

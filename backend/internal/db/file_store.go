@@ -235,7 +235,7 @@ func (f *FileStore) Ping(_ context.Context) error {
 	f.saveMu.Lock()
 	defer f.saveMu.Unlock()
 	if f.saveErr != nil {
-		return fmt.Errorf("zapis danych na dysk nie działa - zmiany nie są utrwalane (sprawdź wolne miejsce i uprawnienia do %s) / persisting the store fails: %w",
+		return fmt.Errorf("persisting the store to disk fails - changes are not saved (check free space and permissions on %s): %w",
 			filepath.Dir(f.path), f.saveErr)
 	}
 	return nil

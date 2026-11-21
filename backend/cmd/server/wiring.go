@@ -305,9 +305,9 @@ func (r *LiveScanRunner) StartScan(ctx context.Context, run *domain.ScanRun, pro
 	if prepared.TotalIPs == 0 {
 		// Nothing left to scan (all excluded or invalid): fail loudly instead of reporting an
 		// empty COMPLETED run that looks like "the scanner found nothing".
-		reason := "brak adresów do skanowania"
+		reason := "no addresses to scan"
 		if resolution != nil {
-			reason = fmt.Sprintf("brak adresów do skanowania: %d wykluczonych przez listę wykluczeń, %d niepoprawnych wpisów",
+			reason = fmt.Sprintf("no addresses to scan: %d excluded by the exclusion list, %d invalid entries",
 				resolution.ExcludedCount, len(resolution.InvalidEntries))
 		}
 		now := time.Now().UTC()
@@ -458,7 +458,7 @@ func (r *LiveScanRunner) launchAsync(
 			now := time.Now().UTC()
 			runCopy.Status = domain.ScanStatusFailed
 			runCopy.FinishedAt = &now
-			runCopy.Notes = strings.TrimSpace(runCopy.Notes + "\nzapis wyników nie powiódł się: " + ingestErr.Error())
+			runCopy.Notes = strings.TrimSpace(runCopy.Notes + "\nsaving results failed: " + ingestErr.Error())
 			_ = r.store.SaveScanChunks(bgCtx, runCopy.ID, runCopy.Chunks)
 			_ = r.store.UpdateScanRun(bgCtx, &runCopy)
 			return
@@ -517,16 +517,17 @@ func (r *LiveScanRunner) launchAsync(
 	}()
 }
 
-// autoPushDefectDojo reimports a completed run's merged Nmap XML into DefectDojo when the
-// operator enabled auto_push_nmap. One DefectDojo test per profile, so DefectDojo closes
-// services that disappeared since the profile's previous run. Failures are recorded in the
-// export log and never affect the scan itself.
+// autoPushDefectDojo runs after every completed run (local engine and remote agents): it
+// reimports the merged Nmap XML (auto_push_nmap) and the actionable "Dzięcioł changes"
+// findings with analyst triage mirrored (auto_push_findings, on by default). One DefectDojo
+// test per profile, so DefectDojo closes what disappeared since the profile's previous run.
+// Failures are recorded in the export log and never affect the scan itself.
 func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 	if r.dojo == nil {
 		return
 	}
-	cfg, err := r.store.GetDefectDojoConfig(ctx)
-	if err != nil || cfg == nil || !cfg.AutoPushNmap || strings.TrimSpace(cfg.URL) == "" {
+	cfg, err := db.LoadDefectDojoConfig(ctx, r.store)
+	if err != nil || cfg == nil || strings.TrimSpace(cfg.URL) == "" || (!cfg.AutoPushNmap && !cfg.AutoPushFindings) {
 		return
 	}
 	run, err := r.store.GetScanRun(ctx, runID)
@@ -543,8 +544,10 @@ func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 	pushCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	// Actionable change findings (risky exposures, admin/staging, EOL, new, gone) with owners.
-	defer r.pushChangeFindings(pushCtx, cfg, run, profile, profileName)
-	if strings.TrimSpace(run.RawNmapXML) == "" {
+	if cfg.AutoPushFindings {
+		defer r.pushChangeFindings(pushCtx, cfg, run, profile, profileName)
+	}
+	if !cfg.AutoPushNmap || strings.TrimSpace(run.RawNmapXML) == "" {
 		return
 	}
 	imp, err := r.dojo.ImportNmapXML(pushCtx, cfg, 0, defectdojo.NmapTestTitle(profileName), run.Name, run.RawNmapXML)
@@ -563,6 +566,7 @@ func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 	} else {
 		exp.Status, exp.ExternalID, exp.ExternalURL = "success", imp.ExternalID, imp.ExternalURL
 		payload["external_url"] = imp.ExternalURL
+		defectdojo.RecordNmapPush(ctx, r.store, imp.ExternalURL)
 		log.Printf("[INFO] DefectDojo auto-push for scan %s: %s", run.ID, imp.ExternalURL)
 	}
 	_ = r.store.AddDefectDojoExport(ctx, exp)
@@ -618,7 +622,7 @@ func (r *LiveScanRunner) PauseScan(ctx context.Context, scanRunID string) error 
 	switch run.Status {
 	case domain.ScanStatusQueued, domain.ScanStatusCalibrating, domain.ScanStatusRunning, domain.ScanStatusPausedWindow:
 	default:
-		return scanStateErr("nie można wstrzymać skanu w stanie %s / cannot pause a scan that is %s", run.Status, run.Status)
+		return scanStateErr("cannot pause a scan that is %s", run.Status)
 	}
 	r.mu.Lock()
 	if h, ok := r.active[scanRunID]; ok {
@@ -640,13 +644,13 @@ func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error
 		return err
 	}
 	if run.Status != domain.ScanStatusPausedUser && run.Status != domain.ScanStatusPausedWindow {
-		return scanStateErr("można wznowić tylko wstrzymany skan (stan: %s) / only a paused scan can be resumed", run.Status)
+		return scanStateErr("only a paused scan can be resumed (status: %s)", run.Status)
 	}
 	// A pause cancels the worker, which then writes its final checkpoint: wait for it, or the
 	// old segment and the resumed one would run (and write) concurrently.
 	for deadline := time.Now().Add(15 * time.Second); r.IsScanActive(scanRunID); {
 		if time.Now().After(deadline) {
-			return scanStateErr("skan jest jeszcze wstrzymywany - spróbuj ponownie za chwilę / scan is still pausing, retry shortly")
+			return scanStateErr("scan is still pausing - retry in a moment")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -654,7 +658,7 @@ func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error
 		return err
 	}
 	if run.Status != domain.ScanStatusPausedUser && run.Status != domain.ScanStatusPausedWindow {
-		return scanStateErr("można wznowić tylko wstrzymany skan (stan: %s) / only a paused scan can be resumed", run.Status)
+		return scanStateErr("only a paused scan can be resumed (status: %s)", run.Status)
 	}
 	var profile *domain.ScanProfile
 	if run.ProfileID != "" {
@@ -666,7 +670,7 @@ func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error
 		p, ok := r.adhoc[scanRunID]
 		r.mu.Unlock()
 		if !ok {
-			return scanStateErr("tego szybkiego skanu (bez zapisanego profilu) nie można wznowić po restarcie serwera - uruchom go ponownie / quick scan without a saved profile cannot be resumed after a restart")
+			return scanStateErr("a quick scan without a saved profile cannot be resumed after a server restart - start it again")
 		}
 		profile = &p
 	}
@@ -703,7 +707,7 @@ func (r *LiveScanRunner) StopScan(ctx context.Context, scanRunID string) error {
 	}
 	switch run.Status {
 	case domain.ScanStatusCompleted, domain.ScanStatusFailed, domain.ScanStatusStopped:
-		return scanStateErr("skan jest już zakończony (%s) / scan already finished", run.Status)
+		return scanStateErr("scan already finished (%s)", run.Status)
 	}
 	r.mu.Lock()
 	if h, ok := r.active[scanRunID]; ok {
@@ -784,7 +788,7 @@ func (r *LiveScanRunner) RecoverInterrupted(ctx context.Context) (int, error) {
 			run.FinishedAt = &now
 			// Tell the user why in the UI, not only in the server log. Results ingested before
 			// the restart are kept.
-			run.Notes = strings.TrimSpace(run.Notes + "\nPrzerwany przez restart/awarię serwera - uruchom skan ponownie (wyniki zebrane do tej pory zostały zapisane). / Interrupted by a server restart.")
+			run.Notes = strings.TrimSpace(run.Notes + "\nInterrupted by a server restart/crash - run the scan again (results collected so far were saved).")
 			_ = r.store.UpdateScanRun(ctx, &run)
 			log.Printf("[WARN] scan %s (%s) was interrupted before its chunk ledger existed; marked FAILED", run.ID, run.Name)
 			recovered++
@@ -852,6 +856,7 @@ func (r *LiveScanRunner) checkPausedWindowScans(ctx context.Context) {
 		}
 		if wg.IsOpen(now) {
 			log.Printf("[INFO] Time window reopened for scan %s (%s); auto-resuming from checkpoint", run.ID, run.Name)
+			r.PublishEvent(domain.LiveEvent{Type: "scan.window_resumed", ScanRunID: run.ID, Timestamp: now.UTC(), Payload: map[string]any{"window_start": prof.WindowStart, "window_end": prof.WindowEnd}})
 			if err := r.ResumeScan(ctx, run.ID); err != nil {
 				log.Printf("[WARN] Auto-resume failed for scan %s: %v", run.ID, err)
 			}

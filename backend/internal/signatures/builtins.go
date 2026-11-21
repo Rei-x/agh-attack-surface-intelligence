@@ -650,7 +650,7 @@ func BuiltinSignatures() []domain.Signature {
 			ID:               "builtin-iot-bmc-idrac-ilo",
 			Name:             "Server BMC (Dell iDRAC / HPE iLO)",
 			Description:      "Detects out-of-band server management interfaces (iDRAC, iLO, IPMI).",
-			Category:         "iot",
+			Category:         "bmc",
 			MatchMode:        "any",
 			ConfidenceWeight: 0.92,
 			InterestingPts:   28,

@@ -4,11 +4,8 @@ import (
 	"context"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
-	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
-	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/policy"
 )
 
@@ -28,22 +25,4 @@ func seedDemoPolicies(ctx context.Context, store db.Store) {
 	if seeded {
 		log.Printf("[INFO] seeded demo zone policies for the lab network 10.66.0.0/18")
 	}
-}
-
-// policyChangeFindings returns the open zone policy violations of hosts (the profile scope)
-// as findings for the "Dzięcioł changes" test.
-func policyChangeFindings(ctx context.Context, store db.Store, hosts []domain.Host) []defectdojo.ChangeFinding {
-	ss, ok := store.(db.SettingsStore)
-	if !ok {
-		return nil
-	}
-	var st policy.State
-	if found, err := ss.GetSetting(ctx, policy.SettingViolations, &st); err != nil || !found {
-		return nil
-	}
-	in := make(map[string]bool, len(hosts))
-	for _, h := range hosts {
-		in[h.ID] = true
-	}
-	return defectdojo.BuildPolicyFindings(st.Violations, in, time.Now().UTC())
 }

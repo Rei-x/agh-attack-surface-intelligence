@@ -1,11 +1,13 @@
 package defectdojo
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/policy"
 )
@@ -109,4 +111,22 @@ func slug(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// PolicyFindingsFor loads the violation ledger and returns the open violations of hosts
+// (the synced scope) as change findings.
+func PolicyFindingsFor(ctx context.Context, store db.Store, hosts []domain.Host) []ChangeFinding {
+	ss, ok := store.(db.SettingsStore)
+	if !ok {
+		return nil
+	}
+	var st policy.State
+	if found, err := ss.GetSetting(ctx, policy.SettingViolations, &st); err != nil || !found {
+		return nil
+	}
+	in := make(map[string]bool, len(hosts))
+	for _, h := range hosts {
+		in[h.ID] = true
+	}
+	return BuildPolicyFindings(st.Violations, in, time.Now().UTC())
 }

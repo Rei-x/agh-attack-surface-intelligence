@@ -28,6 +28,8 @@ import { Pill } from '@/components/common';
 import { LiveIndicator } from '@/components/LiveIndicator';
 import { WoodpeckerMark } from '@/components/Woodpecker';
 import { QuickScanDialog } from '@/components/QuickScanDialog';
+import { DojoStatusChip } from '@/components/DojoStatusChip';
+import { rateChange, throttleReasonLabel } from '@/lib/scanTelemetry';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,12 +51,12 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: RiPulseLine, perms: [PERMISSIONS.DASHBOARD_READ], end: true },
-  { to: '/graph', label: 'Graf', icon: RiNodeTree, perms: [PERMISSIONS.ASSETS_READ] },
-  { to: '/assets', label: 'Zasoby', icon: RiServerLine, perms: [PERMISSIONS.ASSETS_READ] },
+  { to: '/graph', label: 'Graph', icon: RiNodeTree, perms: [PERMISSIONS.ASSETS_READ] },
+  { to: '/assets', label: 'Assets', icon: RiServerLine, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/diff', label: 'Diff', icon: RiGitMergeLine, perms: [PERMISSIONS.SCANS_READ] },
-  { to: '/scans', label: 'Skaner', icon: RiRadarLine, perms: [PERMISSIONS.SCANS_READ] },
+  { to: '/scans', label: 'Scans', icon: RiRadarLine, perms: [PERMISSIONS.SCANS_READ] },
   { to: '/policies', label: 'Policies', icon: RiShieldCrossLine, perms: [PERMISSIONS.ASSETS_READ] },
-  { to: '/signatures', label: 'Sygnatury', icon: RiSparklingLine, perms: [PERMISSIONS.SIGNATURES_READ] },
+  { to: '/signatures', label: 'Signatures', icon: RiSparklingLine, perms: [PERMISSIONS.SIGNATURES_READ] },
   {
     to: '/admin',
     label: 'Admin',
@@ -72,7 +74,7 @@ const NAV_ITEMS: NavItem[] = [
 export function Layout() {
   const { user, health, demoAccounts, login, logout, can, canAny } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { throttled } = useLiveEvents();
+  const { throttled, lastThrottle } = useLiveEvents();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -87,10 +89,10 @@ export function Layout() {
     setSwitchingRole(username);
     try {
       await login(username, password);
-      toast.success('Rola przełączona', label);
+      toast.success('Role switched', label);
       navigate('/');
     } catch (err) {
-      toast.error('Nie udało się przełączyć roli', (err as Error).message);
+      toast.error('Could not switch role', (err as Error).message);
     } finally {
       setSwitchingRole(null);
     }
@@ -173,7 +175,7 @@ export function Layout() {
             variant="ghost"
             size="icon-xs"
             onClick={() => setCollapsed((v) => !v)}
-            aria-label={collapsed ? 'Rozwiń menu' : 'Zwiń menu'}
+            aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
           >
             <RiLayoutLeftLine />
           </Button>
@@ -185,21 +187,26 @@ export function Layout() {
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b bg-background/80 px-4 backdrop-blur-md lg:px-8">
           <div className="flex items-center gap-2">
             <LiveIndicator />
-            {throttled && <Pill tone="warning">Noise Governor</Pill>}
+            {throttled && lastThrottle && (
+              <Pill tone="warning" title={`Automatic backoff: ${throttleReasonLabel(lastThrottle.reason)}`}>
+                Scan slowed down: {rateChange(lastThrottle.old_rate, lastThrottle.new_rate)}
+              </Pill>
+            )}
+            {canAny([PERMISSIONS.DEFECTDOJO_PUSH, PERMISSIONS.ASSETS_READ]) && <DojoStatusChip />}
           </div>
 
           <div className="flex items-center gap-1.5">
             {can(PERMISSIONS.SCANS_RUN) && (
-              <Button size="sm" onClick={() => setQuickScanOpen(true)} className="mr-1">
+              <Button size="sm" variant="outline" onClick={() => setQuickScanOpen(true)} className="mr-1">
                 <RiAddLine />
-                Nowy skan
+                Quick scan
               </Button>
             )}
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={toggleTheme}
-              aria-label={theme === 'dark' ? 'Jasny motyw' : 'Ciemny motyw'}
+              aria-label={theme === 'dark' ? 'Light theme' : 'Dark theme'}
             >
               {theme === 'dark' ? <RiSunLine /> : <RiMoonLine />}
             </Button>
@@ -219,9 +226,9 @@ export function Layout() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-72">
                 <DropdownMenuGroup>
-                  <DropdownMenuLabel>Rola RBAC</DropdownMenuLabel>
+                  <DropdownMenuLabel>Switch demo role</DropdownMenuLabel>
                   {demoAccounts.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">Brak kont demo</div>
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No demo accounts</div>
                   )}
                   {demoAccounts.map((acc) => {
                     const slug = acc.role_slug || acc.role || acc.username;
@@ -256,7 +263,7 @@ export function Layout() {
                   }}
                 >
                   <RiLogoutBoxRLine />
-                  Wyloguj
+                  Log out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -266,7 +273,7 @@ export function Layout() {
         <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 lg:p-8">
           {health?.status === 'degraded' && (
             <div role="alert" className="mb-4 rounded-md border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              Problem z magazynem danych: {health.db}
+              Data store problem: {health.db}
             </div>
           )}
           <Outlet />
