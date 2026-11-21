@@ -37,6 +37,8 @@ type NmapRunner struct {
 	Options *NmapOptions
 	// priv caches whether raw-socket scans work (see Privileged).
 	priv int32
+	// fallbackWarned makes the first nmap failure loud (logged once per runner).
+	fallbackWarned atomic.Bool
 	// dial overrides TCP dialing in the pure-Go fallback (tests).
 	dial func(ctx context.Context, network, addr string) (net.Conn, error)
 }
@@ -97,6 +99,7 @@ func (r *NmapRunner) DiscoverHostsDetailed(ctx context.Context, ips []string, pr
 		}
 		// Fallback to pure-Go if nmap execution fails (e.g. unprivileged sandbox).
 		fallbackReason = "nmap failed: " + truncateStr(err.Error(), 160)
+		r.warnFallback(fallbackReason)
 	}
 	alive, err := r.discoverPureGo(ctx, ips, probePorts, gov)
 	desc := fmt.Sprintf("aegis-go-fallback discovery tcp-connect ports=%s targets=%s (%s)",
@@ -246,6 +249,7 @@ func (r *NmapRunner) ScanServicesDetailed(ctx context.Context, activeIPs []strin
 			return nil, "", cmdLine, ctx.Err()
 		}
 		fallbackReason = "nmap failed: " + truncateStr(err.Error(), 160)
+		r.warnFallback(fallbackReason)
 	}
 	res, xmlStr, err := r.ScanServicesPureGo(ctx, activeIPs, ports, gov)
 	desc := fmt.Sprintf("aegis-go-fallback service tcp-connect+passive-banner ports=%s targets=%s (%s)",
