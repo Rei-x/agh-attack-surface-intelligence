@@ -177,6 +177,16 @@ func (c *Coordinator) jobFor(runID, agentID string) (*Job, error) {
 	return j, nil
 }
 
+// busyLocked reports whether the agent holds a live lease on a run other than exceptRun.
+func (c *Coordinator) busyLocked(agentID, exceptRun string, now time.Time) bool {
+	for _, j := range c.jobs {
+		if j.AgentID == agentID && !j.Done && j.RunID != exceptRun && j.Instance != "" && now.Before(c.leaseUntil[j.RunID]) {
+			return true
+		}
+	}
+	return false
+}
+
 // holdLeaseLocked checks that instance may act on the run and renews its lease.
 func (c *Coordinator) holdLeaseLocked(j *Job, instance string, now time.Time) error {
 	if j.Instance != "" && j.Instance != instance && now.Before(c.leaseUntil[j.RunID]) {
@@ -280,16 +290,16 @@ func (c *Coordinator) tryClaim(ctx context.Context, agentID, instance string) (*
 		c.saveJobsLocked(ctx)
 		c.mu.Unlock()
 	}
-	// One run per agent: a run held by another live instance blocks this one.
+	// A run this instance already holds comes first (restart / retry of a claim).
+	order := append(append(running, windowed...), queued...)
 	c.mu.Lock()
-	for _, id := range append(append([]string{}, running...), queued...) {
-		if j := c.jobs[id]; j != nil && j.Instance != "" && j.Instance != instance && now.Before(c.leaseUntil[id]) {
-			c.mu.Unlock()
-			return nil, nil
-		}
-	}
+	sort.SliceStable(order, func(i, k int) bool {
+		hi := c.jobs[order[i]] != nil && c.jobs[order[i]].Instance == instance
+		hk := c.jobs[order[k]] != nil && c.jobs[order[k]].Instance == instance
+		return hi && !hk
+	})
 	c.mu.Unlock()
-	for _, id := range append(append(running, windowed...), queued...) {
+	for _, id := range order {
 		spec, err := c.claim(ctx, id, agentID, instance)
 		if err != nil || spec != nil {
 			return spec, err
@@ -321,6 +331,11 @@ func (c *Coordinator) claim(ctx context.Context, runID, agentID, instance string
 			return nil, nil
 		}
 	default:
+		c.mu.Unlock()
+		return nil, nil
+	}
+	// One run per agent at a time: another live lease of this agent blocks the claim.
+	if c.busyLocked(agentID, runID, now) {
 		c.mu.Unlock()
 		return nil, nil
 	}
