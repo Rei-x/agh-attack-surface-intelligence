@@ -130,3 +130,39 @@ func TestUnifiedCSVIngestDiffOverridePreservationAndExport(t *testing.T) {
 		t.Fatalf("JSON export missing expected host")
 	}
 }
+
+// A live scan's run counters are owned by the engine; ingesting a segment must not add the
+// pipeline's upsert count on top (that doubled services_found for every live scan).
+func TestLiveRunCountersNotDoubleCounted(t *testing.T) {
+	ctx := context.Background()
+	vault, _ := crypto.NewVault("")
+	store := db.NewMemoryStore(vault)
+	pipeline := NewPipeline(store, NewDefaultAnalyzer(), nil)
+
+	run := &domain.ScanRun{ID: db.NewID(), Name: "live", RunType: domain.ScanTypeActive, Status: domain.ScanStatusRunning,
+		ActiveHosts: 1, ServicesFound: 2}
+	if err := store.CreateScanRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	obs := []domain.ObservedHost{{IP: "10.66.0.5", IsAlive: true, Services: []domain.ObservedService{
+		{Port: 22, Protocol: "tcp", State: "open", ServiceName: "ssh"},
+		{Port: 80, Protocol: "tcp", State: "open", ServiceName: "http"},
+	}}}
+	if _, err := pipeline.ProcessObservations(ctx, IngestRequest{ScanRunID: run.ID, RunType: domain.ScanTypeActive, Observations: obs}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := store.GetScanRun(ctx, run.ID)
+	if got.ServicesFound != 2 || got.ActiveHosts != 1 {
+		t.Fatalf("engine counters changed by ingest: services=%d hosts=%d (want 2/1)", got.ServicesFound, got.ActiveHosts)
+	}
+
+	// Imports own their run: counters come from the pipeline.
+	res, err := pipeline.ProcessObservations(ctx, IngestRequest{RunType: domain.ScanTypeImportJSON, ScanName: "import", Observations: obs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	imp, _ := store.GetScanRun(ctx, res.ScanRun.ID)
+	if imp.ServicesFound != 2 || imp.ActiveHosts != 1 {
+		t.Fatalf("import counters wrong: services=%d hosts=%d", imp.ServicesFound, imp.ActiveHosts)
+	}
+}

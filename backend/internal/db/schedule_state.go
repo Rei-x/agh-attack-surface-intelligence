@@ -32,7 +32,7 @@ func (m *MemoryStore) ListScheduleStates(_ context.Context) ([]domain.ScheduleSt
 
 func (m *MemoryStore) SaveScheduleState(_ context.Context, st *domain.ScheduleState) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty() // persisted by the encrypted file store snapshot
 	if m.scheduleStates == nil {
 		m.scheduleStates = make(map[string]domain.ScheduleState)
 	}

@@ -169,6 +169,11 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		if err != nil && !errors.Is(err, db.ErrNotFound) {
 			return nil, fmt.Errorf("lookup host %s: %w", ip, err)
 		}
+		// A dead IP that was never seen before is not an asset: do not create a host record
+		// (otherwise scanning a mostly empty /16 would create ~65k phantom NEW hosts).
+		if !isAlive && prevHost == nil {
+			continue
+		}
 
 		trans := p.analyzer.EvaluateLifecycle(prevHost, isAlive, obsAt, missingThresh, graceHours)
 
@@ -492,8 +497,13 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		run.FinishedAt = &finished
 		run.DurationMs = finished.Sub(run.StartedAt).Milliseconds()
 	}
-	run.ActiveHosts = activeHostsCount
-	run.ServicesFound += servicesUpserted
+	// Host/service counters belong to whoever owns the run: for imports the pipeline created
+	// the run and sets them; for live scans the engine already accumulates them per chunk, and
+	// adding servicesUpserted here double-counted every service.
+	if req.ScanRunID == "" {
+		run.ActiveHosts = activeHostsCount
+		run.ServicesFound = servicesUpserted
+	}
 	run.ChangesDetected += len(changes)
 	if req.RawNmapXML != "" {
 		run.RawNmapXML = req.RawNmapXML

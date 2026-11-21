@@ -1,6 +1,87 @@
 # AegisASI — Deployment, Lab & Production Hardening Guide
 
-This guide covers quick-start deployment with Docker Compose, running the deterministic university test lab, verifying encryption and RBAC end-to-end, key rotation, and production hardening for **CBI AGH**.
+This guide covers the single-binary install (no Docker), quick-start deployment with Docker Compose, running the deterministic university test lab, verifying encryption and RBAC end-to-end, key rotation, and production hardening for **CBI AGH**.
+
+---
+
+## 0. Single Binary (no Docker, no database)
+
+The `aegis` binary contains the web UI (embedded with `go:embed`), the REST API, the scanner
+and the CLI. It is a static `CGO_ENABLED=0` build for darwin/arm64, darwin/amd64,
+linux/amd64, linux/arm64 and windows/amd64.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sh
+aegis serve                                   # UI + API on :8080, prints demo logins on first run
+aegis scan 10.0.0.0/24 -p 22,80,443,8080      # headless scan, live progress, summary table
+aegis scan -f targets.txt --json -o report.json
+aegis import results.xml                      # nmap -oX, CSV or JSON
+aegis export --format csv -o inventory.csv
+aegis runs && aegis diff                      # list runs, compare the last two
+```
+
+### Storage without PostgreSQL
+
+When `DATABASE_URL` is empty, data lives in the data directory (`~/.aegis`, override with
+`--data-dir` or `ASI_DATA_DIR`):
+
+| File | Purpose |
+| :--- | :--- |
+| `aegis-store.enc` | `AEGISDB1` magic + AES-256-GCM(gzip(JSON state)), key = HMAC-SHA256(KEK, `aegis-asi:file-blob:v1`), magic bound as AAD |
+| `master.key` | 256-bit KEK as 64 hex chars, created on first run with mode `0600` unless `ASI_MASTER_KEY` is set. Never logged. |
+| `aegis.lock` | OS-level exclusive lock (`flock` / `LockFileEx`) + JSON holder info (pid, command, URL) |
+
+The state inside the envelope is the same row model as the in-memory/PostgreSQL stores:
+IPs, hostnames, domains, OS guesses, banners, HTTP fingerprints, notes, e-mails, overrides,
+change payloads, raw nmap XML and scan snapshots are each envelope-encrypted with versioned
+DEKs (`enc:v1:<kid>:...`, AAD-bound to table/row/column); the wrapped DEKs are stored in the
+snapshot. So data is encrypted twice at rest, and online DEK rotation (Admin > Crypto) works
+the same as with PostgreSQL.
+
+Persistence: writes are debounced (1.5 s quiet period, at most 10 s under continuous writes),
+plus a 30 s safety tick and a final flush on shutdown (SIGINT/SIGTERM). Every save is atomic
+(temp file in the same directory, `fsync`, `rename`, directory `fsync`), so a crash leaves
+either the previous or the new snapshot, never a torn file. If `master.key` is missing while
+`aegis-store.enc` exists, `aegis` refuses to start instead of generating a new key.
+
+**Why a snapshot file, not embedded SQLite:** the `MemoryStore` already implements the full
+`db.Store` interface with field-level encryption and is what the API test-suite (including the
+10k-host scale test) runs against. Persisting it is ~300 lines and keeps the release a
+dependency-free static binary. A pure-Go SQLite (modernc.org) would add several MB to the
+binary and require a third 1,800-line `Store` implementation plus migrations. The trade-off is
+that the whole state is rewritten on save. Measured on an M-series Mac with 10,000 hosts and
+20,000 services: 7.6 MB on disk, 0.10 s per save, 0.11 s to load.
+For bigger multi-user deployments use PostgreSQL (`DATABASE_URL`).
+
+**Single writer:** `aegis serve`, `aegis scan` and `aegis import` take the lock. If a server
+is running, `scan` and `import` fail with a message naming the server's pid and URL. In that
+case start scans from the UI or with `POST /api/v1/scans`. `export`, `diff` and `runs` are
+read-only and work while the server runs (they read its last autosave). With `DATABASE_URL`
+set, every command uses PostgreSQL and no lock is taken.
+
+**Exclusions:** stored target exclusions apply to CLI scans too. The default `127.0.0.0/8`
+safety exclusion means a local test needs `--ignore-exclusions`.
+
+### Scanner prerequisites
+
+nmap is optional. Without it, the pure-Go TCP connect scanner with banner grabbing is used, and
+`aegis scan` prints install hints (`brew install nmap`, `sudo apt install nmap`,
+`winget install Insecure.Nmap`). Root is never required: nmap runs as `-sT` (TCP connect).
+Unprivileged nmap on macOS cannot send ICMP echo, so host discovery uses TCP probes.
+
+### Building and releasing
+
+```bash
+make ui         # pnpm build + copy frontend/dist into backend/internal/webui/ui (go:embed)
+make build      # ui + bin/aegis (version ldflags from git describe)
+make release    # ui + dist/aegis-<os>-<arch>[.exe] for 5 targets + dist/checksums.txt
+```
+
+`backend/internal/webui/ui/` is git-ignored except for `.gitkeep`, so a plain `go build ./...`
+works without a frontend build and serves a placeholder page. `ASI_STATIC_DIR` (or
+`--static-dir`) overrides the embedded UI. Pushing a `v*` tag runs
+`.github/workflows/release.yml`, which tests, cross-compiles, smoke-tests the linux binary and
+publishes the binaries, `checksums.txt` and `install.sh` as a GitHub Release.
 
 ---
 
@@ -101,12 +182,13 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 
 | Variable | Required | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `DATABASE_URL` | Yes (prod) | *(in-memory fallback if empty)* | PostgreSQL connection URI (`postgres://user:pass@host:5432/db?sslmode=require`) |
-| `ASI_MASTER_KEY` | **Yes (prod)** | Dev default in compose | 256-bit Key Encryption Key (64 hex chars or 32-byte base64). Generate via `openssl rand -hex 32`. |
+| `DATABASE_URL` | Yes (prod) | *(encrypted file store in `ASI_DATA_DIR` if empty)* | PostgreSQL connection URI (`postgres://user:pass@host:5432/db?sslmode=require`) |
+| `ASI_MASTER_KEY` | **Yes (prod)** | Dev default in compose; otherwise `$ASI_DATA_DIR/master.key` (auto-generated, `0600`) | 256-bit Key Encryption Key (64 hex chars or 32-byte base64). Generate via `openssl rand -hex 32`. |
+| `ASI_DATA_DIR` | No | `~/.aegis` (`/data` in the Docker image) | Data directory for the encrypted file store, `master.key` and the lock. Same as `--data-dir`. |
 | `ASI_JWT_SECRET` | Recommended | Derived from `ASI_MASTER_KEY` | Secret for HS256 JWT signing. Rotate independently of data encryption keys. |
 | `ASI_SEED_DEMO` | No | `true` in compose | Seeds 4 demo accounts (`admin`, `operator`, `analyst`, `viewer`). **Set `false` in production.** |
-| `ASI_STATIC_DIR` | No | `/app/static` | Directory containing built React SPA static assets. |
-| `ASI_LISTEN_ADDR` | No | `:8080` | HTTP bind address inside container. |
+| `ASI_STATIC_DIR` | No | *(embedded UI)*; compose sets `/app/static` | Serve the React SPA from this directory instead of the UI embedded in the binary. |
+| `ASI_LISTEN_ADDR` | No | `:8080` | HTTP bind address (same as `aegis serve --listen`; `PORT` is honoured when unset). |
 | `ASI_PORT` | No | `8080` | Host port mapped to container `:8080`. |
 | `TZ` | No | `Europe/Warsaw` | Default timezone for scan windows and logs. |
 

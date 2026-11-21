@@ -285,6 +285,21 @@ func (r *LiveScanRunner) StartScan(ctx context.Context, run *domain.ScanRun, pro
 		_ = r.store.UpdateScanRun(ctx, run)
 		return fmt.Errorf("prepare scan run: %w", err)
 	}
+	if prepared.TotalIPs == 0 {
+		// Nothing left to scan (all excluded or invalid): fail loudly instead of reporting an
+		// empty COMPLETED run that looks like "the scanner found nothing".
+		reason := "brak adresów do skanowania"
+		if resolution != nil {
+			reason = fmt.Sprintf("brak adresów do skanowania: %d wykluczonych przez listę wykluczeń, %d niepoprawnych wpisów",
+				resolution.ExcludedCount, len(resolution.InvalidEntries))
+		}
+		now := time.Now().UTC()
+		run.Status = domain.ScanStatusFailed
+		run.FinishedAt = &now
+		run.Notes = strings.TrimSpace(run.Notes + "\n" + reason)
+		_ = r.store.UpdateScanRun(ctx, run)
+		return errors.New(reason)
+	}
 
 	run.TotalIPs = prepared.TotalIPs
 	run.TotalChunks = prepared.TotalChunks

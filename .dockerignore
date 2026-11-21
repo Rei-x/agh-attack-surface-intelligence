@@ -1,0 +1,8 @@
+**/node_modules
+frontend/dist
+backend/internal/webui/ui/*
+!backend/internal/webui/ui/.gitkeep
+bin
+dist
+.git
+.claude
