@@ -281,6 +281,17 @@ func (e *Engine) fingerprintStage(
 					return
 				}
 				fp, err := e.cfg.Fingerprinter.Probe(ctx, job.ip, job.port, job.domain, &opts)
+				// Some servers accept TLS and plain HTTP on one port (Traefik entrypoints answer a
+				// TLS hello with their default certificate and a 404); nmap then reports "https".
+				// When HTTPS gives an error page or fails, also try plain HTTP and keep the
+				// answer that is not an error.
+				if job.scheme == "https" && job.port != 443 && ctx.Err() == nil && (err != nil || fp == nil || fp.StatusCode >= 400) {
+					plain := opts
+					plain.Scheme = "http"
+					if fp2, err2 := e.cfg.Fingerprinter.Probe(ctx, job.ip, job.port, job.domain, &plain); err2 == nil && fp2 != nil && fp2.StatusCode > 0 && fp2.StatusCode < 400 {
+						fp, err = fp2, nil
+					}
+				}
 				<-fpSem
 				if err == nil && fp != nil {
 					gov.RecordSuccess(job.ip)
@@ -288,7 +299,7 @@ func (e *Engine) fingerprintStage(
 					svc := &svcMap[job.ip][job.svcIndex]
 					svc.HTTP = fp
 					// A real HTTP answer beats nmap's port-table guess or "tcpwrapped".
-					if isUnidentified(*svc, speculative) && fp.Scheme != "" {
+					if (isUnidentified(*svc, speculative) || (svc.ServiceName == "https" && fp.Scheme == "http")) && fp.Scheme != "" {
 						svc.ServiceName = fp.Scheme
 					}
 					mu.Unlock()

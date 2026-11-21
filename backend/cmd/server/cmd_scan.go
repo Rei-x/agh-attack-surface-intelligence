@@ -18,6 +18,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
@@ -692,6 +693,8 @@ func buildScanReport(ctx context.Context, store db.Store, run *domain.ScanRun, r
 			}
 		}
 		sort.Slice(rep.Hosts, func(i, j int) bool { return ipLess(rep.Hosts[i].IP, rep.Hosts[j].IP) })
+		// Same derived fields as the API: end-of-life components and passive CVE hints.
+		eol.AnnotateHosts(rep.Hosts, time.Now())
 		sort.SliceStable(rep.Findings, func(i, j int) bool { return rep.Findings[i].Score > rep.Findings[j].Score })
 		if len(rep.Findings) > 10 {
 			rep.Findings = rep.Findings[:10]
