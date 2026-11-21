@@ -89,7 +89,7 @@ func cmdScan(args []string) error {
 		var le *localdata.ErrLocked
 		if errors.As(err, &le) {
 			return fmt.Errorf("%w\n  The local store is single-writer. Either stop `dzieciol serve` and re-run this command,\n"+
-				"  or start the scan from the web UI (Skaner) / API: POST /api/v1/scans", err)
+				"  or start the scan from the web UI (Scans page) / API: POST /api/v1/scans", err)
 		}
 		return err
 	}

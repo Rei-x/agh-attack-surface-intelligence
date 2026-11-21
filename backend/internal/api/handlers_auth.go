@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/agenthub"
 	"net/http"
 	"strings"
 	"time"
@@ -63,7 +64,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(req.Username) > 256 || len(req.Password) > 1024 {
-		writeErr(w, http.StatusBadRequest, "nazwa użytkownika lub hasło jest za długie / username or password too long")
+		writeErr(w, http.StatusBadRequest, "username or password too long")
 		return
 	}
 	keys := loginKeys(r, req.Username)
@@ -81,7 +82,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.store.GetUserByUsername(r.Context(), strings.TrimSpace(req.Username))
 	if err != nil && !errors.Is(err, db.ErrNotFound) {
-		writeErr(w, http.StatusServiceUnavailable, "baza danych jest niedostępna - spróbuj ponownie za chwilę / database unavailable")
+		writeErr(w, http.StatusServiceUnavailable, "database unavailable - try again in a moment")
 		return
 	}
 	ok := false
@@ -97,6 +98,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Username:  req.Username,
 			Action:    "POST /api/v1/auth/login",
 			Resource:  "auth",
+			IPAddress: agenthub.RemoteIP(r),
 			Status:    "denied",
 			Details:   map[string]any{"reason": "invalid credentials"},
 			CreatedAt: time.Now().UTC(),
@@ -117,6 +119,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		RoleSlug:  user.RoleSlug,
 		Action:    "POST /api/v1/auth/login",
 		Resource:  "auth",
+		IPAddress: agenthub.RemoteIP(r),
 		Status:    "success",
 		CreatedAt: time.Now().UTC(),
 	})

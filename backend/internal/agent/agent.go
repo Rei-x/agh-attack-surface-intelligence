@@ -238,7 +238,7 @@ func (a *Agent) Enroll(ctx context.Context) error {
 		return saveState(a.cfg.DataDir, a.st) // persists server URL / instance id changes
 	}
 	if strings.TrimSpace(a.cfg.Token) == "" {
-		return errors.New("not enrolled yet: pass --token <one-time enrollment token> from Admin > Agenci")
+		return errors.New("not enrolled yet: pass --token <one-time enrollment token> from Admin > Agents")
 	}
 	req := agenthub.EnrollRequest{
 		Token: a.cfg.Token, Name: a.cfg.Name, Version: a.cfg.Version,

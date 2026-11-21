@@ -226,7 +226,7 @@ func (s *Scheduler) evaluateLocked(ctx context.Context, p domain.ScanProfile, no
 		return
 	}
 
-	notes := fmt.Sprintf("Uruchomiony automatycznie przez harmonogram (cron %q, %s; slot %s)", expr, p.Timezone, fmtTime(slot, loc))
+	notes := fmt.Sprintf("Started automatically by the scheduler (cron %q, %s; slot %s)", expr, p.Timezone, fmtTime(slot, loc))
 	run, err := s.launch(ctx, p, TriggeredByScheduler, notes, now)
 	if err != nil {
 		s.skipLocked(ctx, st, p, now, fmt.Sprintf("slot %s skipped: could not start scan: %v", fmtTime(slot, loc), err))
@@ -276,7 +276,7 @@ func (s *Scheduler) RunNow(ctx context.Context, profileID, triggeredBy string) (
 	if strings.TrimSpace(triggeredBy) == "" {
 		triggeredBy = "system"
 	}
-	return s.launch(ctx, *p, triggeredBy, "Uruchomiony ręcznie (run now)", s.opts.Now())
+	return s.launch(ctx, *p, triggeredBy, "Started manually", s.opts.Now())
 }
 
 func (s *Scheduler) launch(ctx context.Context, p domain.ScanProfile, triggeredBy, notes string, now time.Time) (*domain.ScanRun, error) {

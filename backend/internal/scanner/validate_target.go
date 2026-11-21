@@ -16,12 +16,12 @@ func ValidateTargetEntry(raw string, maxIPs int) (string, error) {
 	case entry == "":
 		return "", fmt.Errorf("pusty wpis / empty entry")
 	case len(entry) > 253:
-		return "", fmt.Errorf("wpis za długi (max 253 znaki) / entry too long (max 253 chars)")
+		return "", fmt.Errorf("entry too long (max 253 chars)")
 	}
 	if r4, ok := parseIPv4Entry(entry); ok {
 		n := uint64(r4.end) - uint64(r4.start) + 1
 		if maxIPs > 0 && n > uint64(maxIPs) {
-			return "", fmt.Errorf("%q obejmuje %d adresów, limit to %d / expands to %d IPs, cap is %d", entry, n, maxIPs, n, maxIPs)
+			return "", fmt.Errorf("%q expands to %d IPs, cap is %d", entry, n, maxIPs)
 		}
 		switch {
 		case strings.Contains(entry, "/"):
@@ -37,17 +37,17 @@ func ValidateTargetEntry(raw string, maxIPs int) (string, error) {
 	}
 	if pfx, err := netip.ParsePrefix(entry); err == nil && pfx.Addr().Is6() {
 		if 128-pfx.Bits() > 16 {
-			return "", fmt.Errorf("%q: prefiks IPv6 może obejmować najwyżej /112 (65 536 adresów) / IPv6 prefix wider than /112", entry)
+			return "", fmt.Errorf("%q: IPv6 prefix wider than /112 (max 65,536 addresses)", entry)
 		}
 		return "ipv6", nil
 	}
 	if strings.Contains(entry, "/") || (strings.Contains(entry, "-") && looksNumericRange(entry)) {
-		return "", fmt.Errorf("%q nie jest poprawnym adresem, zakresem ani CIDR / not a valid IP, range or CIDR", entry)
+		return "", fmt.Errorf("%q is not a valid IP, CIDR, range (a-b) or domain", entry)
 	}
 	if isLikelyDomain(entry) && validHostname(entry) {
 		return "domain", nil
 	}
-	return "", fmt.Errorf("%q nie jest poprawnym IP, CIDR, zakresem (a-b) ani domeną / not a valid IP, CIDR, range or domain", entry)
+	return "", fmt.Errorf("%q is not a valid IP, CIDR, range (a-b) or domain", entry)
 }
 
 func looksNumericRange(s string) bool {

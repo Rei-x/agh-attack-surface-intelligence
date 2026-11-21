@@ -66,6 +66,9 @@ type Server struct {
 	logins *loginLimiter // failed-login throttling
 
 	shots *screenshot.Store // web screenshot gallery (handlers_screenshots.go), nil = off
+
+	dojoSyncMu    sync.Mutex
+	dojoSyncTimer *time.Timer // debounced triage -> DefectDojo sync (queueDojoSync)
 }
 
 // NewServer constructs a fully wired Dzięcioł HTTP Server.
@@ -96,6 +99,9 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 		logins:   newLoginLimiter(),
 	}
 	s.authMW.IsNotFound = func(err error) bool { return errors.Is(err, db.ErrNotFound) }
+	hub.mu.Lock()
+	hub.observer = s.observeRunTelemetry
+	hub.mu.Unlock()
 	s.agents = cfg.Agents
 	if ar, ok := runner.(*AgentAwareRunner); ok && s.agents == nil {
 		s.agents = ar.Agents
@@ -206,6 +212,9 @@ func (s *Server) registerRoutes() {
 	s.handle("POST /api/v1/integrations/defectdojo/push-findings", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoFindings))
 	s.handle("POST /api/v1/integrations/defectdojo/push-nmap", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoNmap))
 	s.handle("GET /api/v1/integrations/defectdojo/history", mw.RequirePerm(domain.PermDefectDojoPush, s.handleDefectDojoHistory))
+	s.handle("GET /api/v1/integrations/defectdojo/status", mw.RequirePerm(domain.PermAssetsRead, s.handleDefectDojoStatus))
+	s.handle("GET /api/v1/integrations/defectdojo/services", mw.RequirePerm(domain.PermAssetsRead, s.handleDefectDojoServiceStatus))
+	s.handle("POST /api/v1/integrations/defectdojo/sync", mw.RequirePerm(domain.PermDefectDojoPush, s.handleDefectDojoSyncNow))
 
 	// Admin: Users, Dynamic Roles, Permissions, Crypto Proof & Rotation, Audit
 	s.handle("GET /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleListUsers))

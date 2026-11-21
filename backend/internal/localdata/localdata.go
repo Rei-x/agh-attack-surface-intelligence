@@ -164,7 +164,7 @@ func (d *Dir) Acquire(info LockInfo) (*Lock, error) {
 	f, err := os.OpenFile(d.LockPath(), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EROFS) {
-			return nil, fmt.Errorf("data directory %s is not writable (brak prawa zapisu do katalogu danych) - fix its permissions or choose another one with --data-dir / DZIECIOL_DATA_DIR: %w", d.Path, err)
+			return nil, fmt.Errorf("data directory %s is not writable - fix its permissions or choose another one with --data-dir / DZIECIOL_DATA_DIR: %w", d.Path, err)
 		}
 		return nil, fmt.Errorf("open lock file: %w", err)
 	}

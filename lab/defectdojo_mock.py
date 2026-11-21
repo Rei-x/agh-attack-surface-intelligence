@@ -472,9 +472,39 @@ class DefectDojoHandler(BaseLabHandler):
         else:
             self.send_response_body(404, json.dumps({"detail": "Not found."}), content_type="application/json")
 
+    def do_PATCH(self) -> None:
+        """Triage sync: PATCH /api/v2/findings/<id>/ (false_p, risk_accepted, active) and
+        PATCH /api/v2/products/<id>/ (enable_simple_risk_acceptance)."""
+        path = urlparse(self.path).path
+        if not self._check_auth():
+            return
+        parts = [p for p in path.split("/") if p]
+        payload = self._read_json()
+        if len(parts) == 4 and parts[:3] == ["api", "v2", "findings"]:
+            with STORE._lock:
+                for f in STORE.findings:
+                    if str(f.get("id")) == parts[3]:
+                        for k in ("false_p", "risk_accepted", "active", "verified", "is_mitigated"):
+                            if k in payload:
+                                f[k] = payload[k]
+                        self.send_response_body(200, json.dumps(f), content_type="application/json")
+                        return
+            self.send_response_body(404, json.dumps({"detail": "Not found."}), content_type="application/json")
+            return
+        if len(parts) == 4 and parts[:3] == ["api", "v2", "products"]:
+            self.send_response_body(200, json.dumps({"id": int(parts[3]), **payload}), content_type="application/json")
+            return
+        self.send_response_body(404, json.dumps({"detail": "Not found."}), content_type="application/json")
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path.startswith("/api/v2/findings/") and path.rstrip("/").endswith("/notes"):
+            if not self._check_auth():
+                return
+            self.send_response_body(201, json.dumps({"entry": self._read_json().get("entry", "")}), content_type="application/json")
+            return
 
         if path in ("/api/v2/reset/", "/api/v2/reset"):
             STORE.reset()

@@ -37,7 +37,7 @@ func splitTargetList(values []string) []string {
 func validateTargetList(values []string) ([]string, error) {
 	entries := splitTargetList(values)
 	if len(entries) > maxTargetEntries {
-		return nil, fmt.Errorf("za dużo celów (%d, limit %d) / too many target entries", len(entries), maxTargetEntries)
+		return nil, fmt.Errorf("too many target entries (%d, limit %d)", len(entries), maxTargetEntries)
 	}
 	var bad []string
 	for _, e := range entries {
@@ -49,7 +49,7 @@ func validateTargetList(values []string) ([]string, error) {
 		}
 	}
 	if len(bad) > 0 {
-		return nil, fmt.Errorf("niepoprawne cele / invalid targets: %s", strings.Join(bad, "; "))
+		return nil, fmt.Errorf("invalid targets: %s", strings.Join(bad, "; "))
 	}
 	return entries, nil
 }
@@ -59,7 +59,7 @@ func validatePortSpec(spec string) error {
 		return nil
 	}
 	if _, err := scanner.ParsePorts(spec); err != nil {
-		return fmt.Errorf("niepoprawna lista portów (dozwolone 1-65535, np. 22,80,443,8000-8100) / invalid ports: %v", err)
+		return fmt.Errorf("invalid port list (allowed 1-65535, e.g. 22,80,443,8000-8100): %v", err)
 	}
 	return nil
 }
@@ -73,8 +73,7 @@ type intRange struct {
 func checkRanges(rs ...intRange) error {
 	for _, r := range rs {
 		if r.val != 0 && (r.val < r.min || r.val > r.max) {
-			return fmt.Errorf("%s musi być w zakresie %d-%d (podano %d) / %s must be between %d and %d",
-				r.name, r.min, r.max, r.val, r.name, r.min, r.max)
+			return fmt.Errorf("%s must be between %d and %d (got %d)", r.name, r.min, r.max, r.val)
 		}
 	}
 	return nil
@@ -83,7 +82,7 @@ func checkRanges(rs ...intRange) error {
 // validateScanParams validates the user-controlled knobs of a profile or ad-hoc scan.
 func validateScanParams(p *domain.ScanProfile) error {
 	if len(p.Name) > maxNameLen {
-		return fmt.Errorf("nazwa za długa (max %d znaków) / name too long", maxNameLen)
+		return fmt.Errorf("name too long (max %d characters)", maxNameLen)
 	}
 	targets, err := validateTargetList(p.Targets)
 	if err != nil {

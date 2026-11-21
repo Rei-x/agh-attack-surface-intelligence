@@ -270,7 +270,7 @@ func report(recs []record) {
 			}
 		}
 		if n == 0 {
-			fmt.Printf("| %d-%d%% | 0 | – | – | – |\n", b.lo, b.hi)
+			fmt.Printf("| %d-%d%% | 0 | n/a | n/a | n/a |\n", b.lo, b.hi)
 			continue
 		}
 		mean := float64(sum) / float64(n) / 100

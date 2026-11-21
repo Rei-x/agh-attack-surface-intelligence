@@ -52,7 +52,7 @@ func TestLivenessStableHostGoneQuickly(t *testing.T) {
 	if k > 3 {
 		t.Fatalf("stable host should be declared gone after <=3 misses, took %d", k)
 	}
-	if r.Liveness.PAlive >= 0.05 || !strings.Contains(r.Reason, "prawdopodobieństwo") {
+	if r.Liveness.PAlive >= 0.05 || !strings.Contains(r.Reason, "probability") {
 		t.Fatalf("expected posterior < 5%% with explanation, got %.3f %q", r.Liveness.PAlive, r.Reason)
 	}
 	t.Logf("stable: INACTIVE after %d misses; %s", k, r.Reason)
@@ -143,7 +143,7 @@ func TestLivenessGuardsStillApply(t *testing.T) {
 			if elapsed < 72*time.Hour || h.ConsecutiveMisses < 3 {
 				t.Fatalf("INACTIVE before minimum guards: %v elapsed, %d misses", elapsed, h.ConsecutiveMisses)
 			}
-			if !strings.Contains(r.Reason, "próg 5%") {
+			if !strings.Contains(r.Reason, "threshold 5%") {
 				t.Fatalf("reason should cite the threshold: %q", r.Reason)
 			}
 			return

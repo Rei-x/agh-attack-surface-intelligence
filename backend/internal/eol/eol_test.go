@@ -65,13 +65,13 @@ func TestAssessNginxFromServerHeader(t *testing.T) {
 		t.Fatalf("want one outdated component, got %+v %+v", out, hints)
 	}
 	o := out[0]
-	if o.Branch != "1.14" || o.EOLDate != "2019-04-23" || o.Label != "nginx 1.14 – gałąź EOL od 2019-04" {
+	if o.Branch != "1.14" || o.EOLDate != "2019-04-23" || o.Label != "nginx 1.14: branch EOL since 2019-04" {
 		t.Fatalf("unexpected component: %+v", o)
 	}
 	if o.DaysSinceEOL < 7*365 || o.DistroPackaged || o.Via != "http-server-header" {
 		t.Fatalf("age/distro/via wrong: %+v", o)
 	}
-	for _, want := range []string{"2019-04-23", "7 lat", "endoflife.date/nginx", "dane z 2026-11-21", "Wspierana gałąź: 1.31"} {
+	for _, want := range []string{"2019-04-23", "7 years", "endoflife.date/nginx", "data as of 2026-11-21", "Supported branch: 1.31"} {
 		if !strings.Contains(o.Evidence, want) {
 			t.Errorf("evidence %q lacks %q", o.Evidence, want)
 		}
@@ -94,7 +94,7 @@ func TestAssessDistroVersionStrings(t *testing.T) {
 	if len(out) != 0 {
 		t.Fatalf("OpenSSH must never be EOL-flagged: %+v", out)
 	}
-	if len(hints) != 1 || hints[0].ID != "CVE-2024-6387" || !hints[0].DistroPackaged || !strings.Contains(hints[0].Evidence, "Pasywna") {
+	if len(hints) != 1 || hints[0].ID != "CVE-2024-6387" || !hints[0].DistroPackaged || !strings.Contains(hints[0].Evidence, "Passive hint") {
 		t.Fatalf("regreSSHion hint: %+v", hints)
 	}
 	for _, v := range []string{"9.8p1", "9.9p1", "8.4p1", "7.4p1", "4.4p1"} {
@@ -197,7 +197,7 @@ func TestCompareVersionsAndAge(t *testing.T) {
 	if compareVersions("4.92", "4.92.0") != 0 || compareVersions("4.100", "4.99") <= 0 {
 		t.Fatal("numeric ordering")
 	}
-	for days, want := range map[int]string{3000: "8 lat", 800: "2 lata", 400: "1 rok", 90: "3 mies.", 5: "5 dni", 22 * 365: "22 lata", 12 * 365: "12 lat"} {
+	for days, want := range map[int]string{3000: "8 years", 800: "2 years", 400: "1 year", 90: "3 months", 5: "5 days", 22 * 365: "22 years", 12 * 365: "12 years"} {
 		if got := Age(days); got != want {
 			t.Errorf("Age(%d)=%q want %q", days, got, want)
 		}

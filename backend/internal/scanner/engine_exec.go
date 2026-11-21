@@ -570,7 +570,10 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	svcWG.Wait()
 	fpWG.Wait()
 	nmapPeak := budget.peakUsed()
-	emit("scan.budget", map[string]any{"nmap_pool_pps": nmapPool, "nmap_peak_granted_pps": nmapPeak, "http_rate_rps": httpShare, "max_rate_pps": maxRate})
+	gs := gov.Stats()
+	emit("scan.budget", map[string]any{"nmap_pool_pps": nmapPool, "nmap_peak_granted_pps": nmapPeak, "http_rate_rps": httpShare, "max_rate_pps": maxRate,
+		"governor_rate": gs.CurrentRate, "governor_initial_rate": gs.InitialRate, "throttle_count": gs.ThrottleCount,
+		"timeouts": gs.TimeoutCount, "http_429": gs.HTTP429Count, "rst": gs.RSTCount, "distress": gov.DistressFactor()})
 
 	mu.Lock()
 	defer mu.Unlock()

@@ -91,7 +91,7 @@ func (s *Server) hardeningMiddleware(next http.Handler) http.Handler {
 			limit := bodyLimitFor(r)
 			if r.ContentLength > limit {
 				writeErr(w, http.StatusRequestEntityTooLarge, fmt.Sprintf(
-					"żądanie jest za duże (limit %d MB) / request body too large (limit %d MB)", limit>>20, limit>>20))
+					"request body too large (limit %d MB)", limit>>20))
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
@@ -200,5 +200,5 @@ func writeTooManyLogins(w http.ResponseWriter, wait time.Duration) {
 	secs := int(wait.Seconds()) + 1
 	w.Header().Set("Retry-After", strconv.Itoa(secs))
 	writeErr(w, http.StatusTooManyRequests, fmt.Sprintf(
-		"zbyt wiele nieudanych prób logowania - spróbuj ponownie za %d s / too many failed logins, retry in %d s", secs, secs))
+		"too many failed logins - retry in %d s", secs))
 }

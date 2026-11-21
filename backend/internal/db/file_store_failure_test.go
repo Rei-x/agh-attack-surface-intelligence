@@ -36,7 +36,7 @@ func TestFileStoreReportsPersistFailureViaPing(t *testing.T) {
 	if err := fs.Flush(); err == nil {
 		t.Fatal("flush into a read-only dir should fail")
 	}
-	if err := fs.Ping(ctx); err == nil || !strings.Contains(err.Error(), "nie są utrwalane") {
+	if err := fs.Ping(ctx); err == nil || !strings.Contains(err.Error(), "not saved") {
 		t.Fatalf("Ping must surface the persist failure, got %v", err)
 	}
 	_ = os.Chmod(dir, 0o700)

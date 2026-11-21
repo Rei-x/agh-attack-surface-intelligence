@@ -249,6 +249,42 @@ type ScanRun struct {
 	StartedAt         time.Time   `json:"started_at"`
 	FinishedAt        *time.Time  `json:"finished_at,omitempty"`
 	Chunks            []ScanChunk `json:"chunks,omitempty"`
+	// Telemetry is the persisted rate-control history of the run (attached on read).
+	Telemetry *ScanTelemetry `json:"telemetry,omitempty"`
+}
+
+// ScanTelemetry records how a run was paced: configured vs effective rates, every backoff
+// of the noise governor (with its reason), timeouts/429/RST counts and window pauses.
+type ScanTelemetry struct {
+	ConfiguredPPS     int             `json:"configured_pps,omitempty"`
+	ConfiguredHTTPRPS int             `json:"configured_http_rps,omitempty"`
+	NmapPeakPPS       int             `json:"nmap_peak_pps,omitempty"` // highest nmap rate actually granted
+	HTTPRateRPS       float64         `json:"http_rate_rps,omitempty"` // governor rate at the end
+	HTTPInitialRPS    float64         `json:"http_initial_rps,omitempty"`
+	ThrottleCount     int             `json:"throttle_count"`
+	Timeouts          int             `json:"timeouts"`
+	HTTP429           int             `json:"http_429"`
+	RST               int             `json:"rst"`
+	Throttles         []ThrottleEntry `json:"throttles,omitempty"` // newest last, capped
+	WindowEvents      []WindowEntry   `json:"window_events,omitempty"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+}
+
+// ThrottleEntry is one automatic rate adjustment.
+type ThrottleEntry struct {
+	At      time.Time `json:"at"`
+	Host    string    `json:"host,omitempty"`
+	Reason  string    `json:"reason"` // timeout_burst, http_429, rst_burst (+ "_host" = one host only)
+	OldRate float64   `json:"old_rate"`
+	NewRate float64   `json:"new_rate"`
+	Errors  int       `json:"errors,omitempty"`
+}
+
+// WindowEntry is a time-window pause or resume.
+type WindowEntry struct {
+	At       time.Time `json:"at"`
+	Kind     string    `json:"kind"` // paused, resumed
+	NextOpen string    `json:"next_open,omitempty"`
 }
 
 // Fingerprinting & evidence structures.
@@ -555,6 +591,41 @@ type DefectDojoConfig struct {
 	EngagementID int    `json:"engagement_id"`
 	VerifyTLS    bool   `json:"verify_tls"`
 	AutoPushNmap bool   `json:"auto_push_nmap"`
+	// AutoPushFindings reimports the "Dzięcioł changes" findings and syncs analyst triage
+	// after every completed run (local or agent). Stored as a setting; defaults to on.
+	AutoPushFindings bool `json:"auto_push_findings"`
+}
+
+// DefectDojoSyncState is the last automatic DefectDojo sync, shown in the header chip and
+// used for the per-service "in DefectDojo" status.
+type DefectDojoSyncState struct {
+	LastSyncAt    *time.Time                        `json:"last_sync_at,omitempty"`
+	LastStatus    string                            `json:"last_status,omitempty"` // success, failed
+	LastError     string                            `json:"last_error,omitempty"`
+	LastRunID     string                            `json:"last_run_id,omitempty"`
+	TestID        int                               `json:"test_id,omitempty"`
+	TestURL       string                            `json:"test_url,omitempty"`
+	ProductID     int                               `json:"product_id,omitempty"`
+	ProductURL    string                            `json:"product_url,omitempty"`
+	Findings      int                               `json:"findings"`
+	TriageSynced  int                               `json:"triage_synced"`
+	NmapTestURL   string                            `json:"nmap_test_url,omitempty"`
+	NmapPushedAt  *time.Time                        `json:"nmap_pushed_at,omitempty"`
+	FindingsByKey map[string][]DefectDojoFindingRef `json:"findings_by_key,omitempty"` // "service:<id>" / "host:<id>"
+}
+
+// DefectDojoFindingRef links a Dzięcioł change finding to its DefectDojo finding.
+type DefectDojoFindingRef struct {
+	ServiceID string    `json:"service_id,omitempty"`
+	HostID    string    `json:"host_id,omitempty"`
+	Kind      string    `json:"kind"`
+	Title     string    `json:"title"`
+	Severity  string    `json:"severity"`
+	FindingID int       `json:"finding_id,omitempty"`
+	URL       string    `json:"url,omitempty"`
+	TestID    int       `json:"test_id,omitempty"`
+	State     string    `json:"state"` // active, false_positive, risk_accepted, mitigated
+	PushedAt  time.Time `json:"pushed_at"`
 }
 
 // DefectDojoExport records one push of results to DefectDojo.
