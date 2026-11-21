@@ -43,7 +43,7 @@ export function WoodpeckerMark({ className, title = 'Dzięcioł' }: { className?
 
 /**
  * Pecking loader: the head knocks twice on a strip of bark, red ripple on impact
- * ("stuk stuk"). Decorative; pair it with text for screen readers.
+ * ("knock knock"). Decorative; pair it with text for screen readers.
  */
 export function PeckSpinner({ className }: { className?: string }) {
   return (
@@ -65,7 +65,7 @@ export function PeckSpinner({ className }: { className?: string }) {
 }
 
 /** Loading state: pecking bird + label, centred like <Empty/>. */
-export function PeckLoader({ label = 'Ładowanie…', className }: { label?: string; className?: string }) {
+export function PeckLoader({ label = 'Loading…', className }: { label?: string; className?: string }) {
   return (
     <div
       role="status"
@@ -90,7 +90,7 @@ export function WoodpeckerScene({ className }: { className?: string }) {
   const glow = `wp-glow-${uid}`;
   const wing = `wp-wing-${uid}`;
   return (
-    <svg viewBox="940 300 520 800" aria-hidden className={cn('wp-anim block h-full w-auto', className)}>
+    <svg viewBox="940 300 520 800" aria-hidden className={cn('wp-anim block h-full w-auto overflow-visible', className)}>
       <defs>
         <linearGradient id={trunk} x1="0" x2="1">
           <stop offset="0" stopColor="#171b19" />

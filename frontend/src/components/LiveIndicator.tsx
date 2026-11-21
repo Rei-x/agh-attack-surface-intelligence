@@ -63,7 +63,7 @@ export function LiveIndicator() {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          {pecking && 'Stuk, stuk · skan w toku · '}
+          {pecking && 'Knock, knock · scan in progress · '}
           {formatClock(lastEventAt)}
           {clients > 0 && ` · ${clients} client${clients === 1 ? '' : 's'}`}
         </TooltipContent>
@@ -90,7 +90,7 @@ export function LiveIndicator() {
           </div>
           <div className="flex-1 overflow-y-auto font-mono text-[11px]">
             {liveFeed.length === 0 ? (
-              <div className="py-10 text-center text-muted-foreground">Cisza w lesie</div>
+              <div className="py-10 text-center text-muted-foreground">Quiet in the woods</div>
             ) : (
               liveFeed.map((ev, idx) => {
                 const d = describeEvent(ev);

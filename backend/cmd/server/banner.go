@@ -8,13 +8,13 @@ import (
 )
 
 // woodpecker is the compact ASCII bird shown by `serve` and `version`: crest, barred
-// wing (=) and the beak on the trunk (||), stuk stuk. {r}...{d} marks what turns red on a
+// wing (=) and the beak on the trunk (||), knock knock. {r}...{d} marks what turns red on a
 // terminal (crest and the knocking); the markers are stripped otherwise.
 var woodpecker = []string{
 	`    {r},/\{d}          ||`,
 	`   /  o\========>||`,
-	`   \   /   {r}stuk{d}  ||`,
-	`    |=|    {r}stuk{d}  ||`,
+	`   \   /   {r}knock{d} ||`,
+	`    |=|    {r}knock{d} ||`,
 	`    |=|          ||`,
 	`    /_\          ||`,
 }

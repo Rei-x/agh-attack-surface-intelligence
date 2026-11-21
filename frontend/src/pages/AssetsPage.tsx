@@ -343,7 +343,7 @@ export function AssetsPage() {
                 ) : hosts.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={colCount}>
-                      <Empty bird>Dzięcioł jeszcze nic tu nie wystukał</Empty>
+                      <Empty bird>Nothing pecked here yet</Empty>
                     </TableCell>
                   </TableRow>
                 ) : (

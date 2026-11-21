@@ -192,7 +192,7 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
           )}
           style={{ width: `${Math.max(pct, isRunning ? 1 : 0)}%` }}
         />
-        {/* stuk stuk: a red ripple where the scan is knocking right now */}
+        {/* knock knock: a red ripple where the scan is knocking right now */}
         {isRunning && (
           <span
             aria-hidden

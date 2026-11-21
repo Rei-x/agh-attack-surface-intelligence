@@ -1,8 +1,8 @@
-<p align="center"><img src="docs/assets/dzieciol-cover.png" alt="Dzięcioł. Stuka w każdy adres. Pokazuje, co się zmieniło." width="640"></p>
+<p align="center"><img src="docs/assets/dzieciol-cover.png" alt="Dzięcioł. Knocks on every address. Shows what changed." width="640"></p>
 
 # Dzięcioł — Attack Surface Intelligence dla CBI AGH
 
-> Stuka w każdy adres. Pokazuje, co się zmieniło.
+> Knocks on every address. Shows what changed.
 
 Cykliczne discovery i analiza zmian powierzchni ataku w sieciach powyżej 10 000 adresów IP. Projekt na **HackNation 2026** dla **Centrum Bezpieczeństwa Informacji AGH**.
 

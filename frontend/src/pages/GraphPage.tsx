@@ -523,7 +523,7 @@ const TechNode = memo(function TechNode({ data, selected }: NodeProps<FlowNode>)
           </div>
           <div className="flex items-center gap-1.5">
             <div className="h-1 flex-1 bg-muted">
-              <div className="h-full bg-primary" style={{ width: `${Math.min(100, conf)}%` }} />
+              <div className="h-full bg-foreground/75" style={{ width: `${Math.min(100, conf)}%` }} />
             </div>
             <span className="font-mono text-[10px] text-muted-foreground tabular-nums">{conf}%</span>
           </div>

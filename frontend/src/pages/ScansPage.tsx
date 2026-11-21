@@ -600,7 +600,7 @@ export function ScansPage() {
               loading ? (
                 <PeckLoader />
               ) : (
-                <Empty bird>Dzięcioł jeszcze nie stukał · brak przebiegów</Empty>
+                <Empty bird>No runs yet · Dzięcioł hasn't knocked</Empty>
               )
             ) : (
               <Table>

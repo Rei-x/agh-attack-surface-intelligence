@@ -83,7 +83,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: #e2ded5;
   --input: #dcd8ce;
-  --ring: #c62f26;
+  --ring: #8f8a80;
   --chart-1: #e8392f;
   --chart-2: #5b605c;
   --chart-3: #8f8a80;
@@ -122,7 +122,7 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: rgb(242 239 232 / 9%);
   --input: rgb(242 239 232 / 14%);
-  --ring: #e8392f;
+  --ring: rgb(242 239 232 / 40%);
   --chart-1: #e8392f;
   --chart-2: #c9c3b6;
   --chart-3: #8f8a80;
@@ -262,7 +262,7 @@
 .wp-scene-ring.wp-r2 { animation-delay: 0.25s; }
 .wp-scene-ring.wp-r3 { animation-delay: 0.5s; }
 
-/* "stuk stuk": a red ripple, e.g. at the tip of a running scan's progress rail. */
+/* "knock knock": a red ripple, e.g. at the tip of a running scan's progress rail. */
 @keyframes wp-knock {
   0% { opacity: 0.9; transform: scale(0.4); }
   100% { opacity: 0; transform: scale(2.8); }

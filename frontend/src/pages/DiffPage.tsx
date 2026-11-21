@@ -392,7 +392,7 @@ export function DiffPage() {
         <TabsContent value="changed" className="pt-4">
           <Card size="sm" className="py-0">
             {changedCount === 0 ? (
-              <Empty bird>Stuk, stuk… bez zmian</Empty>
+              <Empty bird>Knock, knock… nothing changed</Empty>
             ) : (
               <div className="divide-y divide-border">
                 {[...timeAnomalies, ...changedServices].map((ch: ChangedServiceDiff, idx) => {

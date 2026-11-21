@@ -248,7 +248,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             {timeline.length === 0 ? (
-              <Empty bird className="h-64">Brak historii · dzięcioł jeszcze nie stukał</Empty>
+              <Empty bird className="h-64">No history yet · not a single peck</Empty>
             ) : (
               <ChartContainer config={timelineConfig} className="aspect-auto h-64 w-full">
                 <AreaChart data={timeline} margin={{ top: 0, right: 4, left: -20, bottom: 0 }}>
@@ -412,7 +412,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent className="px-0">
             {topFindings.length === 0 ? (
-              <Empty bird>Cisza w dziupli · brak znalezisk</Empty>
+              <Empty bird>All quiet in the hollow · no findings</Empty>
             ) : (
               <Table>
                 <TableHeader>
@@ -594,7 +594,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent className="px-0">
             {(summary?.recent_changes?.length || 0) === 0 ? (
-              <Empty bird>Stuk, stuk… bez zmian</Empty>
+              <Empty bird>Knock, knock… nothing changed</Empty>
             ) : (
               <ul className="divide-y divide-border border-t border-border">
                 {summary!.recent_changes!.slice(0, 5).map((ch) => {

@@ -42,10 +42,10 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(u, p);
-      toast.success('Zalogowano', label || u);
+      toast.success('Signed in', label || u);
       navigate('/');
     } catch (err) {
-      setError((err as Error).message || 'Nieprawidłowe dane logowania');
+      setError((err as Error).message || 'Invalid username or password');
     } finally {
       setSubmitting(false);
     }
@@ -74,9 +74,9 @@ export function LoginPage() {
             Dzięcioł<span className="text-brand">.</span>
           </h1>
           <p className="mt-6 text-2xl leading-snug font-medium text-[#d9d6cf]">
-            Stuka w każdy adres.
+            Knocks on every address.
             <br />
-            <b className="font-bold text-[#f2efe8]">Pokazuje, co się zmieniło.</b>
+            <b className="font-bold text-[#f2efe8]">Shows what changed.</b>
           </p>
         </div>
         <div className="absolute bottom-10 left-16 flex gap-4 font-mono text-[11px] tracking-[0.08em] text-[#8d918c]">
@@ -94,13 +94,13 @@ export function LoginPage() {
               Dzięcioł<span className="text-brand">.</span>
             </span>
             <span className="hidden text-xs font-semibold tracking-widest text-muted-foreground uppercase xl:inline">
-              Logowanie
+              Sign in
             </span>
             <AghBadge className="ml-auto" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            <Field label="Użytkownik" htmlFor="login-user">
+            <Field label="Username" htmlFor="login-user">
               <Input
                 id="login-user"
                 autoComplete="username"
@@ -110,7 +110,7 @@ export function LoginPage() {
                 placeholder="admin"
               />
             </Field>
-            <Field label="Hasło" htmlFor="login-pass">
+            <Field label="Password" htmlFor="login-pass">
               <Input
                 id="login-pass"
                 type="password"
@@ -125,7 +125,7 @@ export function LoginPage() {
             {error && <Notice tone="danger">{error}</Notice>}
 
             <Button type="submit" disabled={submitting} className="w-full">
-              {submitting ? 'Logowanie…' : 'Zaloguj'}
+              {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
 
