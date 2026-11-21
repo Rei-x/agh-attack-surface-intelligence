@@ -1,0 +1,31 @@
+id: phpinfo-exposed
+info:
+  name: phpinfo() page exposed
+  severity: medium
+  description: A phpinfo() page is public. It discloses exact PHP and module versions, file paths, environment variables and sometimes credentials passed through the environment.
+  remediation: Delete the phpinfo file from the server.
+  reference:
+    - https://cwe.mitre.org/data/definitions/200.html
+  tags: exposure,php,web
+match:
+  any-http: true
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/phpinfo.php"
+      - "{{BaseURL}}/info.php"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "phpinfo()"
+          - "PHP Version"
+        condition: and
+    extractors:
+      - type: regex
+        name: php
+        group: 1
+        regex:
+          - "PHP Version ([0-9][0-9.]+)"

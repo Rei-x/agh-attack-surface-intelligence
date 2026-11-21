@@ -1,0 +1,22 @@
+id: apache-server-status
+info:
+  name: Apache server-status page exposed
+  severity: medium
+  description: mod_status is reachable from the network. It shows client IP addresses, requested URLs (with query strings and tokens) and internal virtual hosts in real time.
+  remediation: Restrict /server-status to localhost or an admin network (Require local / Require ip), or disable mod_status.
+  reference:
+    - https://httpd.apache.org/docs/2.4/mod/mod_status.html
+  tags: exposure,apache,web
+match:
+  any-http: true
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/server-status"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "Apache Server Status for"

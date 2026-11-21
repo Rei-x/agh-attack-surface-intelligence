@@ -1,0 +1,26 @@
+id: memcached-unauth
+info:
+  name: Memcached answers without authentication
+  severity: medium
+  description: Memcached returned its statistics to an anonymous client. Cached data can be read and poisoned, and an open UDP listener can be abused for amplification attacks.
+  remediation: Bind memcached to localhost (-l 127.0.0.1), disable UDP (-U 0), enable SASL if remote clients need it, and firewall port 11211.
+  reference:
+    - https://github.com/memcached/memcached/wiki/SASLHowto
+  tags: memcached,unauth
+match:
+  ports: [11211]
+  services: [memcache]
+network:
+  - inputs:
+      - data: "stats\r\n"
+    read-size: 2048
+    matchers:
+      - type: regex
+        regex:
+          - "STAT (pid|version) "
+    extractors:
+      - type: regex
+        name: version
+        group: 1
+        regex:
+          - "STAT version ([0-9.]+)"

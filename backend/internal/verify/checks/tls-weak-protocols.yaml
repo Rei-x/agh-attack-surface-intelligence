@@ -1,0 +1,11 @@
+id: tls-weak-protocols
+info:
+  name: Legacy TLS protocol or insecure cipher accepted
+  severity: medium
+  description: The server completed a handshake with TLS 1.0/1.1 or an insecure cipher suite (RC4, 3DES, CBC), which are deprecated (RFC 8996) and fail PCI DSS and most hardening baselines.
+  remediation: Allow only TLS 1.2 and 1.3 with AEAD cipher suites (for example the Mozilla "intermediate" profile).
+  reference:
+    - https://www.rfc-editor.org/rfc/rfc8996
+    - https://ssl-config.mozilla.org/
+  tags: tls,crypto
+builtin: tls-protocols

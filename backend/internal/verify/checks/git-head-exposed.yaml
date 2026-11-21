@@ -1,0 +1,23 @@
+id: git-head-exposed
+info:
+  name: Git repository exposed (.git/HEAD)
+  severity: high
+  description: The web root serves the .git directory. The full source history, often including credentials and configuration, can be downloaded.
+  remediation: Remove .git from the document root (deploy build artifacts, not checkouts) or deny access to /.git/ in the web server.
+  reference:
+    - https://cwe.mitre.org/data/definitions/538.html
+  tags: exposure,git,web
+match:
+  any-http: true
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.git/HEAD"
+    max-size: 2048
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        regex:
+          - "^ref: refs/[a-zA-Z0-9_./-]+\\s*$"

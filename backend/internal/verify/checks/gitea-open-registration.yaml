@@ -1,0 +1,30 @@
+id: gitea-open-registration
+info:
+  name: Gitea allows open self-registration
+  severity: medium
+  description: Anyone can create an account on this Gitea instance and then read every internal repository, open issues and use CI runners.
+  remediation: Set DISABLE_REGISTRATION = true (or ALLOW_ONLY_EXTERNAL_REGISTRATION with SSO) in the [service] section of app.ini.
+  reference:
+    - https://docs.gitea.com/administration/config-cheat-sheet#service-service
+  tags: gitea,registration,misconfig
+match:
+  ports: [3000]
+  techs: [gitea]
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/user/sign_up"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - 'name="user_name"'
+          - 'name="retype"'
+        condition: and
+      - type: word
+        negative: true
+        case-insensitive: true
+        words:
+          - "registration is disabled"
