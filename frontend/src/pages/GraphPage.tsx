@@ -77,7 +77,7 @@ const COL_TITLE: Record<Column, string> = {
   tech: 'Technology',
 };
 // Room at the top for the floating toolbar so it never covers the lane headers.
-const FIT_PADDING = { top: '120px', right: '32px', bottom: '32px', left: '32px' } as const;
+const FIT_PADDING = { top: '150px', right: '32px', bottom: '32px', left: '32px' } as const;
 const GAP = 14;
 const GROUP_GAP = 34;
 const RISK_HIGH = '#f43f5e';
@@ -1006,18 +1006,20 @@ function GraphCanvas() {
                   </button>
                 ))}
               </div>
-              {subnetOptions.length > 1 && !subnet && (
-                <SimpleSelect
-                  size="sm"
-                  value=""
-                  placeholder="Subnet /24…"
-                  onValueChange={(v) => v && drill(v)}
-                  options={subnetOptions}
-                  className="h-7 w-44 text-xs"
-                />
-              )}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
+              {subnetOptions.length > 1 && !subnet && (
+                <div className="border border-border bg-card/95 px-1 backdrop-blur">
+                  <SimpleSelect
+                    size="sm"
+                    value=""
+                    placeholder="Jump to subnet…"
+                    onValueChange={(v) => v && drill(v)}
+                    options={subnetOptions}
+                    className="h-7 w-40 text-xs"
+                  />
+                </div>
+              )}
               <div className="flex h-7 items-center gap-1 border border-border bg-card/95 px-2 text-[11px] backdrop-blur">
                 <button
                   type="button"

@@ -1299,7 +1299,7 @@ export function ScansPage() {
                     </p>
 
                     <div className="sm:col-span-2">
-                      <SectionTitle>Exclusions</SectionTitle>
+                      <SectionTitle className="mb-2">Exclusions</SectionTitle>
                       {exclusions.length === 0 ? (
                         <p className="text-[11px] text-muted-foreground">
                           No exclusions. Add never-scan ranges in the Scope tab; they apply to every profile.
