@@ -142,7 +142,11 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	}
 
 	gov := NewGovernor(GovernorConfig{
-		GlobalRatePerSec:  float64(govRate),
+		GlobalRatePerSec: float64(govRate),
+		// A tenth of a second's worth of burst (default would be a full second): on the
+		// Hetzner /18 run, HTTP bursts on top of fully paced nmap shares were the brief
+		// 1572..1598/s peaks against the 1500 cap.
+		GlobalBurst:       max(4, govRate/10),
 		PerHostRatePerSec: httpRPS,
 		MinRatePerSec:     math.Min(float64(govRate), math.Max(5, float64(govRate)*0.1)),
 		OnThrottle: func(te ThrottleEvent) {
