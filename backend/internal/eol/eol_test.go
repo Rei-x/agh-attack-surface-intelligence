@@ -65,7 +65,7 @@ func TestAssessNginxFromServerHeader(t *testing.T) {
 		t.Fatalf("want one outdated component, got %+v %+v", out, hints)
 	}
 	o := out[0]
-	if o.Branch != "1.14" || o.EOLDate != "2019-04-23" || o.Label != "nginx 1.14 – branch EOL since 2019-04" {
+	if o.Branch != "1.14" || o.EOLDate != "2019-04-23" || o.Label != "nginx 1.14: branch EOL since 2019-04" {
 		t.Fatalf("unexpected component: %+v", o)
 	}
 	if o.DaysSinceEOL < 7*365 || o.DistroPackaged || o.Via != "http-server-header" {

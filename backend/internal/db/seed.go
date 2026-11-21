@@ -79,7 +79,7 @@ func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 		starterProfiles := []*domain.ScanProfile{
 			{
 				ID:                    NewID(),
-				Name:                  "CBI AGH Lab — Quick Scan Demo",
+				Name:                  "CBI AGH Lab: quick scan demo",
 				Description:           "Deterministic test environment 172.28.0.0/24 (CMS, Admin, Staging TLS, IoT, Flapping)",
 				Targets:               []string{"172.28.0.10-172.28.0.16"},
 				AllowedPorts:          "80,443,8080,8443",
@@ -102,8 +102,8 @@ func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 			},
 			{
 				ID:                    NewID(),
-				Name:                  "CBI AGH Campus — Night Window (/18)",
-				Description:           "Large campus range 10.0.0.0/18 (16,384 IPs) with a hard 22:00–06:00 Europe/Warsaw time window",
+				Name:                  "CBI AGH campus: night window (/18)",
+				Description:           "Large campus range 10.0.0.0/18 (16,384 IPs) with a hard 22:00 to 06:00 Europe/Warsaw time window",
 				Targets:               []string{"10.0.0.0/18"},
 				AllowedPorts:          "22,80,443,8080,8443",
 				MaxRatePPS:            1000,

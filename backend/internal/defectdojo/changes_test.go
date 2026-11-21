@@ -91,7 +91,7 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 	}
 
 	e := byKind[KindEOL][0]
-	if e.Title != "nginx 1.14.2 – branch 1.14 EOL since 2019-04-23, on 10.66.0.12:80/tcp [owner: admin@wi.agh.edu.pl]" {
+	if e.Title != "nginx 1.14.2: branch 1.14 EOL since 2019-04-23, on 10.66.0.12:80/tcp [owner: admin@wi.agh.edu.pl]" {
 		t.Errorf("EOL title: %q", e.Title)
 	}
 	if e.Severity != "Medium" || e.ComponentName != "nginx" || e.ComponentVersion != "1.14.2" || e.Date != "2026-11-11" {
@@ -121,7 +121,7 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 	if x := rdp; !strings.HasPrefix(x.Title, "Risky service exposed: RDP (ms-wbt-server) on 10.66.0.12:3389/tcp") || x.Severity != "Medium" {
 		t.Errorf("exposure: %q %s", x.Title, x.Severity)
 	}
-	if a := byKind[KindAdmin][0]; a.Title != "Admin panel exposed: Jenkins on 10.66.0.40:8080/tcp" || !strings.Contains(a.Description, "none — add a CIDR rule") {
+	if a := byKind[KindAdmin][0]; a.Title != "Admin panel exposed: Jenkins on 10.66.0.40:8080/tcp" || !strings.Contains(a.Description, "none. Add a CIDR rule") {
 		t.Errorf("admin: %q\n%s", a.Title, a.Description)
 	}
 	if n := byKind[KindNew][0]; !strings.Contains(n.Title, "10.66.0.40:9000/tcp") || n.Severity != "Low" {

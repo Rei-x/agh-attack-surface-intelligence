@@ -297,7 +297,7 @@ func (d *Data) outdated(c candidate, b Branch, eolAt, now time.Time, distro bool
 		LatestInBranch: b.Latest,
 		Via:            c.via,
 		DistroPackaged: distro,
-		Label:          fmt.Sprintf("%s %s – branch EOL since %s", c.product.Name, b.Cycle, b.EOL[:7]),
+		Label:          fmt.Sprintf("%s %s: branch EOL since %s", c.product.Name, b.Cycle, b.EOL[:7]),
 		Source:         c.product.Source,
 		DataAsOf:       d.AsOf,
 	}

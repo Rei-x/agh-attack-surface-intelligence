@@ -42,7 +42,7 @@ func TestOutdatedVersionEventScoreAndOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	ev := eventsOf(res, EventOutdatedVersion)
-	if len(ev) != 1 || !strings.Contains(ev[0].Summary, "nginx 1.14 – branch EOL since 2019-04") || ev[0].After["owner"] != "admin@wi.agh.edu.pl" {
+	if len(ev) != 1 || !strings.Contains(ev[0].Summary, "nginx 1.14: branch EOL since 2019-04") || ev[0].After["owner"] != "admin@wi.agh.edu.pl" {
 		t.Fatalf("OUTDATED_VERSION event: %+v", ev)
 	}
 	for _, e := range res.Changes {

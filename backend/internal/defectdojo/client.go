@@ -512,7 +512,7 @@ func BuildServiceEvidenceDescription(host *domain.Host, svc *domain.Service) str
 	if len(svc.Technologies) > 0 {
 		fmt.Fprintf(&b, "\n### Detected Technologies (Noisy-OR Confidence)\n")
 		for _, t := range svc.Technologies {
-			fmt.Fprintf(&b, "- **%s** %s (%s) — Confidence `%d%%`\n", t.Name, t.Version, t.Category, t.Confidence)
+			fmt.Fprintf(&b, "- **%s** %s (%s), confidence `%d%%`\n", t.Name, t.Version, t.Category, t.Confidence)
 		}
 	}
 	if svc.HTTP != nil {

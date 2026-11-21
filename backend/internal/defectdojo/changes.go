@@ -26,7 +26,7 @@ import (
 //     and unique_id_from_tool), so DefectDojo leaves it untouched: no duplicates, and an
 //     analyst's notes, JIRA links or risk acceptance on it stay;
 //   - a condition that is gone (port closed, nginx upgraded, host back) is absent from the
-//     next reimport, so DefectDojo mitigates it with the date — the audit trail of "it was
+//     next reimport, so DefectDojo mitigates it with the date: the audit trail of "it was
 //     fixed on ...".
 //
 // Items an analyst triaged in Dzięcioł (accepted risk / false positive) stay in the payload
@@ -178,7 +178,7 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 		}
 		o := o
 		add(KindEOL, ":"+strings.ToLower(o.Product)+":"+o.Branch,
-			fmt.Sprintf("%s %s – branch %s EOL since %s, on %s", o.Product, versionShort(o.Version), o.Branch, o.EOLDate, where), sev,
+			fmt.Sprintf("%s %s: branch %s EOL since %s, on %s", o.Product, versionShort(o.Version), o.Branch, o.EOLDate, where), sev,
 			stableEOLEvidence(o),
 			func(g *genericFinding) {
 				g.ComponentName, g.ComponentVersion = o.Product, versionShort(o.Version)
@@ -275,7 +275,7 @@ func writeHostLines(b *strings.Builder, h *domain.Host) {
 	if h.Owner != "" {
 		fmt.Fprintf(b, "- **Owner (CIDR rule):** %s\n", h.Owner)
 	} else {
-		b.WriteString("- **Owner:** none — add a CIDR rule (Admin → Tag rules) so it is clear who manages this\n")
+		b.WriteString("- **Owner:** none. Add a CIDR rule (Admin → Tag rules) so it is clear who manages this\n")
 	}
 	if len(h.Tags) > 0 {
 		tags := append([]string(nil), h.Tags...)
