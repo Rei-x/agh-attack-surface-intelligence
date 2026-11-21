@@ -362,7 +362,7 @@ func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *s
 			}
 		case "staging":
 			svc.IsStagingEnv = true
-		case "iot":
+		case "iot", "bmc":
 			svc.IsIoT = true
 		}
 	}

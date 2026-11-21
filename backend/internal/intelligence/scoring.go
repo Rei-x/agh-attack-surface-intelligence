@@ -109,8 +109,17 @@ func ScoreService(svc *domain.Service, sigMatches []signatures.MatchResult) (int
 	if svc.IsStagingEnv {
 		add("Staging, dev, test, or debug environment detected", 20)
 	}
-	if svc.IsIoT {
-		add("IoT, printer, camera, or BMC management device detected", 18)
+	isBMC := false
+	for _, t := range svc.Technologies {
+		if t.Category == "bmc" {
+			isBMC = true
+			break
+		}
+	}
+	if isBMC {
+		add("Out-of-band server management (BMC: iDRAC/iLO/IPMI) exposed - full control of the server", 30)
+	} else if svc.IsIoT {
+		add("IoT, printer, camera or network device management interface", 18)
 	}
 
 	if r, ok := classifyExposure(svc); ok {
