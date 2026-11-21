@@ -375,6 +375,25 @@ func TestServiceAPIChecks(t *testing.T) {
 	}
 }
 
+// A port nmap left unidentified ("tcpwrapped", no product) is probed once and, if it speaks
+// HTTP, gets the web checks: Traefik's insecure API on a remapped port.
+func TestUnidentifiedPortProbe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/overview" {
+			w.Write([]byte(`{"http":{"routers":{"total":3}},"features":{}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	tg := httpTarget(t, srv, domain.Service{ServiceName: "tcpwrapped"})
+	tg.Service.HTTP = nil
+	f, _ := run(t, only(t, "traefik-api-open"), []Target{tg}, Options{})
+	if len(f) != 1 {
+		t.Fatalf("traefik API on an unidentified port not confirmed: %+v", f)
+	}
+}
+
 func TestDefaultCredsOptIn(t *testing.T) {
 	var attempts int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -7,9 +7,10 @@ info:
   reference:
     - https://doc.traefik.io/traefik/operations/api/
   tags: traefik,unauth,exposure
+# The API answers on any port (api.insecure=true listens on 8080, often remapped), and the
+# matchers below only fire on Traefik's own JSON, so every web service is asked once.
 match:
-  ports: [8080]
-  techs: [traefik]
+  any-http: true
 http:
   - method: GET
     path:

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -105,6 +106,7 @@ func (e *Engine) Run(ctx context.Context, targets []Target, opt Options) ([]doma
 			st.OutOfScope++
 			continue
 		}
+		e.probeHTTP(ctx, t)
 		for _, c := range e.Applicable(&t.Service) {
 			if ctx.Err() != nil {
 				return sortFindings(out), st
@@ -274,6 +276,50 @@ func applies(c *Check, s *domain.Service) bool {
 	}
 	return false
 }
+
+// probeHTTP: a port nmap could not identify (no product, banner or HTTP evidence, e.g.
+// "tcpwrapped" or a bare port-table guess) gets one GET / over http, then https. When it
+// answers HTTP, the target is treated as a web service for this run (its Server header and
+// title join the technology names checks are gated on).
+func (e *Engine) probeHTTP(ctx context.Context, t *Target) {
+	s := &t.Service
+	if s.HTTP != nil || s.Product != "" || s.Banner != "" || isHTTP(s) {
+		return
+	}
+	client := e.httpClient()
+	client.Timeout = 3 * time.Second
+	host := t.HostIP
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	for _, scheme := range []string{"http", "https"} {
+		if err := e.wait(ctx, t.HostIP); err != nil {
+			return
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, scheme+"://"+host+":"+strconv.Itoa(s.Port)+"/", nil)
+		if err != nil {
+			return
+		}
+		req.Header.Set("User-Agent", defaultUserAgent)
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		resp.Body.Close()
+		fp := &domain.HTTPFingerprint{Scheme: scheme, StatusCode: resp.StatusCode, ServerHeader: resp.Header.Get("Server")}
+		if m := reTitle.FindSubmatch(raw); m != nil {
+			fp.Title = strings.TrimSpace(string(m[1]))
+		}
+		s.HTTP = fp
+		if fp.ServerHeader != "" {
+			s.Technologies = append(s.Technologies, domain.DetectedTechnology{Name: fp.ServerHeader})
+		}
+		return
+	}
+}
+
+var reTitle = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 
 // ---- http ------------------------------------------------------------------------------
 

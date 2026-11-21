@@ -33,6 +33,18 @@ var (
 	reHeaderToken = regexp.MustCompile(`(?i)\b(apache|nginx|php|microsoft-iis|openresty)/(\d+(?:\.\d+)*[a-z]?\d*)`)
 )
 
+// Core assets versioned with the WordPress release (jQuery and plugins carry their own).
+var reWPAssetVer = regexp.MustCompile(`/wp-(?:admin/load-(?:styles|scripts)\.php|includes/(?:css/dashicons|css/buttons|js/wp-emoji-release|js/wp-embed)[a-z.-]*)[^"'\s>]*[?&](?:amp;)?ver=(\d+\.\d+(?:\.\d+)?)\b`)
+
+func hasTech(svc *domain.Service, name string) bool {
+	for _, t := range svc.Technologies {
+		if strings.EqualFold(t.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
 type candidate struct {
 	def     *ProductDef
 	version string
@@ -73,6 +85,13 @@ func candidates(svc *domain.Service) []candidate {
 	for _, t := range svc.Technologies {
 		if t.Version != "" {
 			add(lookupDef(t.Name), t.Version, "technology")
+		}
+	}
+	// WordPress without a generator tag (hidden, or the install page of a fresh instance)
+	// still loads its core assets with ?ver=<core version>.
+	if fp := svc.HTTP; fp != nil && !seen["wordpress"] && hasTech(svc, "wordpress") {
+		if m := reWPAssetVer.FindStringSubmatch(fp.BodySnippet); m != nil {
+			add(defByKey("wordpress"), m[1], "http-page")
 		}
 	}
 	return out

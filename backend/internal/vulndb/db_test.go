@@ -139,6 +139,17 @@ func TestAssessTechnologyAndHeaders(t *testing.T) {
 	if wp == nil || wp.Total != 2 || wp.Possible != 0 || wp.Confidence != "medium" || wp.Via != "technology" {
 		t.Fatalf("wordpress: %+v", vs)
 	}
+	// Fresh WordPress install page: no generator, version from the core asset URLs only.
+	install := &domain.Service{
+		Port: 8088, ServiceName: "http",
+		HTTP: &domain.HTTPFingerprint{BodySnippet: `<script src='http://x/wp-includes/js/jquery/jquery.js?ver=1.12.4'></script>` +
+			`<link rel='stylesheet' href='http://x/wp-admin/load-styles.php?c=0&amp;dir=ltr&amp;load%5B%5D=dashicons,buttons&amp;ver=4.7.5' />`},
+		Technologies: []domain.DetectedTechnology{{Name: "WordPress"}},
+	}
+	got := d.Assess(install)
+	if len(got) != 1 || got[0].Version != "4.7.5" || got[0].Via != "http-page" || got[0].Confidence != "medium" {
+		t.Fatalf("install page: %+v", got)
+	}
 	// An incomplete nginx-style version is "possible".
 	hits := d.Lookup("wordpress", "4")
 	if len(hits) == 0 || !hits[0].Possible {
