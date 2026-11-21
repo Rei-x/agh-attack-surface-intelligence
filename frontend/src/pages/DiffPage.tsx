@@ -51,6 +51,8 @@ const EVENT_LABEL: Record<string, string> = {
   SERVICE_CHANGED: 'Service changed',
   SERVICE_CLOSED: 'Service closed',
   OUTDATED_VERSION: 'End of life',
+  POLICY_VIOLATION: 'Policy violation',
+  POLICY_RESOLVED: 'Policy resolved',
   HOST_STATE_CHANGED: 'Host state',
   HOST_REACTIVATED: 'Host back',
   HOST_MISSING: 'Host missing',
@@ -87,6 +89,20 @@ function describeChange(ch: ChangeLike): Described {
     if (v) details.push({ label, value: v });
   };
   const at = where(ch);
+
+  if (type === 'POLICY_VIOLATION' || type === 'POLICY_RESOLVED') {
+    // Zone policies (Policies page): the summary is already plain English.
+    add('Zone', after.zone);
+    if (Array.isArray(after.evidence)) (after.evidence as unknown[]).forEach((e) => add('Evidence', e));
+    add('Owner', after.owner);
+    return {
+      line: s(ch.summary).replace(/^Policy violation( again)?: /, ''),
+      details,
+      action: type === 'POLICY_RESOLVED'
+        ? `${at} now follows the policy of zone ${s(after.zone)}.`
+        : `${at} breaks the policy of zone ${s(after.zone)}. Please move the service to the right zone or close it.`,
+    };
+  }
 
   if (type === 'OUTDATED_VERSION' && Array.isArray(after.outdated)) {
     const items = after.outdated as Record<string, unknown>[];
