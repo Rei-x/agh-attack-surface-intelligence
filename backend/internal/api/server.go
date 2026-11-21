@@ -3,8 +3,10 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,15 +20,20 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 )
 
-const AppVersion = "1.0.0"
+// AppVersion is overridden at build time via -ldflags "-X .../internal/api.AppVersion=..."
+var AppVersion = "1.0.0"
 
 // Config holds runtime options for the HTTP API server.
 type Config struct {
-	JWTSecret     []byte
-	TokenTTL      time.Duration
-	SeedDemo      bool
-	StaticDir     string
-	AllowedOrigin string
+	JWTSecret []byte
+	TokenTTL  time.Duration
+	SeedDemo  bool
+	StaticDir string
+	// StaticFS serves the SPA from an fs.FS (e.g. the go:embed UI) when StaticDir is empty.
+	StaticFS fs.FS
+	// StaticFallback is served for "/" when neither StaticDir nor StaticFS has an index.html.
+	StaticFallback string
+	AllowedOrigin  string
 }
 
 // Server serves the complete AegisASI v1 REST API, SSE stream, and embedded/static SPA.
@@ -181,6 +188,10 @@ func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	staticDir := strings.TrimSpace(s.cfg.StaticDir)
+	if staticDir == "" && s.cfg.StaticFS != nil {
+		s.serveSPAFromFS(w, r)
+		return
+	}
 	if staticDir == "" {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"service": "AegisASI API",
@@ -211,6 +222,40 @@ func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
 	indexPath := filepath.Join(absDir, "index.html")
 	if _, err := os.Stat(indexPath); err == nil {
 		http.ServeFile(w, r, indexPath)
+		return
+	}
+	http.NotFound(w, r)
+}
+
+// serveSPAFromFS serves the embedded SPA with an index.html fallback for client-side routes.
+// Hashed Vite assets are immutable and cached aggressively; index.html is always revalidated.
+func (s *Server) serveSPAFromFS(w http.ResponseWriter, r *http.Request) {
+	fsys := s.cfg.StaticFS
+	name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+	if name == "" {
+		name = "index.html"
+	}
+	if info, err := fs.Stat(fsys, name); err == nil && !info.IsDir() {
+		if strings.HasPrefix(name, "assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		http.ServeFileFS(w, r, fsys, name)
+		return
+	}
+	if strings.HasPrefix(name, "assets/") {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := fs.Stat(fsys, "index.html"); err == nil {
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFileFS(w, r, fsys, "index.html")
+		return
+	}
+	if s.cfg.StaticFallback != "" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(s.cfg.StaticFallback))
 		return
 	}
 	http.NotFound(w, r)

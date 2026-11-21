@@ -37,3 +37,7 @@ tmp/
 .idea/
 .vscode/
 *.swp
+
+# Embedded UI build output (copied by `make ui`); keep the placeholder so go:embed compiles
+backend/internal/webui/ui/*
+!backend/internal/webui/ui/.gitkeep

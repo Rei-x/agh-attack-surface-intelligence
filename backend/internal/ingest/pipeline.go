@@ -169,6 +169,11 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		if err != nil && !errors.Is(err, db.ErrNotFound) {
 			return nil, fmt.Errorf("lookup host %s: %w", ip, err)
 		}
+		// A dead IP that was never seen before is not an asset: do not create a host record
+		// (otherwise scanning a mostly empty /16 would create ~65k phantom NEW hosts).
+		if !isAlive && prevHost == nil {
+			continue
+		}
 
 		trans := p.analyzer.EvaluateLifecycle(prevHost, isAlive, obsAt, missingThresh, graceHours)
 

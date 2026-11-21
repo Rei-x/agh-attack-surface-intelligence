@@ -1,0 +1,58 @@
+name: release
+
+# Builds the single `aegis` binary (UI embedded) for all platforms and publishes a
+# GitHub Release with checksums when a version tag is pushed, e.g. `git tag v1.2.0 && git push --tags`.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Test
+        run: make test
+
+      - name: Build release binaries
+        run: make release VERSION="${GITHUB_REF_NAME}"
+
+      - name: Smoke test linux/amd64 binary
+        run: |
+          ./dist/aegis-linux-amd64 version
+          ./dist/aegis-linux-amd64 serve --data-dir "$RUNNER_TEMP/aegis" --listen 127.0.0.1:18080 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/v1/health && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18080/ | grep -qi '<div id="root"'
+          kill %1
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/aegis-*
+            dist/checksums.txt
+            install.sh
+          generate_release_notes: true

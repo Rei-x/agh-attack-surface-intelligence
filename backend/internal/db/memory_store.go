@@ -180,6 +180,10 @@ type MemoryStore struct {
 	ddConfig     *encDDConfigRow
 	ddExports    []domain.DefectDojoExport
 	auditLogs    []domain.AuditLog
+
+	// Change tracking for the encrypted file-backed store (see memory_snapshot.go).
+	generation uint64
+	onChange   func()
 }
 
 func NewMemoryStore(vault *crypto.Vault) *MemoryStore {
@@ -222,7 +226,7 @@ func (m *MemoryStore) LoadCryptoKeys(_ context.Context) (map[string]string, stri
 
 func (m *MemoryStore) SaveCryptoKey(_ context.Context, kid, wrapped string, active bool) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	m.cryptoKeys[kid] = wrapped
 	if active {
 		m.activeKID = kid
@@ -232,7 +236,7 @@ func (m *MemoryStore) SaveCryptoKey(_ context.Context, kid, wrapped string, acti
 
 func (m *MemoryStore) ReEncryptAll(_ context.Context) (int, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	count := 0
 	reenc := func(ct, aad string) (string, error) {
 		n, changed, err := m.vault.ReEncrypt(ct, aad)
@@ -447,7 +451,7 @@ func (m *MemoryStore) GetRoleBySlug(_ context.Context, slug string) (*domain.Rol
 
 func (m *MemoryStore) CreateRole(_ context.Context, role *domain.Role) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	for _, r := range m.roles {
 		if r.Slug == role.Slug {
 			return ErrConflict
@@ -465,7 +469,7 @@ func (m *MemoryStore) CreateRole(_ context.Context, role *domain.Role) error {
 
 func (m *MemoryStore) UpdateRole(_ context.Context, role *domain.Role) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	existing, ok := m.roles[role.ID]
 	if !ok {
 		return ErrNotFound
@@ -483,7 +487,7 @@ func (m *MemoryStore) UpdateRole(_ context.Context, role *domain.Role) error {
 
 func (m *MemoryStore) DeleteRole(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	r, ok := m.roles[id]
 	if !ok {
 		return ErrNotFound
@@ -553,7 +557,7 @@ func (m *MemoryStore) GetUserByUsername(_ context.Context, username string) (*do
 
 func (m *MemoryStore) CreateUser(_ context.Context, user *domain.User) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	for _, row := range m.users {
 		if strings.EqualFold(row.Username, user.Username) {
 			return ErrConflict
@@ -588,7 +592,7 @@ func (m *MemoryStore) CreateUser(_ context.Context, user *domain.User) error {
 
 func (m *MemoryStore) UpdateUser(_ context.Context, user *domain.User) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	row, ok := m.users[user.ID]
 	if !ok {
 		return ErrNotFound
@@ -613,7 +617,7 @@ func (m *MemoryStore) UpdateUser(_ context.Context, user *domain.User) error {
 
 func (m *MemoryStore) DeleteUser(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if _, ok := m.users[id]; !ok {
 		return ErrNotFound
 	}
@@ -636,7 +640,7 @@ func (m *MemoryStore) ListTargets(_ context.Context) ([]domain.Target, error) {
 
 func (m *MemoryStore) CreateTarget(_ context.Context, t *domain.Target) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if t.ID == "" {
 		t.ID = NewID()
 	}
@@ -649,7 +653,7 @@ func (m *MemoryStore) CreateTarget(_ context.Context, t *domain.Target) error {
 
 func (m *MemoryStore) DeleteTarget(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if _, ok := m.targets[id]; !ok {
 		return ErrNotFound
 	}
@@ -670,7 +674,7 @@ func (m *MemoryStore) ListExclusions(_ context.Context) ([]domain.TargetExclusio
 
 func (m *MemoryStore) CreateExclusion(_ context.Context, ex *domain.TargetExclusion) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if ex.ID == "" {
 		ex.ID = NewID()
 	}
@@ -683,7 +687,7 @@ func (m *MemoryStore) CreateExclusion(_ context.Context, ex *domain.TargetExclus
 
 func (m *MemoryStore) DeleteExclusion(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if _, ok := m.exclusions[id]; !ok {
 		return ErrNotFound
 	}
@@ -716,7 +720,7 @@ func (m *MemoryStore) GetProfile(_ context.Context, id string) (*domain.ScanProf
 
 func (m *MemoryStore) CreateProfile(_ context.Context, p *domain.ScanProfile) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if p.ID == "" {
 		p.ID = NewID()
 	}
@@ -731,7 +735,7 @@ func (m *MemoryStore) CreateProfile(_ context.Context, p *domain.ScanProfile) er
 
 func (m *MemoryStore) UpdateProfile(_ context.Context, p *domain.ScanProfile) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	existing, ok := m.profiles[p.ID]
 	if !ok {
 		return ErrNotFound
@@ -744,7 +748,7 @@ func (m *MemoryStore) UpdateProfile(_ context.Context, p *domain.ScanProfile) er
 
 func (m *MemoryStore) DeleteProfile(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if _, ok := m.profiles[id]; !ok {
 		return ErrNotFound
 	}
@@ -827,7 +831,7 @@ func (m *MemoryStore) GetScanRun(_ context.Context, id string) (*domain.ScanRun,
 
 func (m *MemoryStore) CreateScanRun(_ context.Context, run *domain.ScanRun) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if run.ID == "" {
 		run.ID = NewID()
 	}
@@ -871,7 +875,7 @@ func (m *MemoryStore) CreateScanRun(_ context.Context, run *domain.ScanRun) erro
 
 func (m *MemoryStore) UpdateScanRun(_ context.Context, run *domain.ScanRun) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	existing, ok := m.scanRuns[run.ID]
 	if !ok {
 		return ErrNotFound
@@ -918,7 +922,7 @@ func (m *MemoryStore) UpdateScanRun(_ context.Context, run *domain.ScanRun) erro
 
 func (m *MemoryStore) UpdateScanRunMeta(_ context.Context, id, name, notes string) (*domain.ScanRun, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	row, ok := m.scanRuns[id]
 	if !ok {
 		return nil, ErrNotFound
@@ -937,7 +941,7 @@ func (m *MemoryStore) UpdateScanRunMeta(_ context.Context, id, name, notes strin
 
 func (m *MemoryStore) DeleteScanRun(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if _, ok := m.scanRuns[id]; !ok {
 		return ErrNotFound
 	}
@@ -949,7 +953,7 @@ func (m *MemoryStore) DeleteScanRun(_ context.Context, id string) error {
 
 func (m *MemoryStore) SaveScanChunks(_ context.Context, scanRunID string, chunks []domain.ScanChunk) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	cp := make([]domain.ScanChunk, len(chunks))
 	for i, c := range chunks {
 		if c.ID == "" {
@@ -964,7 +968,7 @@ func (m *MemoryStore) SaveScanChunks(_ context.Context, scanRunID string, chunks
 
 func (m *MemoryStore) UpdateScanChunk(_ context.Context, chunk *domain.ScanChunk) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	list := m.scanChunks[chunk.ScanRunID]
 	for i := range list {
 		if list[i].ID == chunk.ID || list[i].ChunkIndex == chunk.ChunkIndex {
@@ -1202,7 +1206,7 @@ func (m *MemoryStore) GetHostByIP(_ context.Context, ip string) (*domain.Host, e
 
 func (m *MemoryStore) UpsertObservedHost(_ context.Context, host *domain.Host) (*domain.Host, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	hmacIdx := m.vault.BlindIndex(host.IP)
 	id, exists := m.hostByIPHMAC[hmacIdx]
 	if !exists {
@@ -1264,7 +1268,7 @@ func (m *MemoryStore) UpsertObservedHost(_ context.Context, host *domain.Host) (
 
 func (m *MemoryStore) DeleteHost(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	row, ok := m.hosts[id]
 	if !ok {
 		return ErrNotFound
@@ -1328,7 +1332,7 @@ func (m *MemoryStore) ListServicesByHost(ctx context.Context, hostID string) ([]
 
 func (m *MemoryStore) UpsertObservedService(_ context.Context, svc *domain.Service) (*domain.Service, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	proto := svc.Protocol
 	if proto == "" {
 		proto = "tcp"
@@ -1403,7 +1407,7 @@ func (m *MemoryStore) UpsertObservedService(_ context.Context, svc *domain.Servi
 
 func (m *MemoryStore) AddObservation(_ context.Context, obs *ServiceObservation) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if obs.ID == "" {
 		obs.ID = NewID()
 	}
@@ -1485,7 +1489,7 @@ func (m *MemoryStore) GetOverrides(_ context.Context, entityType, entityID strin
 
 func (m *MemoryStore) PatchOverrides(_ context.Context, entityType, entityID string, patch map[string]any, unlockFields []string, updatedBy string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	k := overrideKey(entityType, entityID)
 	fields := m.overrides[k]
 	if fields == nil {
@@ -1518,7 +1522,7 @@ func (m *MemoryStore) PatchOverrides(_ context.Context, entityType, entityID str
 
 func (m *MemoryStore) AddChangeEvent(_ context.Context, ev *domain.ChangeEvent) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if ev.ID == "" {
 		ev.ID = NewID()
 	}
@@ -1630,7 +1634,7 @@ func (m *MemoryStore) ListChangeEvents(_ context.Context, filter ChangeFilter) (
 
 func (m *MemoryStore) AcknowledgeChange(_ context.Context, id, username string) (*domain.ChangeEvent, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	r, ok := m.changes[id]
 	if !ok {
 		return nil, ErrNotFound
@@ -1644,7 +1648,7 @@ func (m *MemoryStore) AcknowledgeChange(_ context.Context, id, username string) 
 
 func (m *MemoryStore) SaveScanSnapshot(_ context.Context, scanRunID string, hosts []domain.Host) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	enc, err := m.vault.EncryptJSON(hosts, "scan_snapshots:"+scanRunID+":payload")
 	if err != nil {
 		return err
@@ -1692,7 +1696,7 @@ func (m *MemoryStore) GetSignature(_ context.Context, id string) (*domain.Signat
 
 func (m *MemoryStore) CreateSignature(_ context.Context, sig *domain.Signature) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if sig.ID == "" {
 		sig.ID = NewID()
 	}
@@ -1707,7 +1711,7 @@ func (m *MemoryStore) CreateSignature(_ context.Context, sig *domain.Signature) 
 
 func (m *MemoryStore) UpdateSignature(_ context.Context, sig *domain.Signature) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	existing, ok := m.signatures[sig.ID]
 	if !ok {
 		return ErrNotFound
@@ -1720,7 +1724,7 @@ func (m *MemoryStore) UpdateSignature(_ context.Context, sig *domain.Signature) 
 
 func (m *MemoryStore) DeleteSignature(_ context.Context, id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if _, ok := m.signatures[id]; !ok {
 		return ErrNotFound
 	}
@@ -1753,7 +1757,7 @@ func (m *MemoryStore) GetDefectDojoConfig(_ context.Context) (*domain.DefectDojo
 
 func (m *MemoryStore) SaveDefectDojoConfig(_ context.Context, cfg *domain.DefectDojoConfig) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	var tokEnc string
 	if cfg.APIToken != "" {
 		var err error
@@ -1777,7 +1781,7 @@ func (m *MemoryStore) SaveDefectDojoConfig(_ context.Context, cfg *domain.Defect
 
 func (m *MemoryStore) AddDefectDojoExport(_ context.Context, exp *domain.DefectDojoExport) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if exp.ID == "" {
 		exp.ID = NewID()
 	}
@@ -1805,7 +1809,7 @@ func (m *MemoryStore) ListDefectDojoExports(_ context.Context, limit int) ([]dom
 
 func (m *MemoryStore) AddAuditLog(_ context.Context, entry *domain.AuditLog) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	defer m.unlockDirty()
 	if entry.ID == "" {
 		entry.ID = NewID()
 	}

@@ -1,0 +1,316 @@
+package db
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sync"
+	"time"
+
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
+)
+
+// File format of the local encrypted store:
+//
+//	"AEGISDB1" (8 bytes magic) | nonce(12) | AES-256-GCM( gzip( JSON(memoryState) ) ) | tag(16)
+//
+// The GCM key is derived from the master key (KEK) via HMAC-SHA256 and the magic is bound
+// as AAD. Inside, all sensitive fields are additionally envelope-encrypted per row with the
+// versioned DEKs (exactly like the PostgreSQL backend), so data is protected twice at rest.
+var fileStoreMagic = []byte("AEGISDB1")
+
+const fileStoreAAD = "aegis-asi:store-snapshot:v1"
+
+// FileStoreOptions tunes persistence timing.
+type FileStoreOptions struct {
+	// Debounce is the quiet period after a write before the snapshot is flushed.
+	Debounce time.Duration
+	// MaxDelay bounds how long a continuous stream of writes may postpone a flush.
+	MaxDelay time.Duration
+	// Interval is a periodic safety flush (only writes when something changed).
+	Interval time.Duration
+	// ReadOnly loads the snapshot but never writes it back (used by export/diff).
+	ReadOnly bool
+}
+
+// FileStore is a MemoryStore persisted to a single AES-256-GCM encrypted snapshot file with
+// atomic writes (temp file + fsync + rename). It needs no external database and no cgo.
+type FileStore struct {
+	*MemoryStore
+
+	path  string
+	vault *crypto.Vault
+	opts  FileStoreOptions
+	isNew bool
+
+	saveMu    sync.Mutex
+	savedGen  uint64
+	wroteOnce bool
+
+	changeCh  chan struct{}
+	stopCh    chan struct{}
+	doneCh    chan struct{}
+	closeOnce sync.Once
+}
+
+// OpenFileStore loads (or creates) the encrypted store at path. The vault must be built from
+// the same master key that sealed the file; persisted DEKs are loaded into the vault.
+func OpenFileStore(path string, vault *crypto.Vault, opts FileStoreOptions) (*FileStore, error) {
+	if opts.Debounce <= 0 {
+		opts.Debounce = 1500 * time.Millisecond
+	}
+	if opts.MaxDelay <= 0 {
+		opts.MaxDelay = 10 * time.Second
+	}
+	if opts.Interval <= 0 {
+		opts.Interval = 30 * time.Second
+	}
+	fs := &FileStore{
+		MemoryStore: NewMemoryStore(vault),
+		path:        path,
+		vault:       vault,
+		opts:        opts,
+		changeCh:    make(chan struct{}, 1),
+		stopCh:      make(chan struct{}),
+		doneCh:      make(chan struct{}),
+	}
+
+	raw, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		if err := fs.load(raw); err != nil {
+			return nil, err
+		}
+	case errors.Is(err, os.ErrNotExist):
+		if opts.ReadOnly {
+			return nil, fmt.Errorf("no AegisASI data found at %s (run `aegis serve` or `aegis scan` first)", path)
+		}
+		fs.isNew = true
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, fmt.Errorf("create data dir: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("read store %s: %w", path, err)
+	}
+
+	fs.savedGen = fs.Generation()
+	if opts.ReadOnly {
+		close(fs.doneCh)
+		return fs, nil
+	}
+	if fs.isNew {
+		// Persist immediately so the master key and the wrapped DEKs are paired on disk.
+		if err := fs.Flush(); err != nil {
+			return nil, err
+		}
+	}
+	fs.SetChangeHook(fs.notify)
+	go fs.loop()
+	return fs, nil
+}
+
+// IsNew reports whether the store file did not exist before OpenFileStore.
+func (f *FileStore) IsNew() bool { return f.isNew }
+
+// Path returns the snapshot file path.
+func (f *FileStore) Path() string { return f.path }
+
+func (f *FileStore) BackendName() string { return "file-encrypted" }
+
+func (f *FileStore) load(raw []byte) error {
+	if len(raw) < len(fileStoreMagic) || !bytes.Equal(raw[:len(fileStoreMagic)], fileStoreMagic) {
+		return fmt.Errorf("%s is not an AegisASI store file (bad magic)", f.path)
+	}
+	plain, err := f.vault.OpenBlob(raw[len(fileStoreMagic):], fileStoreAAD)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", f.path, err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(plain))
+	if err != nil {
+		return fmt.Errorf("decompress store: %w", err)
+	}
+	jsonRaw, err := io.ReadAll(zr)
+	if err != nil {
+		return fmt.Errorf("decompress store: %w", err)
+	}
+	keys, active, err := f.ImportState(jsonRaw)
+	if err != nil {
+		return err
+	}
+	if len(keys) > 0 {
+		if err := f.vault.LoadWrappedDEKs(keys, active); err != nil {
+			return fmt.Errorf("unwrap data keys: %w", err)
+		}
+	} else {
+		// Should not happen, but keep the vault's fresh DEK persisted.
+		wrapped, act := f.vault.ExportWrappedDEKs()
+		for kid, w := range wrapped {
+			_ = f.SaveCryptoKey(context.Background(), kid, w, kid == act)
+		}
+	}
+	return nil
+}
+
+func (f *FileStore) notify() {
+	select {
+	case f.changeCh <- struct{}{}:
+	default:
+	}
+}
+
+func (f *FileStore) loop() {
+	defer close(f.doneCh)
+	ticker := time.NewTicker(f.opts.Interval)
+	defer ticker.Stop()
+
+	var debounce <-chan time.Time
+	var debounceTimer *time.Timer
+	var firstDirty time.Time
+
+	flush := func() {
+		if err := f.Flush(); err != nil {
+			log.Printf("[ERROR] persist encrypted store: %v", err)
+		}
+		firstDirty = time.Time{}
+		debounce = nil
+	}
+
+	for {
+		select {
+		case <-f.stopCh:
+			return
+		case <-f.changeCh:
+			now := time.Now()
+			if firstDirty.IsZero() {
+				firstDirty = now
+			}
+			wait := f.opts.Debounce
+			if deadline := firstDirty.Add(f.opts.MaxDelay); now.Add(wait).After(deadline) {
+				wait = time.Until(deadline)
+				if wait < 0 {
+					wait = 0
+				}
+			}
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
+			debounceTimer = time.NewTimer(wait)
+			debounce = debounceTimer.C
+		case <-debounce:
+			flush()
+		case <-ticker.C:
+			if f.Generation() != f.savedGenSnapshot() {
+				flush()
+			}
+		}
+	}
+}
+
+func (f *FileStore) savedGenSnapshot() uint64 {
+	f.saveMu.Lock()
+	defer f.saveMu.Unlock()
+	return f.savedGen
+}
+
+// Flush writes the current state to disk if it changed since the last save.
+func (f *FileStore) Flush() error {
+	if f.opts.ReadOnly {
+		return nil
+	}
+	f.saveMu.Lock()
+	defer f.saveMu.Unlock()
+
+	raw, gen, err := f.ExportState()
+	if err != nil {
+		return err
+	}
+	if gen == f.savedGen && !f.isNewUnsaved() {
+		return nil
+	}
+	var buf bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	if _, err := zw.Write(raw); err != nil {
+		return err
+	}
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	sealed, err := f.vault.SealBlob(buf.Bytes(), fileStoreAAD)
+	if err != nil {
+		return err
+	}
+	out := make([]byte, 0, len(fileStoreMagic)+len(sealed))
+	out = append(out, fileStoreMagic...)
+	out = append(out, sealed...)
+	if err := writeFileAtomic(f.path, out, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", f.path, err)
+	}
+	f.savedGen = gen
+	f.wroteOnce = true
+	return nil
+}
+
+func (f *FileStore) isNewUnsaved() bool { return f.isNew && !f.wroteOnce }
+
+// Close stops the background writer and performs a final flush.
+func (f *FileStore) Close() {
+	f.closeOnce.Do(func() {
+		if f.opts.ReadOnly {
+			return
+		}
+		close(f.stopCh)
+		<-f.doneCh
+		if err := f.Flush(); err != nil {
+			log.Printf("[ERROR] final flush of encrypted store: %v", err)
+		}
+	})
+}
+
+// writeFileAtomic writes data to a temp file in the same directory, fsyncs it and renames it
+// over path, so a crash never leaves a half-written store behind.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if err := tmp.Chmod(perm); err != nil && runtime.GOOS != "windows" {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return err
+	}
+	if runtime.GOOS != "windows" {
+		if d, err := os.Open(dir); err == nil {
+			_ = d.Sync()
+			d.Close()
+		}
+	}
+	return nil
+}

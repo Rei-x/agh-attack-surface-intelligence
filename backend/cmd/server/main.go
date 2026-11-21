@@ -1,90 +1,110 @@
+// Command aegis is the AegisASI single binary: web UI + API server, headless scanner and
+// data tools, all sharing one encrypted local store (or PostgreSQL when DATABASE_URL is set).
+//
+// Build: go build -o aegis ./cmd/server   (see Makefile: make build / make release)
 package main
 
 import (
-	"context"
-	"log"
-	"net/http"
+	"fmt"
+	"io"
 	"os"
-	"os/signal"
+	"runtime"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/api"
-	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
-	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
-	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 )
 
+// Set via -ldflags "-X main.version=... -X main.commit=... -X main.date=...".
+var (
+	version = ""
+	commit  = "dev"
+	date    = "unknown"
+)
+
+func init() {
+	if version != "" {
+		api.AppVersion = strings.TrimPrefix(version, "v")
+	}
+}
+
+func appVersion() string { return api.AppVersion }
+
+const usageText = `AegisASI - cyclic attack surface discovery for large networks (CBI AGH)
+
+Usage:
+  aegis <command> [flags]
+
+Commands:
+  serve                     Start the web UI + REST API (default http://localhost:8080)
+  scan <targets...|-f file> Run a headless scan in the terminal (results land in the same store)
+  import <file>             Import CSV / JSON / nmap XML results
+  export                    Export the inventory as JSON or CSV
+  diff [runA runB]          Compare two scan runs (default: the last two)
+  runs                      List recent scan runs
+  version                   Print version information
+
+Common flags:
+  --data-dir DIR            Data directory (default ~/.aegis, env ASI_DATA_DIR)
+
+Examples:
+  aegis serve
+  aegis scan 192.168.1.0/24 -p 22,80,443,8080
+  aegis scan -f targets.txt --rate 300 --json -o report.json
+  aegis import nmap-results.xml
+  aegis export --format csv -o inventory.csv
+  aegis diff
+
+Run 'aegis <command> --help' for details. Data is stored encrypted (AES-256-GCM) in the
+data directory; set DATABASE_URL to use PostgreSQL instead.
+`
+
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	os.Exit(run(os.Args[1:]))
+}
 
-	listenAddr := strings.TrimSpace(os.Getenv("ASI_LISTEN_ADDR"))
-	if listenAddr == "" {
-		listenAddr = ":" + envOrDefault("PORT", "8080")
+func run(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, usageText)
+		return 2
 	}
-	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	masterKey := os.Getenv("ASI_MASTER_KEY")
-	jwtSecretOverride := os.Getenv("ASI_JWT_SECRET")
-	seedDemo := strings.EqualFold(envOrDefault("ASI_SEED_DEMO", "true"), "true")
-	staticDir := os.Getenv("ASI_STATIC_DIR")
-
-	vault, err := crypto.NewVault(masterKey)
+	cmd, rest := args[0], args[1:]
+	var err error
+	switch cmd {
+	case "serve", "server":
+		err = cmdServe(rest)
+	case "scan":
+		err = cmdScan(rest)
+	case "import":
+		err = cmdImport(rest)
+	case "export":
+		err = cmdExport(rest)
+	case "diff":
+		err = cmdDiff(rest)
+	case "runs", "scans":
+		err = cmdRuns(rest)
+	case "version", "--version", "-v":
+		printVersion(os.Stdout)
+		return 0
+	case "help", "-h", "--help":
+		fmt.Fprint(os.Stdout, usageText)
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "aegis: unknown command %q\n\n%s", cmd, usageText)
+		return 2
+	}
 	if err != nil {
-		log.Fatalf("fatal: initialize encryption vault: %v", err)
-	}
-	log.Printf("[INFO] Encryption vault active (algo=%s, kid=%s)", vault.Status().Algorithm, vault.ActiveKID())
-
-	var store db.Store
-	if dbURL != "" {
-		pgStore, err := db.NewPostgresStore(ctx, dbURL, vault)
-		if err != nil {
-			log.Fatalf("fatal: connect PostgreSQL: %v", err)
+		if err == errUsage {
+			return 2
 		}
-		store = pgStore
-		log.Printf("[INFO] Connected to PostgreSQL with automatic migrations applied")
-	} else {
-		store = db.NewMemoryStore(vault)
-		log.Printf("[WARN] DATABASE_URL is empty; running with AES-256-GCM encrypted in-memory store")
+		fmt.Fprintf(os.Stderr, "aegis %s: %v\n", cmd, err)
+		return 1
 	}
-	defer store.Close()
+	return 0
+}
 
-	if err := db.SeedDefaults(ctx, store, seedDemo); err != nil {
-		log.Fatalf("fatal: seed default roles/users: %v", err)
-	}
-
-	hub := api.NewSSEHub()
-	analyzer := NewIntelligenceAnalyzer()
-	pipeline := ingest.NewPipeline(store, analyzer, hub.Publish)
-	runner := NewLiveScanRunner(store, pipeline, hub)
-	runner.StartWindowWatcher(ctx)
-
-	srv := api.NewServer(api.Config{
-		JWTSecret: vault.JWTSecret(jwtSecretOverride),
-		TokenTTL:  24 * time.Hour,
-		SeedDemo:  seedDemo,
-		StaticDir: staticDir,
-	}, store, vault, pipeline, runner, hub)
-
-	httpServer := &http.Server{
-		Addr:              listenAddr,
-		Handler:           srv.Handler(),
-		ReadHeaderTimeout: 15 * time.Second,
-	}
-
-	go func() {
-		log.Printf("[INFO] AegisASI v%s listening on %s (seed_demo=%v, static_dir=%q)", api.AppVersion, listenAddr, seedDemo, staticDir)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("fatal: http server error: %v", err)
-		}
-	}()
-
-	<-ctx.Done()
-	log.Printf("[INFO] Shutting down AegisASI server...")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_ = httpServer.Shutdown(shutdownCtx)
+func printVersion(w io.Writer) {
+	fmt.Fprintf(w, "aegis %s (commit %s, built %s, %s, %s/%s)\n",
+		appVersion(), commit, date, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 func envOrDefault(key, def string) string {
