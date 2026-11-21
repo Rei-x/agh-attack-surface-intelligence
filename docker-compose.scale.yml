@@ -1,0 +1,82 @@
+# =============================================================================
+# AegisASI — large-network scale lab (default 10.66.0.0/18 = 16,384 IPs, ~1,500 live)
+#
+# One container owns the whole /18: live hosts are /32 addresses on a dummy
+# interface, dead IPs are blackholed (no reply at all). Scanners on
+# aegis-asi-net reach it through a route `10.66.0.0/18 via 172.28.0.66`.
+#
+#   docker compose -f docker-compose.scale.yml up -d --build
+#   docker exec aegis-asi-app ip route replace 10.66.0.0/18 via 172.28.0.66
+#   curl -s localhost:19900/stats
+#
+# Optional scanner runner (nmap + route preinstalled):
+#   docker compose -f docker-compose.scale.yml --profile runner run --rm scale-runner \
+#     nmap -n -sn -PS22,80,443 10.66.0.0/22
+#
+# Full end-to-end run against the app: scripts/scale_test.sh
+# =============================================================================
+
+services:
+  scale-lab:
+    build:
+      context: ./lab/scale
+      dockerfile: Dockerfile
+    image: aegis-asi-scalelab:local
+    container_name: aegis-scale-lab
+    hostname: scale-lab
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_nonlocal_bind: "1"
+      net.ipv4.conf.all.rp_filter: "0"
+      net.ipv4.conf.default.rp_filter: "0"
+      net.ipv4.ip_forward: "0"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      SCALE_CIDR: ${SCALE_CIDR:-10.66.0.0/18}
+      SCALE_HOSTS: ${SCALE_HOSTS:-1500}
+      SCALE_SEED: ${SCALE_SEED:-1337}
+      SCALE_UPLINK: eth0
+      SCALE_NETEM: ${SCALE_NETEM:-delay 3ms 2ms distribution normal loss 0.1%}
+      SCALE_CONTROL: ":9900"
+      SCALE_TOD_HOURS: ${SCALE_TOD_HOURS:-07-19}
+      SCALE_TZ: Europe/Warsaw
+      SCALE_FLAP_PERIOD: ${SCALE_FLAP_PERIOD:-120}
+    ports:
+      - "${SCALE_CONTROL_PORT:-19900}:9900"
+    volumes:
+      - scale-truth:/var/lib/scalelab
+    mem_limit: 512m
+    networks:
+      aegis-net:
+        ipv4_address: 172.28.0.66
+
+  scale-runner:
+    image: aegis-asi-scalelab:local
+    profiles: ["runner"]
+    container_name: aegis-scale-runner
+    depends_on:
+      - scale-lab
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    entrypoint: ["/bin/sh", "-c", "ip route replace ${SCALE_CIDR:-10.66.0.0/18} via 172.28.0.66 && exec \"$$@\"", "--"]
+    command: ["nmap", "-n", "-sn", "-PS22,80,443", "--max-rate", "1500", "10.66.0.0/22"]
+    volumes:
+      - scale-truth:/var/lib/scalelab:ro
+      - ./lab/scale/out:/out
+    networks:
+      aegis-net:
+        ipv4_address: 172.28.0.67
+
+volumes:
+  scale-truth:
+
+networks:
+  aegis-net:
+    name: aegis-asi-net
+    external: true

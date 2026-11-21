@@ -1,0 +1,18 @@
+[Unit]
+Description=AegisASI scale lab (10.66.0.0/18 network emulator)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/scalelab
+ExecStart=/usr/local/bin/scalelab
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=1048576
+# scalelab tears down its dummy interface, blackhole route, iptables chain and netem on SIGTERM.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
