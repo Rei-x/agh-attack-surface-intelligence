@@ -456,7 +456,16 @@ func (t *QueryTerm) matchService(s *domain.Service, now time.Time) bool {
 	case "product":
 		return anyContains(t.Values, s.Product)
 	case "version":
-		return anyContains(t.Values, s.Version)
+		if anyContains(t.Values, s.Version) {
+			return true
+		}
+		// Technology versions too (WordPress 6.4.3 runs on a service whose banner is Apache's).
+		for _, tech := range s.Technologies {
+			if anyContains(t.Values, tech.Version) {
+				return true
+			}
+		}
+		return false
 	case "admin":
 		return s.IsAdminPanel == (t.Values[0] == "true")
 	case "eol", "vuln":
