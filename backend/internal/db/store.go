@@ -55,6 +55,7 @@ type ChangeFilter struct {
 	EventType   string
 	AnomalyOnly bool
 	Limit       int
+	HostID      string // optional: only events of this host (host timeline)
 }
 
 // ServiceObservation is a single immutable raw observation (Evidence Receipt) tied to a scan run.

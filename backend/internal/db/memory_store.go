@@ -182,6 +182,7 @@ type MemoryStore struct {
 	auditLogs    []domain.AuditLog
 
 	scheduleStates map[string]domain.ScheduleState // lazily initialized (schedule_state.go)
+	settings       map[string]string               // key -> encrypted JSON (settings.go), lazily initialized
 	// Change tracking for the encrypted file-backed store (see memory_snapshot.go).
 	generation uint64
 	onChange   func()
@@ -346,6 +347,13 @@ func (m *MemoryStore) ReEncryptAll(_ context.Context) (int, error) {
 		if m.ddConfig.APITokenEnc, err = reenc(m.ddConfig.APITokenEnc, "defectdojo_config:default:api_token"); err != nil {
 			return count, err
 		}
+	}
+	for key, enc := range m.settings {
+		n, err := reenc(enc, settingAAD(key))
+		if err != nil {
+			return count, err
+		}
+		m.settings[key] = n
 	}
 	return count, nil
 }
@@ -1609,6 +1617,9 @@ func (m *MemoryStore) ListChangeEvents(_ context.Context, filter ChangeFilter) (
 	out := make([]domain.ChangeEvent, 0, len(m.changes))
 	for _, r := range m.changes {
 		if filter.ScanRunID != "" && r.ScanRunID != filter.ScanRunID {
+			continue
+		}
+		if filter.HostID != "" && r.HostID != filter.HostID {
 			continue
 		}
 		if filter.Severity != "" && !strings.EqualFold(r.Severity, filter.Severity) {

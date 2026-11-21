@@ -26,7 +26,17 @@ import type {
   TargetEstimate,
   TargetExclusion,
   User,
+  HostTimelineEntry,
+  TagRule,
+  WebhookConfig,
 } from '../types/api';
+
+/** Body of the "triage" override: accepted_risk / false_positive need a reason. */
+export interface TriagePatch {
+  status: string;
+  reason?: string;
+  expires_at?: string;
+}
 
 const TOKEN_KEY = 'aegis_asi_token';
 
@@ -328,6 +338,7 @@ export const api = {
       notes?: string;
       tags?: string[];
       lifecycle_state?: string;
+      triage?: TriagePatch | null;
       unlock_fields?: string[];
     }
   ) =>
@@ -357,6 +368,7 @@ export const api = {
       notes?: string;
       tags?: string[];
       triage_status?: string;
+      triage?: TriagePatch | null;
       unlock_fields?: string[];
     }
   ) =>
@@ -368,6 +380,43 @@ export const api = {
     const res = await request<unknown>(`/api/v1/services/${id}/observations`);
     return unwrapList<ServiceObservation>(res, ['observations', 'items', 'data']);
   },
+
+  getHostTimeline: async (id: string, port?: number): Promise<HostTimelineEntry[]> => {
+    const res = await request<unknown>(`/api/v1/hosts/${id}/timeline${buildQuery({ port })}`);
+    return unwrapList<HostTimelineEntry>(res, ['entries', 'items', 'data']);
+  },
+
+  // CIDR tag rules (ownership) & alert webhook
+  listTagRules: async (): Promise<TagRule[]> => {
+    const res = await request<unknown>('/api/v1/tag-rules');
+    return unwrapList<TagRule>(res, ['rules', 'items', 'data']);
+  },
+  saveTagRules: async (rules: TagRule[]): Promise<TagRule[]> => {
+    const res = await request<unknown>('/api/v1/tag-rules', {
+      method: 'PUT',
+      body: JSON.stringify({ rules }),
+    });
+    return unwrapList<TagRule>(res, ['rules', 'items', 'data']);
+  },
+  applyTagRules: () =>
+    request<{ updated: number; checked: number }>('/api/v1/tag-rules/apply', { method: 'POST' }),
+  getWebhook: () => request<WebhookConfig>('/api/v1/integrations/webhook'),
+  saveWebhook: (payload: {
+    url?: string;
+    clear_url?: boolean;
+    enabled?: boolean;
+    min_severity?: string;
+    notify_state_changes?: boolean;
+  }) =>
+    request<WebhookConfig>('/api/v1/integrations/webhook', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  testWebhook: (url?: string) =>
+    request<{ ok: boolean }>('/api/v1/integrations/webhook/test', {
+      method: 'POST',
+      body: JSON.stringify(url ? { url } : {}),
+    }),
 
   // Diff & Changes
   listChanges: async (params?: {

@@ -9,7 +9,10 @@ import {
   RiSaveLine,
   RiSendPlaneLine,
 } from '@remixicon/react';
-import { api } from '@/lib/api';
+import { api, type TriagePatch } from '@/lib/api';
+import { HostTimeline } from '@/components/HostTimeline';
+import { TriageEditor } from '@/components/TriageEditor';
+import { TriageBadge } from '@/components/AssetQueryHelp';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -54,14 +57,7 @@ const LIFECYCLE_OPTIONS = ['NEW', 'ACTIVE', 'INTERMITTENT', 'MISSING', 'INACTIVE
   (s) => ({ value: s, label: s })
 );
 
-const TRIAGE_OPTIONS = [
-  { value: 'new', label: 'new' },
-  { value: 'triaged', label: 'triaged' },
-  { value: 'accepted_risk', label: 'accepted_risk' },
-  { value: 'false_positive', label: 'false_positive' },
-];
-
-type TabId = 'services' | 'overview' | 'heatmap' | 'summary';
+type TabId = 'services' | 'overview' | 'heatmap' | 'summary' | 'timeline';
 
 /* ---------- small presentational helpers ---------- */
 
@@ -313,8 +309,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       if (svcForm.product !== (svc.product || '')) payload.product = svcForm.product;
       if (svcForm.version !== (svc.version || '')) payload.version = svcForm.version;
       if (svcForm.http_title !== (svc.http?.title || '')) payload.http_title = svcForm.http_title;
-      if (svcForm.triage_status !== (svc.triage_status || 'new'))
-        payload.triage_status = svcForm.triage_status;
       const tags = svcForm.tags
         .split(',')
         .map((t) => t.trim())
@@ -332,6 +326,23 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
     } finally {
       setSavingSvc(false);
     }
+  };
+
+  // Triage decisions (accepted risk / false positive with reason + expiry). Errors propagate
+  // to the TriageEditor so it can show the server's validation message inline.
+  const handleSaveServiceTriage = async (svcId: string, patch: TriagePatch | null) => {
+    await api.patchServiceOverrides(svcId, { triage: patch });
+    toast.success('Zapisano decyzję');
+    if (host) await loadHost(host.id);
+    onUpdated?.();
+  };
+
+  const handleSaveHostTriage = async (patch: TriagePatch | null) => {
+    if (!host) return;
+    const updated = await api.patchHostOverrides(host.id, { triage: patch });
+    setHost((prev) => (prev ? { ...prev, ...updated, recent_changes: prev.recent_changes } : updated));
+    toast.success('Zapisano decyzję');
+    onUpdated?.();
   };
 
   const handleUnlockServiceField = async (svcId: string, field: string) => {
@@ -416,6 +427,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                     {host.locked_fields!.length}
                   </Pill>
                 )}
+                <TriageBadge triage={host.triage} />
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {host.hostname && <span className="font-mono text-foreground">{host.hostname}</span>}
@@ -451,6 +463,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="summary">Przegląd</TabsTrigger>
+                <TabsTrigger value="timeline">Oś czasu</TabsTrigger>
                 <TabsTrigger value="heatmap">Heatmapa</TabsTrigger>
                 <TabsTrigger value="overview">Overrides</TabsTrigger>
               </TabsList>
@@ -510,6 +523,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 {(svc.locked_fields?.length || 0) > 0 && (
                                   <RiLockLine className="size-3.5 text-violet-600 dark:text-violet-400" />
                                 )}
+                                <TriageBadge triage={svc.triage} />
                               </div>
                               {http?.title && (
                                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -606,15 +620,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       </OverrideRow>
                                     );
                                   })}
-                                  <OverrideRow label="Triage">
-                                    <SimpleSelect
-                                      value={svcForm.triage_status}
-                                      onValueChange={(v) =>
-                                        setSvcForm((p) => ({ ...p, triage_status: v }))
-                                      }
-                                      options={TRIAGE_OPTIONS}
-                                    />
-                                  </OverrideRow>
                                   <OverrideRow label="Tagi">
                                     <Input
                                       value={svcForm.tags}
@@ -654,6 +659,14 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                   </div>
                                 </div>
                               )}
+
+                              <TriageEditor
+                                status={svc.triage_status}
+                                triage={svc.triage}
+                                workflow
+                                canWrite={canWrite}
+                                onSave={(patch) => handleSaveServiceTriage(svc.id, patch)}
+                              />
 
                               {/* Confidence (Noisy-OR) */}
                               {(svc.technologies?.length || 0) > 0 && (
@@ -1045,6 +1058,11 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                 )}
               </TabsContent>
 
+              {/* ===== TIMELINE ===== */}
+              <TabsContent value="timeline" className="p-6">
+                <HostTimeline hostId={host.id} />
+              </TabsContent>
+
               {/* ===== HEATMAP ===== */}
               <TabsContent value="heatmap" className="space-y-6 p-6">
                 <div className="space-y-3">
@@ -1098,7 +1116,14 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
               </TabsContent>
 
               {/* ===== OVERRIDES ===== */}
-              <TabsContent value="overview" className="p-6">
+              <TabsContent value="overview" className="space-y-5 p-6">
+                <TriageEditor
+                  status={host.triage_status}
+                  triage={host.triage}
+                  workflow={false}
+                  canWrite={canWrite}
+                  onSave={handleSaveHostTriage}
+                />
                 <form onSubmit={handleSaveHostOverrides} className="space-y-5">
                   {!canWrite && (
                     <Notice icon={RiLockLine}>

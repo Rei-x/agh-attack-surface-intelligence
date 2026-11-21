@@ -39,6 +39,8 @@ type memoryState struct {
 	// Recurring-scan scheduler bookkeeping (last fire/skip per profile), so a restart
 	// neither double-fires a missed run nor forgets the schedule anchor.
 	ScheduleStates map[string]domain.ScheduleState `json:"schedule_states,omitempty"`
+	// Encrypted settings documents (CIDR tag rules, alert webhook): key -> vault ciphertext.
+	Settings map[string]string `json:"settings,omitempty"`
 }
 
 // unlockDirty releases the write lock and records that state may have changed.
@@ -94,6 +96,7 @@ func (m *MemoryStore) ExportState() ([]byte, uint64, error) {
 		DDExports:      m.ddExports,
 		AuditLogs:      m.auditLogs,
 		ScheduleStates: m.scheduleStates,
+		Settings:       m.settings,
 	}
 	raw, err := json.Marshal(&st)
 	if err != nil {
@@ -135,6 +138,7 @@ func (m *MemoryStore) ImportState(raw []byte) (map[string]string, string, error)
 	m.ddExports = st.DDExports
 	m.auditLogs = st.AuditLogs
 	m.scheduleStates = st.ScheduleStates
+	m.settings = st.Settings
 	// Rebuild the blind-index lookup if an older snapshot lacked it.
 	if len(m.hostByIPHMAC) == 0 && len(m.hosts) > 0 {
 		for id, h := range m.hosts {

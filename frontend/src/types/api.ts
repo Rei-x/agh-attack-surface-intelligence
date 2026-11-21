@@ -302,6 +302,7 @@ export interface Service {
   interestingness: number;
   interesting_factors?: InterestingnessFactor[];
   triage_status: string;
+  triage?: TriageInfo;
   notes?: string;
   tags?: string[];
   locked_fields?: string[];
@@ -336,6 +337,8 @@ export interface Host {
   services?: Service[];
   service_count: number;
   recent_changes?: ChangeEvent[];
+  triage_status?: string;
+  triage?: TriageInfo;
 }
 
 export interface ChangeEvent {
@@ -565,6 +568,8 @@ export interface DashboardSummary {
   top_interesting?: Service[];
   lifecycle_breakdown?: Record<string, number>;
   recent_changes?: ChangeEvent[];
+  accepted_risk_count?: number;
+  expired_acceptances?: ExpiredAcceptance[];
 }
 
 export interface ChangedServiceDiff {
@@ -652,4 +657,61 @@ export interface ServiceObservation {
   version?: string;
   banner?: string;
   http?: HTTPFingerprint;
+}
+
+/** Analyst risk decision (accepted risk / false positive) with reason, author and expiry. */
+export interface TriageInfo {
+  status: 'accepted_risk' | 'false_positive' | string;
+  reason: string;
+  by: string;
+  at: string;
+  expires_at?: string;
+  expired: boolean;
+}
+
+export interface ExpiredAcceptance {
+  host_id: string;
+  host_ip: string;
+  service_id?: string;
+  port?: number;
+  service_name?: string;
+  triage: TriageInfo;
+}
+
+export interface HostTimelineEntry {
+  kind: 'change' | 'observation' | 'first_seen' | string;
+  at: string;
+  until?: string;
+  count?: number;
+  event_type?: string;
+  severity?: string;
+  summary: string;
+  service_id?: string;
+  port?: number;
+  protocol?: string;
+  scan_run_id?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface TagRule {
+  id?: string;
+  cidr: string;
+  tags: string[];
+  owner?: string;
+  environment?: string;
+  description?: string;
+  enabled: boolean;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface WebhookConfig {
+  has_url: boolean;
+  url_masked?: string;
+  enabled: boolean;
+  min_severity: 'info' | 'low' | 'medium' | 'high' | string;
+  notify_state_changes: boolean;
+  last_status?: string;
+  last_error?: string;
+  last_sent_at?: string;
 }

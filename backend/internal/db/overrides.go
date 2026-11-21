@@ -1,8 +1,10 @@
 package db
 
 import (
+	"encoding/json"
 	"reflect"
 	"sort"
+	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
@@ -15,6 +17,7 @@ var AllowedHostOverrideFields = map[string]bool{
 	"notes":           true,
 	"tags":            true,
 	"lifecycle_state": true,
+	"triage":          true, // domain.TriageInfo (accepted_risk / false_positive with reason + expiry)
 }
 
 // AllowedServiceOverrideFields lists fields analysts may pin on a Service.
@@ -26,6 +29,7 @@ var AllowedServiceOverrideFields = map[string]bool{
 	"notes":         true,
 	"tags":          true,
 	"triage_status": true,
+	"triage":        true, // domain.TriageInfo (accepted_risk / false_positive with reason + expiry)
 }
 
 // MergeHostWithOverrides overlays analyst-pinned fields onto a scanner-observed Host.
@@ -81,6 +85,17 @@ func MergeHostWithOverrides(host *domain.Host, overrides map[string]any) {
 				observed[field] = host.Tags
 			}
 			host.Tags = tags
+		case "triage":
+			t := DecodeTriage(val)
+			if t == nil {
+				continue
+			}
+			host.Triage = t
+			if t.Expired {
+				host.TriageStatus = ""
+			} else {
+				host.TriageStatus = t.Status
+			}
 		}
 	}
 
@@ -153,6 +168,28 @@ func MergeServiceWithOverrides(svc *domain.Service, overrides map[string]any) {
 				observed[field] = svc.Tags
 			}
 			svc.Tags = tags
+		case "triage":
+			t := DecodeTriage(val)
+			if t == nil {
+				continue
+			}
+			svc.Triage = t
+			base := svc.TriageStatus
+			if base == domain.TriageAcceptedRisk || base == domain.TriageFalsePositive {
+				// An observed row can carry a decision copied from an earlier merged read;
+				// never let it outlive the override.
+				base = domain.TriageNew
+			}
+			if base == "" {
+				base = domain.TriageNew
+			}
+			if t.Expired {
+				// Expired acceptance: the finding is active again.
+				svc.TriageStatus = base
+			} else {
+				observed["triage_status"] = base
+				svc.TriageStatus = t.Status
+			}
 		}
 	}
 
@@ -163,6 +200,28 @@ func MergeServiceWithOverrides(svc *domain.Service, overrides map[string]any) {
 	} else {
 		svc.ScannerObserved = nil
 	}
+}
+
+// DecodeTriage converts a decrypted "triage" override value into a TriageInfo and evaluates
+// its expiry against the current time. Returns nil for malformed values.
+func DecodeTriage(v any) *domain.TriageInfo {
+	return decodeTriageAt(v, time.Now())
+}
+
+func decodeTriageAt(v any, now time.Time) *domain.TriageInfo {
+	if v == nil {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var t domain.TriageInfo
+	if err := json.Unmarshal(raw, &t); err != nil || t.Status == "" {
+		return nil
+	}
+	t.Expired = t.ExpiresAt != nil && !now.Before(*t.ExpiresAt)
+	return &t
 }
 
 func toString(v any) string {

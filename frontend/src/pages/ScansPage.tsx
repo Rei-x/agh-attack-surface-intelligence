@@ -31,6 +31,7 @@ import {
   scanStatusMeta,
 } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { TagRulesPanel } from '@/components/TagRulesPanel';
 import { Button } from '@/components/ui/button';
 import { ChunkMatrix } from '@/components/ChunkMatrix';
 import { NmapCommandsPanel } from '@/components/NmapCommandsPanel';
@@ -1201,6 +1202,9 @@ export function ScansPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Ownership by CIDR (tag rules applied on ingest) */}
+          <TagRulesPanel />
 
           {/* Estimator */}
           <Card size="sm">
