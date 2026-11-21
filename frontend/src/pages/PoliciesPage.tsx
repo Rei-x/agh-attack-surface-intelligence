@@ -36,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 const SEV_ORDER = ['critical', 'high', 'medium', 'low'];
 const CUSTOM = 'custom';
+const ROWS_PER_GROUP = 6;
 
 type GroupBy = 'zone' | 'owner';
 
@@ -155,6 +156,7 @@ function ViolationsView({
   const toast = useToast();
   const [groupBy, setGroupBy] = useState<GroupBy>('zone');
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const groups = useMemo(() => {
     const m = new Map<string, { label: string; items: PolicyViolation[] }>();
@@ -166,8 +168,13 @@ function ViolationsView({
       m.set(key, g);
     }
     return [...m.entries()]
-      .map(([key, g]) => ({ key, ...g, open: g.items.filter((v) => v.status === 'open').length }))
-      .sort((a, b) => b.open - a.open || a.label.localeCompare(b.label));
+      .map(([key, g]) => {
+        const openItems = g.items.filter((v) => v.status === 'open');
+        // Worst first: critical, then high, then volume.
+        const weight = openItems.reduce((w, v) => w + ({ critical: 1e6, high: 1e3, medium: 1, low: 0 }[v.severity] ?? 0), 0);
+        return { key, ...g, open: openItems.length, weight };
+      })
+      .sort((a, b) => b.weight - a.weight || a.label.localeCompare(b.label));
   }, [data, groupBy]);
 
   const recheck = async () => {
@@ -280,10 +287,19 @@ function ViolationsView({
                 </CardAction>
               </CardHeader>
               <div className="divide-y divide-border">
-                {g.items.map((v) => (
+                {(expanded[g.key] ? g.items : g.items.slice(0, ROWS_PER_GROUP)).map((v) => (
                   <ViolationRow key={v.id} v={v} categories={categories} showZone={groupBy === 'owner'} showOwner={groupBy === 'zone'} />
                 ))}
               </div>
+              {g.items.length > ROWS_PER_GROUP && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((e) => ({ ...e, [g.key]: !e[g.key] }))}
+                  className="w-full border-t border-border py-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase hover:bg-muted/50 hover:text-foreground"
+                >
+                  {expanded[g.key] ? 'Show fewer' : `Show all ${formatNumber(g.items.length)}`}
+                </button>
+              )}
             </Card>
           ))}
         </div>
@@ -638,7 +654,7 @@ function ZonesEditor({
                     </div>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid items-start gap-4 sm:grid-cols-2">
                     <RuleRow
                       title="TLS required on web"
                       hint="Plain HTTP without a redirect to HTTPS is a violation"

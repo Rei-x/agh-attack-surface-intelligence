@@ -122,6 +122,15 @@ export const policiesApi = {
     call<ViolationsResponse>(`/api/v1/policies/violations?status=${status}`),
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  admin_panel: 'Admin panel',
+  cleartext_admin: 'Cleartext admin',
+  database: 'Exposed database',
+  iot_bmc: 'IoT or BMC',
+  eol: 'End-of-life software',
+  staging: 'Staging or dev',
+};
+
 /** Short label of a rule id ("forbidden:database" -> "Exposed database"). */
 export function ruleLabel(rule: string, categories: PolicyCategoryMeta[] = []): string {
   switch (rule) {
@@ -136,7 +145,7 @@ export function ruleLabel(rule: string, categories: PolicyCategoryMeta[] = []): 
   }
   if (rule.startsWith('forbidden:')) {
     const id = rule.slice('forbidden:'.length);
-    return categories.find((c) => c.id === id)?.label || id;
+    return categories.find((c) => c.id === id)?.label || CATEGORY_LABELS[id] || id;
   }
   return rule;
 }

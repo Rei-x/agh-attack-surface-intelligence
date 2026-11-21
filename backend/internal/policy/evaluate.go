@@ -263,7 +263,7 @@ func categoryEvidence(cat string, s *domain.Service, now time.Time) (string, boo
 		}
 	case domain.PolicyCatIoTBMC:
 		if IsBMC(s) {
-			return fmt.Sprintf("Server BMC on port %d (%s); BMCs belong in the management VLAN", s.Port, techNames(s, "bmc")), true
+			return fmt.Sprintf("%s on port %d; BMCs belong in the management VLAN", techNames(s, "bmc"), s.Port), true
 		}
 		if s.IsIoT {
 			return fmt.Sprintf("Embedded device on port %d (%s)", s.Port, techNames(s, "")), true
@@ -338,6 +338,9 @@ func techNames(s *domain.Service, filter string) string {
 		}
 	}
 	if len(names) == 0 {
+		if filter == "bmc" {
+			return "Server BMC"
+		}
 		return nonEmpty(s.ServiceName, "device")
 	}
 	return strings.Join(names, ", ")

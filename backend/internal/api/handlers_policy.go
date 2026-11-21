@@ -192,6 +192,12 @@ func sortedGroups(m map[string]*violationGroup) []violationGroup {
 		out = append(out, *g)
 	}
 	sort.Slice(out, func(i, j int) bool {
+		// Worst first: critical, then high, then volume.
+		for _, sev := range []string{"critical", "high"} {
+			if out[i].Severity[sev] != out[j].Severity[sev] {
+				return out[i].Severity[sev] > out[j].Severity[sev]
+			}
+		}
 		if out[i].Open != out[j].Open {
 			return out[i].Open > out[j].Open
 		}

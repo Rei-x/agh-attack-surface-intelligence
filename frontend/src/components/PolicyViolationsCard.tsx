@@ -4,6 +4,7 @@ import { RiArrowRightUpLine } from '@remixicon/react';
 import { formatNumber } from '@/lib/format';
 import { policiesApi, policySeverityTone, type ViolationsResponse } from '@/lib/policies';
 import { Pill } from '@/components/common';
+import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const SEV = ['critical', 'high', 'medium', 'low'];
@@ -34,12 +35,9 @@ export function PolicyViolationsCard({ titleClassName }: { titleClassName?: stri
       <CardHeader>
         <CardTitle className={titleClassName}>Policy violations</CardTitle>
         <CardAction>
-          <Link
-            to="/policies"
-            className="inline-flex items-center gap-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase hover:text-foreground"
-          >
-            Policies <RiArrowRightUpLine className="size-3.5" />
-          </Link>
+          <Button variant="link" size="xs" className="px-0" nativeButton={false} render={<Link to="/policies" />}>
+            Policies <RiArrowRightUpLine />
+          </Button>
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-3">
