@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -161,6 +163,17 @@ func TestAgentResultsIdenticalToLocalScan(t *testing.T) {
 	snapB, _ := storeB.GetScanSnapshot(ctx, runB.ID)
 	if len(snapA) != len(snapB) || !reflect.DeepEqual(ipsOf(snapA), ipsOf(snapB)) {
 		t.Fatalf("scan snapshots differ: %v vs %v", ipsOf(snapA), ipsOf(snapB))
+	}
+}
+
+// The unit written by `aegis agent install` and the shipped deploy/aegis-agent.service match.
+func TestSystemdUnitMatchesDeployFile(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "deploy", "aegis-agent.service"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != systemdUnit {
+		t.Fatal("deploy/aegis-agent.service differs from systemdUnit in cmd_agent.go")
 	}
 }
 

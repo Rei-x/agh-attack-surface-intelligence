@@ -191,7 +191,11 @@ func New(cfg Config) (*Agent, error) {
 func (a *Agent) Close() { a.lock.Release() }
 
 // AgentID returns the enrolled agent id ("" before enrollment).
-func (a *Agent) AgentID() string { return a.st.AgentID }
+func (a *Agent) AgentID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.st.AgentID
+}
 
 func (a *Agent) detectCapabilities() domain.AgentCapabilities {
 	host, _ := os.Hostname()
@@ -241,9 +245,11 @@ func (a *Agent) Enroll(ctx context.Context) error {
 		var resp agenthub.EnrollResponse
 		_, err := a.c.do(ctx, 30*time.Second, http.MethodPost, "/api/v1/agent/enroll", req, &resp)
 		if err == nil {
+			a.mu.Lock()
 			a.st.AgentID, a.st.Name, a.st.Site = resp.AgentID, resp.Name, resp.Site
 			a.st.Credential = resp.Credential
 			a.st.EnrolledAt = time.Now().UTC()
+			a.mu.Unlock()
 			a.c.credential = resp.Credential
 			if resp.HeartbeatSec > 0 {
 				a.hbSec = resp.HeartbeatSec

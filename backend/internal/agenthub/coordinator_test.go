@@ -3,6 +3,8 @@ package agenthub
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -415,6 +417,43 @@ func TestUserPauseStopReachAgent(t *testing.T) {
 	resp, _ := f.c.Progress(f.ctx, a, "i", r.ID, ProgressRequest{})
 	if resp.Control != ControlStop {
 		t.Fatalf("progress control after stop: %+v", resp)
+	}
+}
+
+// Agent registry, tokens and jobs survive a restart of the single-binary encrypted file store.
+func TestAgentStateInEncryptedFileSnapshot(t *testing.T) {
+	ctx := context.Background()
+	vault, err := crypto.NewVault("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "aegis-store.enc")
+	fs1, err := db.OpenFileStore(path, vault, db.FileStoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c1 := New(fs1, nil, nil, Options{})
+	tok, _, _ := c1.CreateEnrollToken(ctx, "snapshot-agent", "", time.Hour, "admin")
+	enr, err := c1.Enroll(ctx, EnrollRequest{Token: tok}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs1.Close()
+	raw, _ := os.ReadFile(path)
+	if strings.Contains(string(raw), "snapshot-agent") || strings.Contains(string(raw), enr.AgentID) {
+		t.Fatal("agent state stored in clear text")
+	}
+	fs2, err := db.OpenFileStore(path, vault, db.FileStoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fs2.Close()
+	c2 := New(fs2, nil, nil, Options{})
+	if _, err := c2.Authenticate(ctx, enr.Credential, ""); err != nil {
+		t.Fatalf("credential after reopening the file store: %v", err)
+	}
+	if _, err := c2.Enroll(ctx, EnrollRequest{Token: tok}, ""); err != ErrTokenInvalid {
+		t.Fatalf("used token after reopen: %v", err)
 	}
 }
 
