@@ -715,6 +715,8 @@ func inferServiceName(port int) string {
 		return "ms-sql-s"
 	case 5900:
 		return "vnc"
+	case 8291:
+		return "winbox" // MikroTik Winbox management protocol (binary, no banner)
 	default:
 		return "tcp"
 	}
