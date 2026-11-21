@@ -151,28 +151,31 @@ type TargetExclusion struct {
 }
 
 type ScanProfile struct {
-	ID                    string    `json:"id"`
-	Name                  string    `json:"name"`
-	Description           string    `json:"description"`
-	Targets               []string  `json:"targets"`
-	AllowedPorts          string    `json:"allowed_ports"` // e.g. "22,80,443,8080,8443"
-	MaxRatePPS            int       `json:"max_rate_pps"`
-	HTTPRPS               int       `json:"http_rps"`
-	Concurrency           int       `json:"concurrency"`
-	ChunkTargetSec        int       `json:"chunk_target_sec"`
-	ScheduleCron          string    `json:"schedule_cron"` // optional cron expression
-	WindowEnabled         bool      `json:"window_enabled"`
-	WindowStart           string    `json:"window_start"` // HH:MM e.g. "22:00"
-	WindowEnd             string    `json:"window_end"`   // HH:MM e.g. "06:00"
-	Timezone              string    `json:"timezone"`     // e.g. "Europe/Warsaw"
-	MissingThreshold      int       `json:"missing_threshold"`
-	GracePeriodHours      int       `json:"grace_period_hours"`
-	RetryUnstableCount    int       `json:"retry_unstable_count"`
-	EnableHTTPFingerprint bool      `json:"enable_http_fingerprint"`
-	UserAgent             string    `json:"user_agent"`
-	Enabled               bool      `json:"enabled"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID                    string   `json:"id"`
+	Name                  string   `json:"name"`
+	Description           string   `json:"description"`
+	Targets               []string `json:"targets"`
+	AllowedPorts          string   `json:"allowed_ports"` // e.g. "22,80,443,8080,8443"
+	MaxRatePPS            int      `json:"max_rate_pps"`
+	HTTPRPS               int      `json:"http_rps"`
+	Concurrency           int      `json:"concurrency"`
+	ChunkTargetSec        int      `json:"chunk_target_sec"`
+	ScheduleCron          string   `json:"schedule_cron"` // optional cron expression
+	WindowEnabled         bool     `json:"window_enabled"`
+	WindowStart           string   `json:"window_start"` // HH:MM e.g. "22:00"
+	WindowEnd             string   `json:"window_end"`   // HH:MM e.g. "06:00"
+	Timezone              string   `json:"timezone"`     // e.g. "Europe/Warsaw"
+	MissingThreshold      int      `json:"missing_threshold"`
+	GracePeriodHours      int      `json:"grace_period_hours"`
+	RetryUnstableCount    int      `json:"retry_unstable_count"`
+	EnableHTTPFingerprint bool     `json:"enable_http_fingerprint"`
+	UserAgent             string   `json:"user_agent"`
+	Enabled               bool     `json:"enabled"`
+	// AgentID routes the profile's runs to a remote scanning agent (aegis agent) instead of
+	// the local engine. Empty = scan from this server.
+	AgentID   string    `json:"agent_id,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ScanChunk struct {

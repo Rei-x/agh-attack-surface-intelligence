@@ -85,6 +85,93 @@ publishes the binaries, `checksums.txt` and `install.sh` as a GitHub Release.
 
 ---
 
+## 0a. Zdalni agenci skanujący (`aegis agent`)
+
+Agent to ten sam plik binarny uruchomiony jako lekki demon wewnątrz innego segmentu sieci
+(VLAN innego wydziału, inna uczelnia, sieć za NAT-em). Łączy się **wyłącznie wychodząco** do
+centralnego serwera AegisASI, pobiera zadania skanowania, skanuje lokalnie tym samym silnikiem
+(chunki, limity PPS, okna czasowe, wykluczenia) i odsyła wyniki. Serwer nigdy nie łączy się z
+agentem, agent nie otwiera żadnego portu.
+
+### Architektura
+
+```
+   Segment B (VLAN 120, za NAT)                     Sieć CBI AGH
+  +-------------------------------+               +--------------------------------+
+  |  aegis agent  (systemd,       |  HTTPS 443    |  aegis serve (UI + API)         |
+  |  DynamicUser, bez uprawnień)  | ------------> |  /api/v1/agent/*                |
+  |   - enroll (token 1x)         |  tylko        |   - rejestr agentów, tokeny     |
+  |   - heartbeat co 15 s         |  wychodząco   |   - kolejka zadań (long-poll)   |
+  |   - jobs/next (long-poll 25s) |               |   - ingest.Pipeline (ten sam    |
+  |   - Engine.Execute lokalnie   |               |     co dla skanów lokalnych)    |
+  |   - outbox na dysku (fsync)   |               |   - SSE -> UI (postęp na żywo)  |
+  |   - --allow-cidr (lokalnie)   |               |                                 |
+  +-------------------------------+               +--------------------------------+
+        | nmap -sT / TCP connect
+        v
+   hosty segmentu B
+```
+
+Sekwencja wywołań (JSON, `Authorization: Bearer <poświadczenie agenta>`):
+
+1. `POST /api/v1/agent/enroll` – jednorazowy token -> `agent_id` + poświadczenie (zapisane 0600 w `agent.json`).
+2. `POST /api/v1/agent/heartbeat` co 15 s – wersja, możliwości (nmap, root, allowlista); odpowiedź niesie polecenia `pause`/`stop` dla bieżącego skanu.
+3. `POST /api/v1/agent/jobs/next?wait=25` – long-poll; zwraca profil, wykluczenia i księgę chunków (pusta = nowy skan, inaczej wznowienie od punktu kontrolnego).
+4. `POST /jobs/{id}/start` – agent planuje chunki własnym DNS-em i wysyła księgę.
+5. `POST /jobs/{id}/chunks` – wynik każdego zakończonego chunku (obserwacje); serwer wpuszcza je przez `Pipeline.ProcessObservations` z wykrywaniem zniknięć ograniczonym do IP tego chunku. Idempotentne po `chunk.id`.
+6. `POST /jobs/{id}/progress` co 2 s – liczniki, księga, zdarzenia na żywo (przekazywane do SSE, więc UI działa bez zmian).
+7. `POST /jobs/{id}/finish` – koniec segmentu: `completed` / `paused_window` / `paused_user` / `stopped` / `interrupted` / `failed` / `refused` + scalony surowy XML nmap. Idempotentne po `segment_id`.
+
+### Instalacja
+
+1. W UI: **Skany -> Agenci -> Dodaj agenta** (wymaga `admin:settings`). Token jest pokazany raz, ważny 1–720 h, jednorazowy, przechowywany tylko jako SHA-256.
+2. Na maszynie w segmencie (Linux + systemd, root):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh \
+  | sudo sh -s -- --agent --server https://aegis.cbi.agh.edu.pl --token aet_... \
+      --name wydzial-eaiib --allow-cidr 10.20.0.0/16
+```
+
+`install.sh --agent` instaluje binarkę do `/usr/local/bin`, zapisuje ustawienia do
+`/etc/aegis-agent.env` (0600) i włącza `aegis-agent.service` (plik: `deploy/aegis-agent.service`).
+To samo bez skryptu: `sudo aegis agent install --server ... --token ...`. Ręcznie (dowolny system):
+`aegis agent --server https://... --token aet_... [--data-dir DIR] [--ca-file ca.pem] [--allow-cidr ...]`.
+Kolejne uruchomienia nie potrzebują tokenu. Logi: `journalctl -u aegis-agent -f`.
+
+3. W profilu skanowania wybierz pole **Skanuje: Agent: ...**. Harmonogram, „Uruchom teraz”,
+pauza/wznowienie/stop działają jak dla skanów lokalnych; profil nadal nie może mieć dwóch
+aktywnych przebiegów.
+
+### Wymagania sieciowe
+
+- Agent -> serwer: **tylko wychodzący TCP 443** (HTTPS; obsługiwany `HTTPS_PROXY`). Żadnych portów przychodzących.
+- Agent -> skanowane hosty: jak dla zwykłego skanu (nmap `-sT`, bez roota).
+- Serwer: wystawiony pod HTTPS (reverse proxy / tunel). `ASI_PUBLIC_URL` ustala adres podawany w komendzie instalacji.
+
+### Model bezpieczeństwa
+
+- **Token rejestracyjny**: losowe 256 bitów, jednorazowy, z datą ważności, w bazie tylko SHA-256; można go unieważnić.
+- **Poświadczenie agenta** (`agt.<id>.<sekret>`): losowe 256 bitów, w bazie tylko SHA-256 (porównanie w stałym czasie). Otwiera **wyłącznie** `/api/v1/agent/*`; tokeny użytkowników (JWT) są tam odrzucane (401), a poświadczenie agenta na endpointach użytkowników też daje 401 (test `TestAgentAuthIsolation`). Agent widzi i raportuje tylko swoje zadania; wyłączenie/usunięcie agenta w UI natychmiast blokuje poświadczenie.
+- **TLS**: certyfikat serwera weryfikowany domyślnie; `--ca-file` dla wewnętrznego CA; `--insecure` tylko w laboratorium. Zwykły HTTP jest odrzucany poza adresem lokalnym.
+- **Lokalna allowlista** (`--allow-cidr`): agent odmawia (`refused`, z notatką w skanie) każdego zadania, którego cel lub chunk wychodzi poza dozwolone sieci – przejęty serwer nie zmusi agenta do skanowania dowolnych sieci.
+- **Unit systemd**: `DynamicUser`, `NoNewPrivileges`, `ProtectSystem=strict`, puste `CapabilityBoundingSet` – agent działa bez uprawnień.
+- Stan agentów (rejestr, tokeny, zadania) leży w zaszyfrowanych dokumentach `app_settings` (plik `aegis-store.enc` lub PostgreSQL), jak reszta danych.
+
+### Odporność
+
+- Wyniki każdego chunku trafiają najpierw do `outbox/` (fsync), dopiero potem są wysyłane – utrata sieci lub restart agenta niczego nie gubi; wysyłka z wykładniczym backoffem.
+- Agent milczący dłużej niż `ASI_AGENT_OFFLINE_AFTER` (domyślnie 90 s) jest oznaczany offline, a jego skan przechodzi w `PAUSED_WINDOW` z notatką; po powrocie agent dostaje ten sam skan i wznawia od punktu kontrolnego (chunki DONE są pomijane).
+- Restart serwera nie przerywa skanów agentów (lokalny mechanizm odzyskiwania je pomija).
+
+### Porównanie
+
+- **runZero Explorer / Rapid7 Scan Engine (engine-to-console)**: ten sam wzorzec – lekki skaner w segmencie, tylko połączenie wychodzące do konsoli, rejestracja tokenem.
+- **Tenable Nessus linked scanner / agent**: jak „linking key” – jednorazowy klucz zamieniany na tożsamość skanera, zadania pobierane z centrali.
+- Różnica: jeden plik binarny dla serwera i agenta, wyniki przechodzą przez ten sam potok co skany lokalne i import, plus lokalna allowlista po stronie agenta.
+
+---
+
 ## 1. Prerequisites
 
 - **Docker Engine** 24+ and **Docker Compose v2** (`docker compose version`)
@@ -190,6 +277,8 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 | `ASI_STATIC_DIR` | No | *(embedded UI)*; compose sets `/app/static` | Serve the React SPA from this directory instead of the UI embedded in the binary. |
 | `ASI_LISTEN_ADDR` | No | `:8080` | HTTP bind address (same as `aegis serve --listen`; `PORT` is honoured when unset). |
 | `ASI_PORT` | No | `8080` | Host port mapped to container `:8080`. |
+| `ASI_PUBLIC_URL` | No | *(scheme/host of the admin's request)* | Server URL put into the agent install command (e.g. `https://aegis.cbi.agh.edu.pl`). |
+| `ASI_AGENT_OFFLINE_AFTER` | No | `90s` | Silence after which a remote agent is marked offline and its running scan is parked (resumed when it returns). |
 | `TZ` | No | `Europe/Warsaw` | Default timezone for scan windows and logs. |
 | `ASI_DEFECTDOJO_PRODUCT_TYPE_NAME` / `_PRODUCT_NAME` / `_ENGAGEMENT_NAME` | No | `AegisASI` / `AGH Attack Surface` / `AegisASI continuous discovery` | DefectDojo context names used when no product/engagement is pinned by ID (same levels as the secureCodeBox DefectDojo hook annotations, see `docs/SECURECODEBOX.md`). |
 | `ASI_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | No | `false` | Sends `deduplication_on_engagement=true` when DefectDojo auto-creates the engagement. |

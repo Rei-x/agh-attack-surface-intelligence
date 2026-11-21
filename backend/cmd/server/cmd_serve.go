@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/agenthub"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/api"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/auth"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
@@ -70,8 +71,18 @@ func cmdServe(args []string) error {
 	hub := api.NewSSEHub()
 	pipeline := rt.newPipeline(hub)
 	runner := NewLiveScanRunner(store, pipeline, hub)
+	// Remote scanning agents (aegis agent): runs of agent-bound profiles are queued for the
+	// agent and ingested through the same pipeline when it uploads results.
+	agents := agenthub.New(store, pipeline, hub.Publish, agenthub.Options{
+		OfflineAfter:   envDuration("ASI_AGENT_OFFLINE_AFTER", 90*time.Second),
+		OnRunCompleted: func(runID string) { runner.autoPushDefectDojo(context.Background(), runID) },
+		TrackedHosts:   runner.collectTrackedHostIPs,
+	})
+	runner.isRemoteRun = agents.IsAgentRun
+	agents.StartSweeper(ctx)
+	dispatch := api.NewAgentAwareRunner(runner, agents)
 	runner.StartWindowWatcher(ctx)
-	scheduler.Start(ctx, store, runner) // recurring scans from ScanProfile.ScheduleCron
+	scheduler.Start(ctx, store, dispatch) // recurring scans from ScanProfile.ScheduleCron
 
 	cfg := api.Config{
 		JWTSecret: vault.JWTSecret(os.Getenv("ASI_JWT_SECRET")),
@@ -81,6 +92,7 @@ func cmdServe(args []string) error {
 		// Comma-separated extra origins allowed to call the API cross-origin (default: none,
 		// the bundled UI is same-origin).
 		AllowedOrigin: os.Getenv("ASI_CORS_ORIGINS"),
+		Agents:        agents,
 	}
 	uiSource := "embedded"
 	if cfg.StaticDir != "" {
@@ -92,7 +104,7 @@ func cmdServe(args []string) error {
 			uiSource = "placeholder (binary built without UI - run `make build`)"
 		}
 	}
-	srv := api.NewServer(cfg, store, vault, pipeline, runner, hub)
+	srv := api.NewServer(cfg, store, vault, pipeline, dispatch, hub)
 
 	url := displayURL(ln.Addr(), *listen)
 	if rt.Lock != nil {
@@ -130,6 +142,17 @@ func cmdServe(args []string) error {
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
 	return nil
+}
+
+// envDuration reads a Go duration ("90s", "5m") from the environment.
+func envDuration(key string, def time.Duration) time.Duration {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+		log.Printf("[WARN] ignoring invalid %s=%q (want a duration like 90s)", key, v)
+	}
+	return def
 }
 
 func displayURL(addr net.Addr, listen string) string {

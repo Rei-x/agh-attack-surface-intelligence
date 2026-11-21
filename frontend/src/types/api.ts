@@ -119,9 +119,56 @@ export interface ScanProfile {
   enable_http_fingerprint: boolean;
   user_agent?: string;
   enabled: boolean;
+  /** Remote scanning agent executing this profile ('' = this server). */
+  agent_id?: string;
   created_at?: string;
   updated_at?: string;
   schedule?: ProfileSchedule;
+}
+
+export interface AgentCapabilities {
+  nmap: boolean;
+  nmap_version?: string;
+  privileged: boolean;
+  os?: string;
+  arch?: string;
+  hostname?: string;
+  allow_cidrs?: string[];
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  site: string;
+  version: string;
+  status: 'online' | 'offline' | 'disabled' | string;
+  remote_ip: string;
+  capabilities: AgentCapabilities;
+  current_run_id?: string;
+  last_seen_at?: string;
+  enrolled_at: string;
+  enrolled_by?: string;
+  disabled: boolean;
+}
+
+export interface AgentEnrollToken {
+  id: string;
+  name: string;
+  site: string;
+  prefix: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  used_at?: string;
+  agent_id?: string;
+}
+
+export interface CreatedAgentToken {
+  token: string;
+  enroll_token: AgentEnrollToken;
+  server_url: string;
+  install_command: string;
+  run_command: string;
 }
 
 export interface ScheduleRunRef {

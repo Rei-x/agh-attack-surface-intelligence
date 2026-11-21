@@ -41,6 +41,7 @@ Commands:
   export                    Export the inventory as JSON or CSV
   diff [runA runB]          Compare two scan runs (default: the last two)
   runs                      List recent scan runs
+  agent                     Run a remote scanning agent (outbound HTTPS to a server; 'agent install' = systemd)
   version                   Print version information
 
 Common flags:
@@ -53,6 +54,7 @@ Examples:
   aegis import nmap-results.xml
   aegis export --format csv -o inventory.csv
   aegis diff
+  aegis agent --server https://aegis.example.edu --token aet_... --allow-cidr 10.20.0.0/16
 
 Run 'aegis <command> --help' for details. Data is stored encrypted (AES-256-GCM) in the
 data directory; set DATABASE_URL to use PostgreSQL instead.
@@ -82,6 +84,8 @@ func run(args []string) int {
 		err = cmdDiff(rest)
 	case "runs", "scans":
 		err = cmdRuns(rest)
+	case "agent":
+		err = cmdAgent(rest)
 	case "version", "--version", "-v":
 		printVersion(os.Stdout)
 		return 0

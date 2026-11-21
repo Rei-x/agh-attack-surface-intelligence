@@ -67,6 +67,9 @@ func TestViewerCannotMutateAnything(t *testing.T) {
 		if publicRoutes[pattern] || method == http.MethodGet || path == "" {
 			continue
 		}
+		if strings.HasPrefix(path, "/api/v1/agent/") {
+			continue // agent protocol: user tokens get 401 there (TestAgentAuthIsolation)
+		}
 		switch path { // read-only POSTs (dry runs) the viewer may use
 		case "/api/v1/targets/estimate", "/api/v1/signatures/validate", "/api/v1/signatures/test":
 			continue

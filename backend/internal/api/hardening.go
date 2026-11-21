@@ -25,6 +25,7 @@ var publicRoutes = map[string]bool{
 	"GET /api/v1/health":             true,
 	"GET /api/v1/auth/demo-accounts": true,
 	"POST /api/v1/auth/login":        true,
+	"POST /api/v1/agent/enroll":      true, // authenticated by the one-time enrollment token
 	"/":                              true, // SPA static files
 }
 
@@ -40,6 +41,10 @@ func (s *Server) Routes() []string { return append([]string(nil), s.routes...) }
 func bodyLimitFor(r *http.Request) int64 {
 	switch r.URL.Path {
 	case "/api/v1/ingest/import", "/api/v1/signatures/import":
+		return maxUploadBodyBytes
+	}
+	// Agent result uploads carry chunk observations and a segment's merged nmap XML.
+	if strings.HasPrefix(r.URL.Path, "/api/v1/agent/jobs/") {
 		return maxUploadBodyBytes
 	}
 	return maxJSONBodyBytes
