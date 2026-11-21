@@ -72,10 +72,13 @@ type Analyzer interface {
 	BuiltinSignatures() []domain.Signature
 }
 
-// DefaultAnalyzer provides a clean, working stdlib implementation of Analyzer so
-// backend-core compiles, runs, and passes tests independently before scanner-engine wiring.
+// DefaultAnalyzer is a self-contained, simplified Analyzer (keyword signatures, basic
+// lifecycle and scoring). Production uses cmd/server.IntelligenceAnalyzer, which plugs in
+// the signatures and intelligence packages; DefaultAnalyzer is the nil fallback of
+// NewPipeline and gives package tests an analyzer without import cycles.
 type DefaultAnalyzer struct{}
 
+// NewDefaultAnalyzer returns the fallback Analyzer.
 func NewDefaultAnalyzer() *DefaultAnalyzer {
 	return &DefaultAnalyzer{}
 }

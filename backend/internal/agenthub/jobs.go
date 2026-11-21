@@ -789,7 +789,7 @@ func (c *Coordinator) Finish(ctx context.Context, agentID, instance, runID strin
 		// (or parked by the offline sweep if it does not).
 	case OutcomeFailed, OutcomeRefused:
 		if isActive(run.Status) {
-			msg := req.Error
+			var msg string
 			if req.Outcome == OutcomeRefused {
 				msg = fmt.Sprintf("agent %q odmówił wykonania (lokalna polityka bezpieczeństwa): %s / refused by agent safety policy", agentName, req.Error)
 			} else {
@@ -872,6 +872,7 @@ func (c *Coordinator) Heartbeat(ctx context.Context, agentID, instance string, r
 // ---------------------------------------------------------------------------------------
 // User actions on agent runs (called by the dispatching scan runner)
 
+// Pause marks an agent run paused; a connected agent receives the pause control on its next heartbeat.
 func (c *Coordinator) Pause(ctx context.Context, runID string) error {
 	l := c.runLock(runID)
 	l.Lock()
@@ -903,6 +904,7 @@ func (c *Coordinator) Pause(ctx context.Context, runID string) error {
 	return nil
 }
 
+// Resume re-queues a paused agent run (unfinished chunks back to pending) and wakes its agent.
 func (c *Coordinator) Resume(ctx context.Context, runID string) error {
 	l := c.runLock(runID)
 	l.Lock()
@@ -942,6 +944,7 @@ func (c *Coordinator) Resume(ctx context.Context, runID string) error {
 	return nil
 }
 
+// Stop marks an agent run stopped; a connected agent receives the stop control.
 func (c *Coordinator) Stop(ctx context.Context, runID string) error {
 	l := c.runLock(runID)
 	l.Lock()

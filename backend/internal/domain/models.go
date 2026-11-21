@@ -51,6 +51,7 @@ const (
 	SlotEvening   = "18-24"
 )
 
+// TimeSlotFor returns the 6-hour time-of-day slot (Slot* constants) that t falls into.
 func TimeSlotFor(t time.Time) string {
 	h := t.Hour()
 	switch {
@@ -108,6 +109,7 @@ var AllPermissions = []string{
 	PermAdminAudit,
 }
 
+// Role is an RBAC role with its permission set.
 type Role struct {
 	ID          string    `json:"id"`
 	Slug        string    `json:"slug"`
@@ -118,6 +120,7 @@ type Role struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// User is a UI/API account; PasswordHash is never serialised.
 type User struct {
 	ID           string    `json:"id"`
 	Username     string    `json:"username"`
@@ -131,6 +134,7 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+// Target is an in-scope IP, CIDR, range or domain.
 type Target struct {
 	ID        string    `json:"id"`
 	Value     string    `json:"value"` // IP, CIDR, range, or domain
@@ -142,6 +146,7 @@ type Target struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// TargetExclusion is an IP, CIDR or range that must never be scanned.
 type TargetExclusion struct {
 	ID        string    `json:"id"`
 	Value     string    `json:"value"`
@@ -150,6 +155,7 @@ type TargetExclusion struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ScanProfile is a reusable scan configuration: targets, ports, rate limits, schedule and time window.
 type ScanProfile struct {
 	ID                    string   `json:"id"`
 	Name                  string   `json:"name"`
@@ -178,6 +184,7 @@ type ScanProfile struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// ScanChunk is one slice of a scan run's targets, executed and checkpointed independently.
 type ScanChunk struct {
 	ID          string     `json:"id"`
 	ScanRunID   string     `json:"scan_run_id"`
@@ -214,6 +221,7 @@ type ScheduleState struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
+// ScanRun is one execution of a scan profile (or an import) with its progress and coverage.
 type ScanRun struct {
 	ID                string      `json:"id"`
 	ProfileID         string      `json:"profile_id,omitempty"`
@@ -240,12 +248,15 @@ type ScanRun struct {
 	Chunks            []ScanChunk `json:"chunks,omitempty"`
 }
 
-// Fingerprinting & Evidence structures.
+// Fingerprinting & evidence structures.
+
+// RedirectHop is one step of an HTTP redirect chain followed during fingerprinting.
 type RedirectHop struct {
 	URL        string `json:"url"`
 	StatusCode int    `json:"status_code"`
 }
 
+// CookieInfo describes a cookie set by an HTTP response (name and security flags).
 type CookieInfo struct {
 	Name     string   `json:"name"`
 	Value    string   `json:"value,omitempty"` // encrypted at rest
@@ -257,6 +268,7 @@ type CookieInfo struct {
 	Flags    []string `json:"flags,omitempty"` // e.g. "missing_httponly", "missing_secure"
 }
 
+// TLSInfo holds the certificate and negotiated TLS parameters of an endpoint.
 type TLSInfo struct {
 	Version      string    `json:"version"`
 	CipherSuite  string    `json:"cipher_suite,omitempty"`
@@ -272,6 +284,7 @@ type TLSInfo struct {
 	JARM         string    `json:"jarm,omitempty"` // 62-char JARM TLS server fingerprint (Salesforce algorithm)
 }
 
+// SafePathHit is the result of requesting one well-known, non-intrusive path.
 type SafePathHit struct {
 	Path       string `json:"path"`
 	StatusCode int    `json:"status_code"`
@@ -283,6 +296,7 @@ type SafePathHit struct {
 	AuthChallenge string `json:"auth_challenge,omitempty"`
 }
 
+// HTTPFingerprint is everything collected from one HTTP(S) endpoint during fingerprinting.
 type HTTPFingerprint struct {
 	URL                string            `json:"url"`
 	Scheme             string            `json:"scheme"`
@@ -309,12 +323,14 @@ type HTTPFingerprint struct {
 	ResponseTimeMs int64 `json:"response_time_ms"`
 }
 
+// TechEvidence is one piece of evidence for a detected technology and its weight.
 type TechEvidence struct {
 	SignalType string  `json:"signal_type"` // header, cookie, favicon, html, path, tls, banner, signature
 	Detail     string  `json:"detail"`
 	Weight     float64 `json:"weight"`
 }
 
+// DetectedTechnology is a technology identified on a service with its fused confidence.
 type DetectedTechnology struct {
 	Name       string         `json:"name"`
 	Category   string         `json:"category"` // cms, framework, server, iot, admin_panel, staging, custom
@@ -326,11 +342,13 @@ type DetectedTechnology struct {
 	Explanation string `json:"explanation,omitempty"`
 }
 
+// InterestingnessFactor is one reason contributing points to an interestingness score.
 type InterestingnessFactor struct {
 	Reason string `json:"reason"`
 	Points int    `json:"points"`
 }
 
+// TimeSlotStat counts how often a host was seen in one time-of-day slot.
 type TimeSlotStat struct {
 	Slot  string  `json:"slot"` // 00-06, 06-12, 12-18, 18-24
 	Seen  int     `json:"seen"`
@@ -359,6 +377,7 @@ type LivenessEstimate struct {
 	Model        string  `json:"model"`
 }
 
+// Host is an inventoried IP address with its lifecycle state and history.
 type Host struct {
 	ID                 string                  `json:"id"`
 	IP                 string                  `json:"ip"`
@@ -391,6 +410,7 @@ type Host struct {
 	Triage       *TriageInfo `json:"triage,omitempty"`
 }
 
+// Service is an open port on a host with its identified product, version and fingerprints.
 type Service struct {
 	ID                 string                  `json:"id"`
 	HostID             string                  `json:"host_id"`
@@ -424,7 +444,7 @@ type Service struct {
 	LastSeen           time.Time               `json:"last_seen"`
 }
 
-// Raw observation emitted by scanner OR unified importer before diff/merge.
+// ObservedService is a raw observation emitted by the scanner or an importer before diff/merge.
 type ObservedService struct {
 	Port        int              `json:"port"`
 	Protocol    string           `json:"protocol"`
@@ -439,6 +459,7 @@ type ObservedService struct {
 	Notes       string           `json:"notes,omitempty"`
 }
 
+// ObservedHost is a raw host observation (with its services) before diff/merge.
 type ObservedHost struct {
 	IP          string            `json:"ip"`
 	Hostname    string            `json:"hostname,omitempty"`
@@ -452,6 +473,7 @@ type ObservedHost struct {
 	Services    []ObservedService `json:"services"`
 }
 
+// ChangeEvent records a difference between two scans (new host, port closed, version changed...).
 type ChangeEvent struct {
 	ID                 string         `json:"id"`
 	ScanRunID          string         `json:"scan_run_id"`
@@ -473,7 +495,7 @@ type ChangeEvent struct {
 	CreatedAt          time.Time      `json:"created_at"`
 }
 
-// Custom detection signature.
+// SignatureMatcher is one matching rule of a detection signature.
 type SignatureMatcher struct {
 	Type         string `json:"type"` // header, cookie, favicon_mmh3, favicon_sha256, html_body, footer_version, safe_path, tls_cert, jarm, banner, port
 	Key          string `json:"key,omitempty"`
@@ -483,6 +505,7 @@ type SignatureMatcher struct {
 	VersionGroup int    `json:"version_group,omitempty"`
 }
 
+// Signature is a built-in or custom technology detection rule.
 type Signature struct {
 	ID               string             `json:"id"`
 	Name             string             `json:"name"`
@@ -500,6 +523,7 @@ type Signature struct {
 	UpdatedAt        time.Time          `json:"updated_at"`
 }
 
+// AuditLog is one entry of the security audit trail.
 type AuditLog struct {
 	ID         string         `json:"id"`
 	UserID     string         `json:"user_id,omitempty"`
@@ -514,6 +538,7 @@ type AuditLog struct {
 	CreatedAt  time.Time      `json:"created_at"`
 }
 
+// DefectDojoConfig holds the DefectDojo integration settings.
 type DefectDojoConfig struct {
 	URL          string `json:"url"`
 	APIToken     string `json:"api_token,omitempty"`
@@ -524,6 +549,7 @@ type DefectDojoConfig struct {
 	AutoPushNmap bool   `json:"auto_push_nmap"`
 }
 
+// DefectDojoExport records one push of results to DefectDojo.
 type DefectDojoExport struct {
 	ID           string    `json:"id"`
 	ExportType   string    `json:"export_type"` // nmap_xml, finding
@@ -537,7 +563,7 @@ type DefectDojoExport struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// Live event pushed over SSE.
+// LiveEvent is an event pushed to the UI over SSE.
 type LiveEvent struct {
 	Type      string         `json:"type"`
 	ScanRunID string         `json:"scan_run_id,omitempty"`
@@ -569,7 +595,9 @@ type ServiceCluster struct {
 	SampleTechs []string `json:"sample_techs"`
 }
 
-// Graph structures for Interactive Attack Surface Graph.
+// Graph structures for the interactive attack surface graph.
+
+// GraphNode is a node (scope, host, service, technology, signature) of the attack surface graph.
 type GraphNode struct {
 	ID              string         `json:"id"`
 	Kind            string         `json:"kind"` // scope, host, service, technology, signature
@@ -579,6 +607,7 @@ type GraphNode struct {
 	Meta            map[string]any `json:"meta,omitempty"`
 }
 
+// GraphEdge connects two nodes of the attack surface graph.
 type GraphEdge struct {
 	ID     string `json:"id"`
 	Source string `json:"source"`

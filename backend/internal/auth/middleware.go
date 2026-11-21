@@ -36,6 +36,7 @@ type Middleware struct {
 	IsNotFound func(error) bool
 }
 
+// NewMiddleware returns the JWT authentication middleware.
 func NewMiddleware(secret []byte, users UserLoader, audit AuditLogger) *Middleware {
 	return &Middleware{
 		secret: secret,

@@ -23,6 +23,7 @@ type Client struct {
 	timeout time.Duration
 }
 
+// NewClient returns a DefectDojo API v2 client with a 30 s request timeout.
 func NewClient() *Client {
 	return &Client{timeout: 30 * time.Second}
 }
