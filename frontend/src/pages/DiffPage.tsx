@@ -10,6 +10,7 @@ import {
   RiSendPlaneLine,
   RiTimeLine,
 } from '@remixicon/react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -216,9 +217,11 @@ export function DiffPage() {
   const { can } = useAuth();
   const toast = useToast();
 
+  const [searchParams] = useSearchParams();
   const [scans, setScans] = useState<ScanRun[]>([]);
-  const [fromId, setFromId] = useState('');
-  const [toId, setToId] = useState('');
+  // Deep link from the dashboard: /diff?from=<scan>&to=<scan>
+  const [fromId, setFromId] = useState(searchParams.get('from') || '');
+  const [toId, setToId] = useState(searchParams.get('to') || '');
   const [diff, setDiff] = useState<ScanDiffResponse | null>(null);
   const [allChanges, setAllChanges] = useState<ChangeEvent[]>([]);
   const [anomalyOnly, setAnomalyOnly] = useState(false);
@@ -245,11 +248,14 @@ export function DiffPage() {
         ]);
         setScans(scanList);
         setAllChanges(changeList);
-        if (!fromId && !toId) {
-          const pair = defaultPair(scanList);
+        if (!fromId || !toId) {
+          // Fill whatever the URL did not pin: B defaults to the latest completed run, A to the
+          // previous completed run of the same profile.
+          const ordered = toId ? [...scanList.filter((x) => x.id === toId), ...scanList.filter((x) => x.id !== toId)] : scanList;
+          const pair = defaultPair(ordered);
           if (pair) {
-            setFromId(pair[0]);
-            setToId(pair[1]);
+            if (!fromId) setFromId(pair[0]);
+            if (!toId) setToId(pair[1]);
           }
         }
       } catch (err) {

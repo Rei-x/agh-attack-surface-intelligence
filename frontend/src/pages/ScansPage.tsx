@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   RiAddLine,
   RiArrowDownSLine,
@@ -445,6 +446,21 @@ export function ScansPage() {
       }
     }
   };
+
+  // Deep link from the dashboard: /scans?scan=<id> opens that run expanded.
+  const [searchParams] = useSearchParams();
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    const id = searchParams.get('scan');
+    if (!id || deepLinked.current || scans.length === 0) return;
+    deepLinked.current = true;
+    setActiveTab('runs');
+    setExpandedScanId(id);
+    api
+      .getScan(id)
+      .then(setScanDetail)
+      .catch(() => undefined);
+  }, [searchParams, scans.length]);
 
   const handleToggleScanDetail = async (scanId: string) => {
     if (expandedScanId === scanId) {
