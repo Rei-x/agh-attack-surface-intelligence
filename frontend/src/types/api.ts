@@ -306,6 +306,8 @@ export interface HTTPFingerprint {
   body_snippet?: string;
   safe_path_hits?: SafePathHit[];
   response_time_ms?: number;
+  median_response_ms?: number;
+  response_samples?: number;
 }
 
 export interface TechEvidence {

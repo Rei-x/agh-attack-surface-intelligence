@@ -360,6 +360,11 @@ type HTTPFingerprint struct {
 	// that soft-404 baseline are dropped, so they can't fake WordPress/phpMyAdmin/... detections.
 	CatchAll       bool  `json:"catch_all,omitempty"`
 	ResponseTimeMs int64 `json:"response_time_ms"`
+	// MedianResponseMs is the median duration over the root request and every safe-path
+	// request (ResponseSamples in total); steadier than the single cold root request, so the
+	// diff uses it to report latency changes (e.g. a proxy adding 500 ms).
+	MedianResponseMs int64 `json:"median_response_ms,omitempty"`
+	ResponseSamples  int   `json:"response_samples,omitempty"`
 }
 
 // TechEvidence is one piece of evidence for a detected technology and its weight.

@@ -341,7 +341,13 @@ func (f *Fingerprinter) probeWithScheme(ctx context.Context, scheme, ip string, 
 	if opts.ProbeSafePaths && len(opts.SafePaths) > 0 {
 		po := opts
 		po.SafePaths = append(append([]string(nil), opts.SafePaths...), followupPaths(fp, opts.SafePaths)...)
-		fp.SafePathHits, fp.CatchAll = f.probeSafePaths(ctx, client, rootURL, ip, po)
+		var times []int64
+		fp.SafePathHits, fp.CatchAll, times = f.probeSafePaths(ctx, client, rootURL, ip, po)
+		fp.ResponseSamples = len(times) + 1
+		fp.MedianResponseMs = medianMs(append(times, elapsedMs))
+	} else {
+		fp.ResponseSamples = 1
+		fp.MedianResponseMs = elapsedMs
 	}
 
 	return fp, nil
@@ -469,12 +475,25 @@ func normalizePathResponse(status int, location, body, probedPath string) pathRe
 	}
 }
 
-func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client, rootURL, ip string, opts Options) ([]domain.SafePathHit, bool) {
+// medianMs returns the median of the samples (upper median for an even count).
+func medianMs(samples []int64) int64 {
+	if len(samples) == 0 {
+		return 0
+	}
+	s := append([]int64(nil), samples...)
+	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+	return s[len(s)/2]
+}
+
+// probeSafePaths also returns the duration of every completed request (rate-limit waits
+// excluded), the samples for the service's median response time.
+func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client, rootURL, ip string, opts Options) ([]domain.SafePathHit, bool, []int64) {
 	// Do not follow redirects automatically for safe path checks so we observe 301/302/401/403/200 cleanly.
 	noRedirectClient := *client
 	noRedirectClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
+	var times []int64
 
 	fetch := func(p string) (pathResponse, string, http.Header, bool) {
 		if opts.RateLimiter != nil {
@@ -487,6 +506,7 @@ func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client,
 			return pathResponse{}, "", nil, false
 		}
 		req.Header.Set("User-Agent", opts.UserAgent)
+		t0 := time.Now()
 		resp, err := noRedirectClient.Do(req)
 		if err != nil || resp == nil {
 			if opts.OnThrottle != nil && isNetworkThrottleErr(err) {
@@ -499,6 +519,7 @@ func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client,
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
 		resp.Body.Close()
+		times = append(times, time.Since(t0).Milliseconds())
 		bodyStr := string(body)
 		return normalizePathResponse(resp.StatusCode, resp.Header.Get("Location"), bodyStr, p), bodyStr, resp.Header, true
 	}
@@ -550,7 +571,7 @@ func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client,
 		}
 		hits = append(hits, hit)
 	}
-	return hits, catchAll
+	return hits, catchAll, times
 }
 
 func isInterestingPathStatus(code int) bool {

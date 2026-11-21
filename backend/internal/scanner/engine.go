@@ -181,6 +181,9 @@ func (e *Engine) fingerprintStage(
 		scheme   string
 	}
 
+	var probeMu sync.Mutex
+	e.protocolProbeStage(ctx, activeIPs, svcMap, guessed, gov, &probeMu, false)
+
 	var jobs []fpJob
 	for _, ip := range activeIPs {
 		svcs := svcMap[ip]
@@ -189,7 +192,9 @@ func (e *Engine) fingerprintStage(
 			dom = ds[0]
 		}
 		for idx, s := range svcs {
-			if !isHTTPServiceCandidate(s) {
+			// Services nmap could only name from its port table (3001 "nessus") or not at all
+			// ("tcpwrapped") get a speculative HTTP probe too: web apps on unusual ports.
+			if !isHTTPServiceCandidate(s) && !(isUnidentified(s, guessed[ip+":"+strconv.Itoa(s.Port)]) && s.Banner == "") {
 				continue
 			}
 			scheme := ""
@@ -207,6 +212,8 @@ func (e *Engine) fingerprintStage(
 		}
 	}
 	if len(jobs) == 0 {
+		e.protocolProbeStage(ctx, activeIPs, svcMap, guessed, gov, &probeMu, true)
+		e.captureScreenshots(ctx, activeIPs, svcMap, profile, gov, st, &probeMu)
 		return
 	}
 	st.httpServices.Add(int64(len(jobs)))
@@ -278,9 +285,11 @@ func (e *Engine) fingerprintStage(
 				if err == nil && fp != nil {
 					gov.RecordSuccess(job.ip)
 					mu.Lock()
-					svcMap[job.ip][job.svcIndex].HTTP = fp
-					if svcMap[job.ip][job.svcIndex].ServiceName == "" || svcMap[job.ip][job.svcIndex].ServiceName == "unknown" {
-						svcMap[job.ip][job.svcIndex].ServiceName = fp.Scheme
+					svc := &svcMap[job.ip][job.svcIndex]
+					svc.HTTP = fp
+					// A real HTTP answer beats nmap's port-table guess or "tcpwrapped".
+					if isUnidentified(*svc, speculative) && fp.Scheme != "" {
+						svc.ServiceName = fp.Scheme
 					}
 					mu.Unlock()
 				}
@@ -288,6 +297,7 @@ func (e *Engine) fingerprintStage(
 		}()
 	}
 	wg.Wait()
+	e.protocolProbeStage(ctx, activeIPs, svcMap, guessed, gov, &mu, true)
 	e.captureScreenshots(ctx, activeIPs, svcMap, profile, gov, st, &mu)
 }
 

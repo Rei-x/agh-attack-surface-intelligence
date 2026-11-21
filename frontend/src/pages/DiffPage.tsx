@@ -51,6 +51,8 @@ const EVENT_LABEL: Record<string, string> = {
   ADMIN_PANEL_EXPOSED: 'Admin panel',
   SERVICE_CHANGED: 'Service changed',
   SERVICE_CLOSED: 'Service closed',
+  SERVICE_REOPENED: 'Service back',
+  RESPONSE_TIME_CHANGED: 'Response time',
   OUTDATED_VERSION: 'End of life',
   POLICY_VIOLATION: 'Policy violation',
   POLICY_RESOLVED: 'Policy resolved',

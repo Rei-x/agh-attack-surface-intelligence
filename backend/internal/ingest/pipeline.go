@@ -447,6 +447,26 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 					},
 				})
 			} else {
+				// A port that was seen closed (or filtered) earlier and answers again.
+				if prevSvc.State != "" && prevSvc.State != "open" && state == "open" {
+					recordChange(domain.ChangeEvent{
+						HostID:    savedHost.ID,
+						HostIP:    ip,
+						ServiceID: savedSvc.ID,
+						Port:      osvc.Port,
+						EventType: "SERVICE_REOPENED",
+						Severity:  "medium",
+						Summary:   fmt.Sprintf("Service %d/%s (%s) is open again on %s (was %s)", osvc.Port, proto, svcModel.ServiceName, ip, prevSvc.State),
+						TimeSlot:  domain.TimeSlotFor(obsAt),
+						Before:    map[string]any{"state": prevSvc.State},
+						After:     map[string]any{"state": "open", "service": svcModel.ServiceName, "product": product, "version": version},
+					})
+				}
+				if ev, ok := responseTimeEvent(&prevSvc, svcModel); ok {
+					ev.HostID, ev.HostIP, ev.ServiceID, ev.Port, ev.TimeSlot = savedHost.ID, ip, savedSvc.ID, osvc.Port, domain.TimeSlotFor(obsAt)
+					ev.Summary = fmt.Sprintf("Response time on %s:%d %s", ip, osvc.Port, ev.Summary)
+					recordChange(ev)
+				}
 				diffBefore, diffAfter, diffSummary, sev := diffService(&prevSvc, svcModel)
 				if len(diffAfter) > 0 {
 					recordChange(domain.ChangeEvent{
@@ -734,6 +754,69 @@ func diffService(prev, curr *domain.Service) (map[string]any, map[string]any, st
 		}
 	}
 	return before, after, strings.Join(parts, ", "), sev
+}
+
+// Response time change thresholds: a change is reported when the new median is at least
+// ResponseTimeFactor times the old one (or a third of it) and differs by ResponseTimeMinDeltaMs.
+const (
+	ResponseTimeFactor     = 3
+	ResponseTimeMinDeltaMs = 200
+)
+
+// ServiceResponseMs is the response time used for change detection: the median over the
+// fingerprint requests, or the single root request for older observations.
+func ServiceResponseMs(fp *domain.HTTPFingerprint) int64 {
+	if fp == nil {
+		return 0
+	}
+	if fp.MedianResponseMs > 0 {
+		return fp.MedianResponseMs
+	}
+	return fp.ResponseTimeMs
+}
+
+// ResponseTimeJump reports whether a response time moved from before to after by at least
+// ResponseTimeFactor and ResponseTimeMinDeltaMs (slower) or the reverse (faster).
+func ResponseTimeJump(before, after int64) (slower, faster bool) {
+	if before <= 0 {
+		before = 1
+	}
+	if after <= 0 {
+		after = 1
+	}
+	slower = after >= before*ResponseTimeFactor && after-before >= ResponseTimeMinDeltaMs
+	faster = before >= after*ResponseTimeFactor && before-after >= ResponseTimeMinDeltaMs
+	return slower, faster
+}
+
+// responseTimeEvent reports a big jump of a service's HTTP response time between two scans
+// (summary is filled in by the caller with the endpoint prefix).
+func responseTimeEvent(prev, curr *domain.Service) (domain.ChangeEvent, bool) {
+	before, after := ServiceResponseMs(prev.HTTP), ServiceResponseMs(curr.HTTP)
+	if prev.HTTP == nil || curr.HTTP == nil || before < 0 || after < 0 {
+		return domain.ChangeEvent{}, false
+	}
+	if before == 0 {
+		before = 1
+	}
+	if after == 0 {
+		after = 1
+	}
+	slower, faster := ResponseTimeJump(before, after)
+	if !slower && !faster {
+		return domain.ChangeEvent{}, false
+	}
+	sev, word := "medium", "slower"
+	if faster {
+		sev, word = "low", "faster"
+	}
+	return domain.ChangeEvent{
+		EventType: "RESPONSE_TIME_CHANGED",
+		Severity:  sev,
+		Summary:   fmt.Sprintf("%d ms -> %d ms (%s; median of %d requests)", before, after, word, max(curr.HTTP.ResponseSamples, 1)),
+		Before:    map[string]any{"response_time_ms": before},
+		After:     map[string]any{"response_time_ms": after},
+	}, true
 }
 
 func inferServiceName(port int) string {

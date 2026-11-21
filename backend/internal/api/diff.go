@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 )
 
 // ChangedServiceDiff describes a before/after diff for a service between two scans.
@@ -93,6 +94,10 @@ func ComputeScanDiff(fromID, toID string, fromHosts, toHosts []domain.Host, toCh
 				resp.ClosedServices = append(resp.ClosedServices, ts)
 				continue
 			}
+			if ts.State == "open" && fs.State != "" && fs.State != "open" {
+				resp.NewServices = append(resp.NewServices, ts) // reopened
+				continue
+			}
 			before := map[string]any{}
 			after := map[string]any{}
 			if fs.Product != ts.Product {
@@ -121,6 +126,13 @@ func ComputeScanDiff(fromID, toID string, fromHosts, toHosts []domain.Host, toCh
 			if fsTitle != tsTitle {
 				before["http_title"] = fsTitle
 				after["http_title"] = tsTitle
+			}
+			if fs.HTTP != nil && ts.HTTP != nil {
+				b, a := ingest.ServiceResponseMs(fs.HTTP), ingest.ServiceResponseMs(ts.HTTP)
+				if slower, faster := ingest.ResponseTimeJump(b, a); slower || faster {
+					before["response_time_ms"] = b
+					after["response_time_ms"] = a
+				}
 			}
 			if len(after) > 0 {
 				resp.ChangedServices = append(resp.ChangedServices, ChangedServiceDiff{

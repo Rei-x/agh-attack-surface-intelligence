@@ -741,7 +741,7 @@ func changeCategory(t string) string {
 		return "new_host"
 	case "HOST_MISSING", "HOST_INACTIVE":
 		return "gone_host"
-	case "NEW_SERVICE", "ADMIN_PANEL_EXPOSED":
+	case "NEW_SERVICE", "ADMIN_PANEL_EXPOSED", "SERVICE_REOPENED":
 		return "new_service"
 	case "SERVICE_CLOSED":
 		return "closed_service"
@@ -803,6 +803,8 @@ func printScanReport(w io.Writer, rep *scanReport) {
 		fmt.Fprintln(w)
 	}
 
+	printResponseTimes(w, rep.Hosts)
+
 	c := rep.Changes
 	if c.PreviousRunID == "" {
 		fmt.Fprintln(w, "CHANGES: first scan in this store - baseline recorded.")
@@ -822,4 +824,41 @@ func printScanReport(w io.Writer, rep *scanReport) {
 		}
 	}
 	fmt.Fprintf(w, "\nResults saved. View them with `dzieciol serve`, compare with `dzieciol diff`, export with `dzieciol export`.\n")
+}
+
+// printResponseTimes lists the HTTP response time of every web service (median over the
+// fingerprint requests), so injected latency is visible right in the terminal.
+func printResponseTimes(w io.Writer, hosts []domain.Host) {
+	type row struct {
+		ip                 string
+		port, samples      int
+		median, first      int64
+		title, serviceName string
+	}
+	var rows []row
+	for _, h := range hosts {
+		for _, s := range h.Services {
+			if s.HTTP == nil || s.State != "open" {
+				continue
+			}
+			rows = append(rows, row{h.IP, s.Port, s.HTTP.ResponseSamples, ingest.ServiceResponseMs(s.HTTP), s.HTTP.ResponseTimeMs, s.HTTP.Title, s.ServiceName})
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].ip != rows[j].ip {
+			return ipLess(rows[i].ip, rows[j].ip)
+		}
+		return rows[i].port < rows[j].port
+	})
+	fmt.Fprintln(w, "HTTP RESPONSE TIMES (median over the fingerprint requests)")
+	tw := newTable(w)
+	fmt.Fprintln(tw, "  ENDPOINT\tMEDIAN\tFIRST\tSAMPLES\tTITLE")
+	for _, r := range rows {
+		fmt.Fprintf(tw, "  %s:%d\t%d ms\t%d ms\t%d\t%s\n", r.ip, r.port, r.median, r.first, max(r.samples, 1), truncate(dash(r.title), 50))
+	}
+	tw.Flush()
+	fmt.Fprintln(w)
 }

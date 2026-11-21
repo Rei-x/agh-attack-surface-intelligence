@@ -38,13 +38,14 @@ var exposureByService = map[string]exposureRisk{
 	"postgresql":    {"PostgreSQL database port exposed", 25},
 	"oracle":        {"Oracle database listener exposed", 25},
 	"ssh":           {"SSH remote access exposed", 5},
+	"amqp":          {"AMQP message broker port exposed", 15},
 }
 
 var exposurePorts = map[int]string{
 	21: "ftp", 23: "telnet", 512: "exec", 513: "login", 514: "shell", 161: "snmp",
 	2375: "docker", 6379: "redis", 11211: "memcache", 9200: "elasticsearch", 27017: "mongodb",
 	139: "smb", 445: "smb", 3389: "rdp", 1433: "mssql", 3306: "mysql", 5432: "postgresql",
-	1521: "oracle", 22: "ssh", 5900: "vnc", 5901: "vnc", 5902: "vnc",
+	1521: "oracle", 5672: "amqp", 22: "ssh", 5900: "vnc", 5901: "vnc", 5902: "vnc",
 }
 
 var exposureServiceNames = map[string]string{
@@ -53,6 +54,7 @@ var exposureServiceNames = map[string]string{
 	"memcached": "memcache", "mongodb": "mongodb", "mongod": "mongodb", "microsoft-ds": "smb",
 	"netbios-ssn": "smb", "ms-wbt-server": "rdp", "ms-sql-s": "mssql", "mysql": "mysql",
 	"postgresql": "postgresql", "oracle-tns": "oracle", "ssh": "ssh", "docker": "docker",
+	"amqp": "amqp",
 }
 
 // classifyExposure returns the exposure risk of a service (service name wins over port so
@@ -76,6 +78,12 @@ func classifyExposure(svc *domain.Service) (exposureRisk, bool) {
 	case "ftp":
 		if strings.Contains(banner, "anonymous") {
 			r = exposureRisk{"FTP with anonymous login (cleartext)", 40}
+		}
+	case "redis":
+		if strings.Contains(banner, "redis: no authentication") {
+			r = exposureRisk{"Redis without authentication (anyone can read and write its data)", 40}
+		} else if strings.Contains(banner, "redis: authentication required") {
+			r = exposureRisk{"Redis exposed (password protected)", 15}
 		}
 	case "snmp":
 		if strings.Contains(banner, "public") {
