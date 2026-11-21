@@ -9,19 +9,80 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/signatures"
 )
 
-var highRiskPorts = map[int]string{
-	21:    "FTP exposed",
-	23:    "Telnet unencrypted management port exposed",
-	445:   "SMB port 445 exposed",
-	1433:  "MSSQL database port exposed",
-	2375:  "Unencrypted Docker API port 2375 exposed",
-	3306:  "MySQL database port exposed",
-	3389:  "RDP remote desktop exposed",
-	5432:  "PostgreSQL database port exposed",
-	5900:  "VNC remote desktop exposed",
-	6379:  "Redis database port exposed",
-	9200:  "Elasticsearch API port exposed",
-	27017: "MongoDB database port exposed",
+// exposureRisk is the base score of a network exposure by protocol. Cleartext remote
+// administration (telnet, r-services, FTP logins, VNC without auth) is scored as high as an
+// exposed admin panel: credentials cross the network unencrypted and these are the first
+// things an attacker tries. Databases and unauthenticated-by-default APIs follow.
+type exposureRisk struct {
+	reason string
+	points int
+}
+
+var exposureByService = map[string]exposureRisk{
+	"telnet":        {"Telnet: cleartext remote administration (credentials sent unencrypted)", 45},
+	"exec":          {"rexec: cleartext remote command execution", 45},
+	"login":         {"rlogin: cleartext remote login (host-based trust)", 45},
+	"shell":         {"rsh: cleartext remote shell (host-based trust)", 45},
+	"ftp":           {"FTP: cleartext login and file transfer", 35},
+	"vnc":           {"VNC remote desktop exposed", 30},
+	"snmp":          {"SNMP management protocol exposed (cleartext community string)", 25},
+	"docker":        {"Docker API exposed (unauthenticated by default = root on the host)", 45},
+	"redis":         {"Redis exposed (no authentication by default)", 30},
+	"memcache":      {"Memcached exposed (no authentication)", 30},
+	"elasticsearch": {"Elasticsearch API exposed (no authentication by default)", 30},
+	"mongodb":       {"MongoDB exposed (no authentication by default)", 30},
+	"smb":           {"SMB file sharing exposed", 30},
+	"rdp":           {"RDP remote desktop exposed", 25},
+	"mssql":         {"MSSQL database port exposed", 25},
+	"mysql":         {"MySQL database port exposed", 25},
+	"postgresql":    {"PostgreSQL database port exposed", 25},
+	"oracle":        {"Oracle database listener exposed", 25},
+	"ssh":           {"SSH remote access exposed", 5},
+}
+
+var exposurePorts = map[int]string{
+	21: "ftp", 23: "telnet", 512: "exec", 513: "login", 514: "shell", 161: "snmp",
+	2375: "docker", 6379: "redis", 11211: "memcache", 9200: "elasticsearch", 27017: "mongodb",
+	139: "smb", 445: "smb", 3389: "rdp", 1433: "mssql", 3306: "mysql", 5432: "postgresql",
+	1521: "oracle", 22: "ssh", 5900: "vnc", 5901: "vnc", 5902: "vnc",
+}
+
+var exposureServiceNames = map[string]string{
+	"telnet": "telnet", "ftp": "ftp", "exec": "exec", "login": "login", "shell": "shell",
+	"vnc": "vnc", "rfb": "vnc", "snmp": "snmp", "redis": "redis", "memcache": "memcache",
+	"memcached": "memcache", "mongodb": "mongodb", "mongod": "mongodb", "microsoft-ds": "smb",
+	"netbios-ssn": "smb", "ms-wbt-server": "rdp", "ms-sql-s": "mssql", "mysql": "mysql",
+	"postgresql": "postgresql", "oracle-tns": "oracle", "ssh": "ssh", "docker": "docker",
+}
+
+// classifyExposure returns the exposure risk of a service (service name wins over port so
+// telnet on 2323 is still telnet and HTTP on port 23 is not).
+func classifyExposure(svc *domain.Service) (exposureRisk, bool) {
+	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(svc.ServiceName)), "?")
+	key, ok := exposureServiceNames[name]
+	if !ok && (name == "" || name == "tcp" || name == "udp" || name == "unknown") {
+		key, ok = exposurePorts[svc.Port]
+	}
+	if !ok {
+		return exposureRisk{}, false
+	}
+	r := exposureByService[key]
+	banner := strings.ToLower(svc.Banner)
+	switch key {
+	case "vnc":
+		if strings.Contains(banner, "no authentication") || strings.Contains(banner, "security types: none") || strings.Contains(banner, "auth: none") {
+			r = exposureRisk{"VNC without authentication (anyone can take over the desktop)", 50}
+		}
+	case "ftp":
+		if strings.Contains(banner, "anonymous") {
+			r = exposureRisk{"FTP with anonymous login (cleartext)", 40}
+		}
+	case "snmp":
+		if strings.Contains(banner, "public") {
+			r = exposureRisk{"SNMP answers the default 'public' community", 40}
+		}
+	}
+	return r, true
 }
 
 // ScoreService calculates a transparent 0-100 Interestingness Score for a service
@@ -52,10 +113,8 @@ func ScoreService(svc *domain.Service, sigMatches []signatures.MatchResult) (int
 		add("IoT, printer, camera, or BMC management device detected", 18)
 	}
 
-	if desc, ok := highRiskPorts[svc.Port]; ok {
-		add(desc, 14)
-	} else if svc.Port == 22 {
-		add("SSH remote access port exposed", 5)
+	if r, ok := classifyExposure(svc); ok {
+		add(r.reason, r.points)
 	}
 
 	// HTTP / TLS specific risk & hygiene signals.
@@ -159,16 +218,36 @@ func ScoreHost(host *domain.Host, services []domain.Service, changes []domain.Ch
 		})
 	}
 
-	maxSvcScore := 0
-	var maxSvcPort int
-	for _, s := range services {
-		if s.Interestingness > maxSvcScore {
-			maxSvcScore = s.Interestingness
-			maxSvcPort = s.Port
+	maxIdx := -1
+	for i := range services {
+		if services[i].State != "" && services[i].State != "open" {
+			continue
+		}
+		if maxIdx < 0 || services[i].Interestingness > services[maxIdx].Interestingness {
+			maxIdx = i
 		}
 	}
-	if maxSvcScore > 0 {
-		add(fmt.Sprintf("Highest-risk exposed service (port %d)", maxSvcPort), maxSvcScore)
+	if maxIdx >= 0 && services[maxIdx].Interestingness > 0 {
+		top := services[maxIdx]
+		why := ""
+		if len(top.InterestingFactors) > 0 {
+			why = ": " + top.InterestingFactors[0].Reason
+		}
+		add(fmt.Sprintf("Highest-risk service %d/%s %s%s", top.Port, nonEmptyStr(top.Protocol, "tcp"), nonEmptyStr(top.ServiceName, "unknown"), why), top.Interestingness)
+	}
+	// Further high-risk services add up (two cleartext admin protocols are worse than one).
+	others := 0
+	for i := range services {
+		if i != maxIdx && services[i].Interestingness >= 25 && (services[i].State == "" || services[i].State == "open") {
+			others++
+		}
+	}
+	if others > 0 {
+		pts := others * 5
+		if pts > 15 {
+			pts = 15
+		}
+		add(fmt.Sprintf("%d more high-risk service(s) on the same host", others), pts)
 	}
 
 	switch host.LifecycleState {
@@ -217,4 +296,11 @@ func ScoreHost(host *domain.Host, services []domain.Service, changes []domain.Ch
 	})
 
 	return total, factors
+}
+
+func nonEmptyStr(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
 }
