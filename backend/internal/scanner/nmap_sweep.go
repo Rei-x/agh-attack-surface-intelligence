@@ -115,7 +115,7 @@ func (r *NmapRunner) SweepDetailed(ctx context.Context, ips []string, ports []in
 	if err != nil && ctx.Err() == nil && priv && isRawSocketDenied(stderr) {
 		atomic.StoreInt32(&r.priv, privNo)
 		res.Commands = append(res.Commands, cmdLine)
-		out, cmdLine, stderr, err = sweep(false)
+		out, cmdLine, _, err = sweep(false)
 	}
 	res.Commands = append(res.Commands, cmdLine)
 	if err != nil {
