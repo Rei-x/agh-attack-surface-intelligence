@@ -18,7 +18,7 @@ import {
   RiTimeLine,
   RiUploadCloud2Line,
 } from '@remixicon/react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
@@ -308,15 +308,16 @@ export function ScansPage() {
 
   const handleStartProfileScan = async (profile: ScanProfile) => {
     try {
-      const run = await api.startScan({
-        profile_id: profile.id,
-        name: `${profile.name} — ${new Date().toLocaleTimeString('pl-PL')}`,
-      });
+      const run = await api.runProfile(profile.id);
       toast.success('Uruchomiono skan', run.name);
       setActiveTab('runs');
       loadAll();
     } catch (err) {
-      toast.error('Błąd uruchomienia skanu', (err as Error).message);
+      if (err instanceof ApiError && err.status === 409) {
+        toast.error('Profil już ma aktywny przebieg', 'Poczekaj na koniec bieżącego skanu albo go zatrzymaj.');
+      } else {
+        toast.error('Błąd uruchomienia skanu', (err as Error).message);
+      }
     }
   };
 

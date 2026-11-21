@@ -221,37 +221,34 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var profile *domain.ScanProfile
-	var err error
 	if req.ProfileID != "" {
-		profile, err = s.store.GetProfile(r.Context(), req.ProfileID)
-		if err != nil {
-			writeStoreErr(w, err)
-			return
-		}
-	} else {
-		profile = &domain.ScanProfile{
-			Name:                  nonEmptyStr(req.Name, "Szybki skan "+time.Now().UTC().Format("15:04")),
-			Targets:               req.Targets,
-			AllowedPorts:          req.AllowedPorts,
-			MaxRatePPS:            req.MaxRatePPS,
-			HTTPRPS:               req.HTTPRPS,
-			Concurrency:           req.Concurrency,
-			ChunkTargetSec:        req.ChunkTargetSec,
-			WindowEnabled:         req.WindowEnabled,
-			WindowStart:           req.WindowStart,
-			WindowEnd:             req.WindowEnd,
-			Timezone:              req.Timezone,
-			MissingThreshold:      req.MissingThreshold,
-			GracePeriodHours:      req.GracePeriodHours,
-			EnableHTTPFingerprint: true,
-			Enabled:               true,
-		}
-		applyProfileDefaults(profile)
-		// Persist ad-hoc profile when windowing or save_profile is enabled so Pause/Resume works seamlessly.
-		if req.SaveProfile || req.WindowEnabled {
-			_ = s.store.CreateProfile(r.Context(), profile)
-		}
+		// Saved profiles always start through the scheduler so a profile can never run
+		// twice concurrently, whichever endpoint the client uses (same as /profiles/{id}/run).
+		r.SetPathValue("id", req.ProfileID)
+		s.handleRunProfileNow(w, r)
+		return
+	}
+	profile := &domain.ScanProfile{
+		Name:                  nonEmptyStr(req.Name, "Szybki skan "+time.Now().UTC().Format("15:04")),
+		Targets:               req.Targets,
+		AllowedPorts:          req.AllowedPorts,
+		MaxRatePPS:            req.MaxRatePPS,
+		HTTPRPS:               req.HTTPRPS,
+		Concurrency:           req.Concurrency,
+		ChunkTargetSec:        req.ChunkTargetSec,
+		WindowEnabled:         req.WindowEnabled,
+		WindowStart:           req.WindowStart,
+		WindowEnd:             req.WindowEnd,
+		Timezone:              req.Timezone,
+		MissingThreshold:      req.MissingThreshold,
+		GracePeriodHours:      req.GracePeriodHours,
+		EnableHTTPFingerprint: true,
+		Enabled:               true,
+	}
+	applyProfileDefaults(profile)
+	// Persist ad-hoc profile when windowing or save_profile is enabled so Pause/Resume works seamlessly.
+	if req.SaveProfile || req.WindowEnabled {
+		_ = s.store.CreateProfile(r.Context(), profile)
 	}
 	if len(profile.Targets) == 0 {
 		writeErr(w, http.StatusBadRequest, "no targets specified in profile or request")

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/api"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/intelligence"
@@ -188,6 +189,8 @@ type LiveScanRunner struct {
 	store    db.Store
 	pipeline *ingest.Pipeline
 	hub      *api.SSEHub
+	// dojo pushes completed runs' Nmap XML to DefectDojo when auto_push_nmap is on.
+	dojo *defectdojo.Client
 
 	mu     sync.Mutex
 	active map[string]*activeScanHandle
@@ -231,6 +234,7 @@ func NewLiveScanRunner(store db.Store, pipeline *ingest.Pipeline, hub *api.SSEHu
 		store:    store,
 		pipeline: pipeline,
 		hub:      hub,
+		dojo:     defectdojo.NewClient(),
 		active:   make(map[string]*activeScanHandle),
 	}
 }
@@ -455,7 +459,56 @@ func (r *LiveScanRunner) launchAsync(
 		}
 		_ = r.store.SaveScanChunks(bgCtx, runCopy.ID, runCopy.Chunks)
 		_ = r.store.UpdateScanRun(bgCtx, &runCopy)
+		if !res.PausedByWindow {
+			r.autoPushDefectDojo(bgCtx, runCopy.ID)
+		}
 	}()
+}
+
+// autoPushDefectDojo reimports a completed run's merged Nmap XML into DefectDojo when the
+// operator enabled auto_push_nmap. One DefectDojo test per profile, so DefectDojo closes
+// services that disappeared since the profile's previous run. Failures are recorded in the
+// export log and never affect the scan itself.
+func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
+	if r.dojo == nil {
+		return
+	}
+	cfg, err := r.store.GetDefectDojoConfig(ctx)
+	if err != nil || cfg == nil || !cfg.AutoPushNmap || strings.TrimSpace(cfg.URL) == "" {
+		return
+	}
+	run, err := r.store.GetScanRun(ctx, runID)
+	if err != nil || run.Status != domain.ScanStatusCompleted || strings.TrimSpace(run.RawNmapXML) == "" {
+		return
+	}
+	profileName := run.Name
+	if run.ProfileID != "" {
+		if p, perr := r.store.GetProfile(ctx, run.ProfileID); perr == nil && p != nil && p.Name != "" {
+			profileName = p.Name
+		}
+	}
+	pushCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	imp, err := r.dojo.ImportNmapXML(pushCtx, cfg, 0, defectdojo.NmapTestTitle(profileName), run.Name, run.RawNmapXML)
+	exp := &domain.DefectDojoExport{
+		ExportType: "nmap_xml",
+		SourceID:   run.ID,
+		Title:      "Nmap Scan (auto): " + run.Name,
+		ExportedBy: "auto-push",
+		CreatedAt:  time.Now().UTC(),
+	}
+	payload := map[string]any{"scan_run_id": run.ID}
+	if err != nil {
+		exp.Status, exp.ErrorMessage = "failed", err.Error()
+		payload["error"] = err.Error()
+		log.Printf("[WARN] DefectDojo auto-push for scan %s failed: %v", run.ID, err)
+	} else {
+		exp.Status, exp.ExternalID, exp.ExternalURL = "success", imp.ExternalID, imp.ExternalURL
+		payload["external_url"] = imp.ExternalURL
+		log.Printf("[INFO] DefectDojo auto-push for scan %s: %s", run.ID, imp.ExternalURL)
+	}
+	_ = r.store.AddDefectDojoExport(ctx, exp)
+	r.PublishEvent(domain.LiveEvent{Type: "defectdojo_push", ScanRunID: run.ID, Timestamp: time.Now().UTC(), Payload: payload})
 }
 
 // ingestSegment pushes one window segment's observations through the pipeline. Missing-host

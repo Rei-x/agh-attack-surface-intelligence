@@ -246,6 +246,8 @@ export const api = {
   updateProfile: (id: string, payload: Partial<ScanProfile>) =>
     request<ScanProfile>(`/api/v1/profiles/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteProfile: (id: string) => request<void>(`/api/v1/profiles/${id}`, { method: 'DELETE' }),
+  // Starts a saved profile now; 409 if that profile already has an active run.
+  runProfile: (id: string) => request<ScanRun>(`/api/v1/profiles/${id}/run`, { method: 'POST' }),
 
   listScans: async (): Promise<ScanRun[]> => {
     const res = await request<unknown>('/api/v1/scans');

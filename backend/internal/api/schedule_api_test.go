@@ -94,6 +94,11 @@ func TestProfileScheduleValidationStatusAndRunNowRBAC(t *testing.T) {
 	if r.Code != http.StatusConflict || !strings.Contains(r.Body.String(), "blocking-run") {
 		t.Fatalf("expected 409 naming the active run, got %d %s", r.Code, r.Body.String())
 	}
+	// The legacy POST /scans with profile_id must not bypass the guard.
+	r = doJSON(h, http.MethodPost, "/api/v1/scans", opTok, map[string]any{"profile_id": created.ID, "name": "legacy"})
+	if r.Code != http.StatusConflict {
+		t.Fatalf("POST /scans with profile_id must 409 while the profile is active, got %d %s", r.Code, r.Body.String())
+	}
 	blocking.Status = domain.ScanStatusCompleted
 	_ = store.UpdateScanRun(context.Background(), blocking)
 

@@ -1,0 +1,78 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+)
+
+func TestAutoPushDefectDojoAfterCompletedRun(t *testing.T) {
+	var mu sync.Mutex
+	var calls []map[string]string
+	dd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/reimport-scan/" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = r.ParseMultipartForm(1 << 20)
+		mu.Lock()
+		calls = append(calls, map[string]string{
+			"scan_type":  r.FormValue("scan_type"),
+			"test_title": r.FormValue("test_title"),
+			"version":    r.FormValue("version"),
+		})
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"test":9,"engagement_id":1,"statistics":{"after":{"total":{"total":2}}}}`))
+	}))
+	defer dd.Close()
+
+	ctx := context.Background()
+	vault, err := crypto.NewVault("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := db.NewMemoryStore(vault)
+	runner := NewLiveScanRunner(store, nil, nil)
+
+	profile := &domain.ScanProfile{Name: "Kampus nocny", Targets: []string{"10.0.0.0/24"}}
+	if err := store.CreateProfile(ctx, profile); err != nil {
+		t.Fatal(err)
+	}
+	run := &domain.ScanRun{ID: db.NewID(), ProfileID: profile.ID, Name: "Run #7", Status: domain.ScanStatusCompleted,
+		RawNmapXML: `<nmaprun><host><address addr="10.0.0.5" addrtype="ipv4"/><hostnames/></host></nmaprun>`}
+	if err := store.CreateScanRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+
+	// Disabled: nothing is sent.
+	_ = store.SaveDefectDojoConfig(ctx, &domain.DefectDojoConfig{URL: dd.URL, APIToken: "t", AutoPushNmap: false})
+	runner.autoPushDefectDojo(ctx, run.ID)
+	if len(calls) != 0 {
+		t.Fatalf("auto push disabled but DefectDojo was called: %+v", calls)
+	}
+
+	_ = store.SaveDefectDojoConfig(ctx, &domain.DefectDojoConfig{URL: dd.URL, APIToken: "t", AutoPushNmap: true})
+	runner.autoPushDefectDojo(ctx, run.ID)
+	if len(calls) != 1 || calls[0]["scan_type"] != "Nmap Scan" || calls[0]["test_title"] != "AegisASI Nmap: Kampus nocny" || calls[0]["version"] != "Run #7" {
+		t.Fatalf("unexpected DefectDojo calls: %+v", calls)
+	}
+	exports, _ := store.ListDefectDojoExports(ctx, 10)
+	if len(exports) != 1 || exports[0].Status != "success" || exports[0].ExportedBy != "auto-push" || exports[0].ExternalID != "9" {
+		t.Fatalf("export not recorded: %+v", exports)
+	}
+
+	// Window-paused or failed runs are never pushed.
+	run.Status = domain.ScanStatusPausedWindow
+	_ = store.UpdateScanRun(ctx, run)
+	runner.autoPushDefectDojo(ctx, run.ID)
+	if len(calls) != 1 {
+		t.Fatalf("paused run must not be pushed: %+v", calls)
+	}
+}
