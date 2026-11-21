@@ -60,19 +60,26 @@ func TestAutoPushDefectDojoAfterCompletedRun(t *testing.T) {
 
 	_ = store.SaveDefectDojoConfig(ctx, &domain.DefectDojoConfig{URL: dd.URL, APIToken: "t", AutoPushNmap: true})
 	runner.autoPushDefectDojo(ctx, run.ID)
-	if len(calls) != 1 || calls[0]["scan_type"] != "Nmap Scan" || calls[0]["test_title"] != "AegisASI Nmap: Kampus nocny" || calls[0]["version"] != "Run #7" {
+	// Raw Nmap XML first, then the actionable "Dzięcioł changes" Generic Findings test.
+	if len(calls) != 2 || calls[0]["scan_type"] != "Nmap Scan" || calls[0]["test_title"] != "AegisASI Nmap: Kampus nocny" || calls[0]["version"] != "Run #7" ||
+		calls[1]["scan_type"] != "Generic Findings Import" || calls[1]["test_title"] != "Dzięcioł changes: Kampus nocny" {
 		t.Fatalf("unexpected DefectDojo calls: %+v", calls)
 	}
 	exports, _ := store.ListDefectDojoExports(ctx, 10)
-	if len(exports) != 1 || exports[0].Status != "success" || exports[0].ExportedBy != "auto-push" || exports[0].ExternalID != "9" {
-		t.Fatalf("export not recorded: %+v", exports)
+	if len(exports) != 2 {
+		t.Fatalf("both pushes must be recorded: %+v", exports)
+	}
+	for _, e := range exports {
+		if e.Status != "success" || e.ExportedBy != "auto-push" || e.ExternalID != "9" {
+			t.Fatalf("export not recorded: %+v", exports)
+		}
 	}
 
 	// Window-paused or failed runs are never pushed.
 	run.Status = domain.ScanStatusPausedWindow
 	_ = store.UpdateScanRun(ctx, run)
 	runner.autoPushDefectDojo(ctx, run.ID)
-	if len(calls) != 1 {
+	if len(calls) != 2 {
 		t.Fatalf("paused run must not be pushed: %+v", calls)
 	}
 }
