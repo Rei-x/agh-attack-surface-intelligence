@@ -149,7 +149,7 @@ func FuseConfidenceExplained(evidence []domain.TechEvidence, temporalScansSeen i
 		}
 		boost := 0.03 * float64(extraScans)
 		p = 1.0 - (1.0-p)*(1.0-boost)
-		expl += fmt.Sprintf("; stabilne w %d skanach +%.0f%%", temporalScansSeen, boost*100)
+		expl += fmt.Sprintf("; stable across %d scans +%.0f%%", temporalScansSeen, boost*100)
 	}
 	// One channel alone never exceeds its cap / the single-channel ceiling.
 	if len(chans) == 1 {
@@ -159,13 +159,13 @@ func FuseConfidenceExplained(evidence []domain.TechEvidence, temporalScansSeen i
 		}
 		if p > ceil {
 			p = ceil
-			expl += fmt.Sprintf("; jeden kanał → limit %.0f%%", ceil*100)
+			expl += fmt.Sprintf("; single channel → cap %.0f%%", ceil*100)
 		}
 	}
 	// Conflicting signals reduce certainty (two versions / contradictory servers).
 	if hasConflict {
 		p *= 0.80
-		expl += "; konflikt sygnałów ×0.8"
+		expl += "; conflicting signals ×0.8"
 	}
 
 	score := int(math.Round(p * 100.0))

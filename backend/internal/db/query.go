@@ -114,7 +114,7 @@ func ParseAssetQuery(input string) (*AssetQuery, error) {
 		}
 		val := strings.TrimSpace(raw[idx+1:])
 		if val == "" {
-			return nil, fmt.Errorf("pusta wartość dla %q", key+":")
+			return nil, fmt.Errorf("empty value for %q", key+":")
 		}
 		term := QueryTerm{Key: key, Negate: neg}
 		if key == "title" || key == "owner" {
@@ -165,7 +165,7 @@ func tokenizeQuery(s string) ([]queryToken, error) {
 		}
 	}
 	if inQuote {
-		return nil, fmt.Errorf("niezamknięty cudzysłów w zapytaniu")
+		return nil, fmt.Errorf("unclosed quote in query")
 	}
 	flush()
 	return out, nil
@@ -177,7 +177,7 @@ func compileTerm(t *QueryTerm) error {
 		for _, v := range t.Values {
 			p, err := strconv.Atoi(v)
 			if err != nil || p < 0 || p > 65535 {
-				return fmt.Errorf("nieprawidłowy port %q", v)
+				return fmt.Errorf("invalid port %q", v)
 			}
 			t.ports = append(t.ports, p)
 		}
@@ -186,7 +186,7 @@ func compileTerm(t *QueryTerm) error {
 			if !strings.Contains(v, "/") {
 				ip := net.ParseIP(v)
 				if ip == nil {
-					return fmt.Errorf("nieprawidłowy adres/CIDR %q", v)
+					return fmt.Errorf("invalid address/CIDR %q", v)
 				}
 				bits := 32
 				if ip.To4() == nil {
@@ -196,7 +196,7 @@ func compileTerm(t *QueryTerm) error {
 			}
 			_, n, err := net.ParseCIDR(v)
 			if err != nil {
-				return fmt.Errorf("nieprawidłowy CIDR %q", v)
+				return fmt.Errorf("invalid CIDR %q", v)
 			}
 			t.nets = append(t.nets, n)
 		}
@@ -205,14 +205,14 @@ func compileTerm(t *QueryTerm) error {
 			switch v {
 			case "expired", "selfsigned", "self-signed", "expiring", "any", "valid":
 			default:
-				return fmt.Errorf("cert: dozwolone expired, expiring, selfsigned, valid, any (podano %q)", v)
+				return fmt.Errorf("cert: allowed values are expired, expiring, selfsigned, valid, any (got %q)", v)
 			}
 		}
 	case "score":
 		v := strings.TrimLeft(t.Values[0], ">=")
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			return fmt.Errorf("score: oczekiwano liczby, np. score:>=70")
+			return fmt.Errorf("score: expected a number, e.g. score:>=70")
 		}
 		t.minimum = n
 	case "admin", "eol", "vuln":
@@ -222,7 +222,7 @@ func compileTerm(t *QueryTerm) error {
 		case "false", "no", "0", "nie":
 			t.Values = []string{"false"}
 		default:
-			return fmt.Errorf("%s: oczekiwano true/false", t.Key)
+			return fmt.Errorf("%s: expected true/false", t.Key)
 		}
 	}
 	return nil

@@ -367,7 +367,7 @@ func TestOfflineAgentPausesRunAndResumesFromCheckpoint(t *testing.T) {
 		t.Fatalf("checkpoint not preserved: %+v", spec)
 	}
 	run = f.run(r.ID)
-	if run.Status != domain.ScanStatusRunning || !strings.Contains(run.Notes, "wznowił") {
+	if run.Status != domain.ScanStatusRunning || !strings.Contains(run.Notes, "resumed") {
 		t.Fatalf("after resume: %s %q", run.Status, run.Notes)
 	}
 	c1.Status = domain.ChunkStatusDone

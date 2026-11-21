@@ -136,24 +136,24 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 	}
 
 	if label, risky := ingest.RiskyExposure(s.Port, s.ServiceName); risky {
-		add(KindExposure, "", fmt.Sprintf("Ryzykowna usługa wystawiona: %s (%s) na %s", label, s.ServiceName, where), "Medium",
-			fmt.Sprintf("Port %d/%s (%s) jest osiągalny z sieci skanowania. Usługi zdalnego dostępu, udziałów plików i baz danych nie powinny być wystawione bez potrzeby.", s.Port, proto, label),
+		add(KindExposure, "", fmt.Sprintf("Risky service exposed: %s (%s) on %s", label, s.ServiceName, where), "Medium",
+			fmt.Sprintf("Port %d/%s (%s) is reachable from the scanning network. Remote access, file sharing and database services should not be exposed without a reason.", s.Port, proto, label),
 			func(g *genericFinding) {
-				g.Mitigation = "Ustal z właścicielem, czy usługa jest potrzebna; jeśli nie — wyłącz ją albo ogranicz dostęp firewallem/VPN."
+				g.Mitigation = "Check with the owner whether the service is needed; if not, turn it off or restrict access with a firewall/VPN."
 			})
 	}
 	if s.IsAdminPanel {
-		add(KindAdmin, "", fmt.Sprintf("Panel administracyjny wystawiony: %s na %s", adminName(s), where), "Medium",
-			"Wykryto panel administracyjny / konsolę zarządzania: "+adminEvidence(s)+".",
+		add(KindAdmin, "", fmt.Sprintf("Admin panel exposed: %s on %s", adminName(s), where), "Medium",
+			"Admin panel / management console detected: "+adminEvidence(s)+".",
 			func(g *genericFinding) {
-				g.Mitigation = "Panel zarządzania nie powinien być dostępny z całej sieci: ogranicz dostęp (VPN, allowlista), wymuś silne uwierzytelnianie."
+				g.Mitigation = "A management panel should not be reachable from the whole network: restrict access (VPN, allowlist) and enforce strong authentication."
 			})
 	}
 	if s.IsStagingEnv {
-		add(KindStaging, "", fmt.Sprintf("Środowisko testowe/staging wystawione na %s", where), "Low",
-			"Usługa wygląda na środowisko deweloperskie/testowe (staging, dev, debug). Takie instancje często mają słabszą konfigurację i dane testowe.",
+		add(KindStaging, "", fmt.Sprintf("Test/staging environment exposed on %s", where), "Low",
+			"The service looks like a development/test environment (staging, dev, debug). Such instances often have weaker configuration and test data.",
 			func(g *genericFinding) {
-				g.Mitigation = "Potwierdź z właścicielem, czy instancja jest potrzebna; usuń ją albo zamknij za VPN."
+				g.Mitigation = "Confirm with the owner whether the instance is needed; remove it or put it behind a VPN."
 			})
 	}
 	for _, o := range s.Outdated {
@@ -163,32 +163,32 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 		}
 		o := o
 		add(KindEOL, ":"+strings.ToLower(o.Product)+":"+o.Branch,
-			fmt.Sprintf("%s %s – gałąź %s EOL od %s, na %s", o.Product, versionShort(o.Version), o.Branch, o.EOLDate, where), sev,
+			fmt.Sprintf("%s %s – branch %s EOL since %s, on %s", o.Product, versionShort(o.Version), o.Branch, o.EOLDate, where), sev,
 			stableEOLEvidence(o),
 			func(g *genericFinding) {
 				g.ComponentName, g.ComponentVersion = o.Product, versionShort(o.Version)
 				g.References = o.Source
-				g.Mitigation = "Zaktualizuj do wspieranej gałęzi"
+				g.Mitigation = "Upgrade to a supported branch"
 				if o.SupportedBranch != "" {
 					g.Mitigation += " (" + o.Product + " " + o.SupportedBranch + ")"
 				}
-				g.Mitigation += "; jeśli to pakiet dystrybucji, sprawdź czy samo wydanie systemu jest jeszcze wspierane."
+				g.Mitigation += "; if this is a distro package, check whether the OS release itself is still supported."
 			})
 	}
 	for _, v := range s.KnownVulns {
 		v := v
 		add(KindKnownVuln, ":"+v.ID,
-			fmt.Sprintf("[pasywna wskazówka] %s: %s %s na %s", v.ID, v.Product, versionShort(v.Version), where), "Medium",
+			fmt.Sprintf("[passive hint] %s: %s %s on %s", v.ID, v.Product, versionShort(v.Version), where), "Medium",
 			v.Evidence,
 			func(g *genericFinding) {
 				g.ComponentName, g.ComponentVersion = v.Product, versionShort(v.Version)
 				g.References = strings.Join(v.References, "\n")
-				g.Mitigation = "Zweryfikuj wersję pakietu na hoście; zaktualizuj, jeśli poprawka nie jest zainstalowana."
+				g.Mitigation = "Verify the package version on the host; upgrade if the fix is not installed."
 			})
 	}
 	if len(out) == 0 && isNew(s.FirstSeen, baseline, now) {
-		add(KindNew, "", fmt.Sprintf("Nowa usługa: %s na %s", nonEmpty(strings.TrimSpace(s.ServiceName+" "+s.Product), "tcp"), where), "Low",
-			"Usługa pojawiła się po pierwszym skanie tego zakresu (pierwsze wykrycie: "+s.FirstSeen.UTC().Format("2006-01-02 15:04 UTC")+"). Kto ją uruchomił i czy jest potrzebna?",
+		add(KindNew, "", fmt.Sprintf("New service: %s on %s", nonEmpty(strings.TrimSpace(s.ServiceName+" "+s.Product), "tcp"), where), "Low",
+			"The service appeared after the first scan of this scope (first seen: "+s.FirstSeen.UTC().Format("2006-01-02 15:04 UTC")+"). Who started it, and is it needed?",
 			nil)
 	}
 	return out
@@ -196,10 +196,10 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 
 func hostGoneFinding(h *domain.Host) ChangeFinding {
 	last := h.LastSeen.UTC().Format("2006-01-02")
-	title := fmt.Sprintf("Host zniknął z sieci: %s (ostatnio widziany %s)", h.IP, last)
+	title := fmt.Sprintf("Host gone from the network: %s (last seen %s)", h.IP, last)
 	var b strings.Builder
 	writeHostLines(&b, h)
-	fmt.Fprintf(&b, "\n**Dowód:** host przestał odpowiadać w kolejnych skanach (ostatnia odpowiedź %s). Usunięty celowo czy awaria? Zaktualizuj ewidencję albo sprawdź u właściciela.\n", h.LastSeen.UTC().Format("2006-01-02 15:04 UTC"))
+	fmt.Fprintf(&b, "\n**Evidence:** the host stopped responding in consecutive scans (last response %s). Decommissioned on purpose or an outage? Update the inventory or check with the owner.\n", h.LastSeen.UTC().Format("2006-01-02 15:04 UTC"))
 	f := newFinding(h, KindHostGone, title, "Info", b.String())
 	f.UniqueIDFromTool = UniqueID(h.IP, 0, "", "dz-change:"+KindHostGone)
 	f.VulnIDFromTool = KindHostGone
@@ -211,7 +211,7 @@ func hostGoneFinding(h *domain.Host) ChangeFinding {
 
 func newFinding(h *domain.Host, kind, title, severity, description string) ChangeFinding {
 	if h.Owner != "" {
-		title += " [właściciel: " + h.Owner + "]"
+		title += " [owner: " + h.Owner + "]"
 	}
 	tags := []string{"dzieciol", kind}
 	if h.Owner != "" {
@@ -241,56 +241,56 @@ func serviceDescription(h *domain.Host, s *domain.Service, kind, evidence string
 	if kind == KindEOL || kind == KindKnownVuln {
 		svc = strings.TrimSpace(svc + " " + s.Product + " " + versionShort(s.Version))
 	}
-	fmt.Fprintf(&b, "- **Usługa:** `%d/%s` %s\n", s.Port, nonEmpty(s.Protocol, "tcp"), svc)
+	fmt.Fprintf(&b, "- **Service:** `%d/%s` %s\n", s.Port, nonEmpty(s.Protocol, "tcp"), svc)
 	if !s.FirstSeen.IsZero() {
-		fmt.Fprintf(&b, "- **Pierwsze wykrycie:** %s\n", s.FirstSeen.UTC().Format("2006-01-02 15:04 UTC"))
+		fmt.Fprintf(&b, "- **First seen:** %s\n", s.FirstSeen.UTC().Format("2006-01-02 15:04 UTC"))
 	}
-	fmt.Fprintf(&b, "\n**Dowód:** %s\n", evidence)
+	fmt.Fprintf(&b, "\n**Evidence:** %s\n", evidence)
 	return b.String()
 }
 
 // writeHostLines renders the ownership block shared by all findings.
 func writeHostLines(b *strings.Builder, h *domain.Host) {
-	b.WriteString("Wykryte pasywnie przez Dzięcioł, cykliczny skan discovery.\n\n")
+	b.WriteString("Detected passively by Dzięcioł (periodic discovery scan).\n\n")
 	fmt.Fprintf(b, "- **Host:** `%s`", h.IP)
 	if h.Hostname != "" {
 		fmt.Fprintf(b, " (%s)", h.Hostname)
 	}
 	b.WriteString("\n")
 	if h.Owner != "" {
-		fmt.Fprintf(b, "- **Właściciel (reguła CIDR):** %s\n", h.Owner)
+		fmt.Fprintf(b, "- **Owner (CIDR rule):** %s\n", h.Owner)
 	} else {
-		b.WriteString("- **Właściciel:** brak — dodaj regułę CIDR (Ustawienia → Reguły CIDR), żeby wiadomo było, kto tym zarządza\n")
+		b.WriteString("- **Owner:** none — add a CIDR rule (Admin → Tag rules) so it is clear who manages this\n")
 	}
 	if len(h.Tags) > 0 {
 		tags := append([]string(nil), h.Tags...)
 		sort.Strings(tags)
-		fmt.Fprintf(b, "- **Tagi:** %s\n", strings.Join(tags, ", "))
+		fmt.Fprintf(b, "- **Tags:** %s\n", strings.Join(tags, ", "))
 	}
 	if h.Environment != "" && h.Environment != "unknown" {
-		fmt.Fprintf(b, "- **Środowisko:** %s\n", h.Environment)
+		fmt.Fprintf(b, "- **Environment:** %s\n", h.Environment)
 	}
 	if !h.FirstSeen.IsZero() {
-		fmt.Fprintf(b, "- **Host pierwszy raz widziany:** %s\n", h.FirstSeen.UTC().Format("2006-01-02 15:04 UTC"))
+		fmt.Fprintf(b, "- **Host first seen:** %s\n", h.FirstSeen.UTC().Format("2006-01-02 15:04 UTC"))
 	}
 }
 
-// stableEOLEvidence is the EOL explanation without the age ("N lat temu"), which would
+// stableEOLEvidence is the EOL explanation without the age ("N years ago"), which would
 // change the DefectDojo hash over time.
 func stableEOLEvidence(o domain.OutdatedComponent) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s należy do gałęzi %s, której wsparcie zakończyło się %s.", o.Product, versionShort(o.Version), o.Branch, o.EOLDate)
+	fmt.Fprintf(&b, "%s %s belongs to branch %s, whose support ended on %s.", o.Product, versionShort(o.Version), o.Branch, o.EOLDate)
 	if o.LatestInBranch != "" {
-		fmt.Fprintf(&b, " Ostatnie wydanie gałęzi: %s.", o.LatestInBranch)
+		fmt.Fprintf(&b, " Latest release in the branch: %s.", o.LatestInBranch)
 	}
 	if o.SupportedBranch != "" {
-		fmt.Fprintf(&b, " Wspierana gałąź: %s.", o.SupportedBranch)
+		fmt.Fprintf(&b, " Supported branch: %s.", o.SupportedBranch)
 	}
-	fmt.Fprintf(&b, " Wersja z: %s.", o.Via)
+	fmt.Fprintf(&b, " Version from: %s.", o.Via)
 	if o.DistroPackaged {
-		b.WriteString(" Build dystrybucji: poprawki mogą być backportowane, ale gałąź upstream nie jest wspierana.")
+		b.WriteString(" Distro build: fixes may be backported, but the upstream branch is unsupported.")
 	}
-	fmt.Fprintf(&b, " Źródło: %s (tabela offline z %s).", o.Source, o.DataAsOf)
+	fmt.Fprintf(&b, " Source: %s (offline table as of %s).", o.Source, o.DataAsOf)
 	return b.String()
 }
 
@@ -312,7 +312,7 @@ func adminEvidence(s *domain.Service) string {
 	}
 	sort.Strings(names)
 	if len(names) == 0 {
-		return "sygnatura panelu administracyjnego"
+		return "admin panel signature"
 	}
 	return strings.Join(names, ", ")
 }

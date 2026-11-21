@@ -25,13 +25,13 @@ var DefaultRoles = []DefaultRoleSpec{
 	{
 		Slug:        "admin",
 		Name:        "Administracja",
-		Description: "Pełny dostęp administracyjny (użytkownicy, role, szyfrowanie, audyt, wszystkie moduły)",
+		Description: "Full administrative access (users, roles, encryption, audit, all modules)",
 		Permissions: []string{"*"},
 	},
 	{
 		Slug:        "operator",
 		Name:        "Dodawanie, usuwanie, modyfikacja",
-		Description: "Zarządzanie skanami, zasobami, sygnaturami, importem/eksportem oraz integracją DefectDojo",
+		Description: "Manage scans, assets, signatures, import/export and the DefectDojo integration",
 		Permissions: []string{
 			domain.PermDashboardRead,
 			domain.PermAssetsRead,
@@ -52,7 +52,7 @@ var DefaultRoles = []DefaultRoleSpec{
 	{
 		Slug:        "analyst",
 		Name:        "Modyfikacja i odczyt",
-		Description: "Przeglądanie zasobów i skanów, edycja nadpisań analityka, metadanych oraz sygnatur",
+		Description: "Browse assets and scans; edit analyst overrides, metadata and signatures",
 		Permissions: []string{
 			domain.PermDashboardRead,
 			domain.PermAssetsRead,
@@ -67,7 +67,7 @@ var DefaultRoles = []DefaultRoleSpec{
 	{
 		Slug:        "viewer",
 		Name:        "Odczyt",
-		Description: "Tylko odczyt dashboardu, grafu, zasobów, skanów, sygnatur oraz eksportu",
+		Description: "Read-only access to the dashboard, graph, assets, scans, signatures and exports",
 		Permissions: []string{
 			domain.PermDashboardRead,
 			domain.PermAssetsRead,
@@ -86,7 +86,7 @@ var DemoAccounts = []DemoAccount{
 		Email:       "admin@cbi.agh.edu.pl",
 		RoleSlug:    "admin",
 		RoleName:    "Administracja",
-		Description: "Pełny dostęp administracyjny",
+		Description: "Full administrative access",
 	},
 	{
 		Username:    "operator",
@@ -94,7 +94,7 @@ var DemoAccounts = []DemoAccount{
 		Email:       "operator@cbi.agh.edu.pl",
 		RoleSlug:    "operator",
 		RoleName:    "Dodawanie, usuwanie, modyfikacja",
-		Description: "Uruchamianie skanów, import, usuwanie, DefectDojo",
+		Description: "Run scans, import, delete, DefectDojo",
 	},
 	{
 		Username:    "analyst",
@@ -102,7 +102,7 @@ var DemoAccounts = []DemoAccount{
 		Email:       "analyst@cbi.agh.edu.pl",
 		RoleSlug:    "analyst",
 		RoleName:    "Modyfikacja i odczyt",
-		Description: "Odczyt oraz edycja zasobów, nadpisań i sygnatur",
+		Description: "Read and edit assets, overrides and signatures",
 	},
 	{
 		Username:    "viewer",
@@ -110,7 +110,7 @@ var DemoAccounts = []DemoAccount{
 		Email:       "viewer@cbi.agh.edu.pl",
 		RoleSlug:    "viewer",
 		RoleName:    "Odczyt",
-		Description: "Tylko odczyt i eksport raportów",
+		Description: "Read-only and report export",
 	},
 }
 

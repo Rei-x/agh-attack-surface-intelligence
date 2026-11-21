@@ -79,13 +79,13 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 	}
 
 	e := byKind[KindEOL][0]
-	if e.Title != "nginx 1.14.2 – gałąź 1.14 EOL od 2019-04-23, na 10.66.0.12:80/tcp [właściciel: admin@wi.agh.edu.pl]" {
+	if e.Title != "nginx 1.14.2 – branch 1.14 EOL since 2019-04-23, on 10.66.0.12:80/tcp [owner: admin@wi.agh.edu.pl]" {
 		t.Errorf("EOL title: %q", e.Title)
 	}
 	if e.Severity != "Medium" || e.ComponentName != "nginx" || e.ComponentVersion != "1.14.2" || e.Date != "2026-11-11" {
 		t.Errorf("EOL fields: %+v", e.genericFinding)
 	}
-	for _, s := range []string{"**Właściciel (reguła CIDR):** admin@wi.agh.edu.pl", "**Pierwsze wykrycie:** 2026-11-11 12:00 UTC", "2019-04-23", "endoflife.date/nginx", "Wspierana gałąź: 1.31"} {
+	for _, s := range []string{"**Owner (CIDR rule):** admin@wi.agh.edu.pl", "**First seen:** 2026-11-11 12:00 UTC", "2019-04-23", "endoflife.date/nginx", "Supported branch: 1.31"} {
 		if !strings.Contains(e.Description, s) {
 			t.Errorf("EOL description lacks %q:\n%s", s, e.Description)
 		}
@@ -100,16 +100,16 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 		t.Errorf("endpoint: %+v", e.Endpoints)
 	}
 
-	if x := byKind[KindExposure][0]; !strings.HasPrefix(x.Title, "Ryzykowna usługa wystawiona: RDP (ms-wbt-server) na 10.66.0.12:3389/tcp") || x.Severity != "Medium" {
+	if x := byKind[KindExposure][0]; !strings.HasPrefix(x.Title, "Risky service exposed: RDP (ms-wbt-server) on 10.66.0.12:3389/tcp") || x.Severity != "Medium" {
 		t.Errorf("exposure: %q %s", x.Title, x.Severity)
 	}
-	if a := byKind[KindAdmin][0]; a.Title != "Panel administracyjny wystawiony: Jenkins na 10.66.0.40:8080/tcp" || !strings.Contains(a.Description, "brak — dodaj regułę CIDR") {
+	if a := byKind[KindAdmin][0]; a.Title != "Admin panel exposed: Jenkins on 10.66.0.40:8080/tcp" || !strings.Contains(a.Description, "none — add a CIDR rule") {
 		t.Errorf("admin: %q\n%s", a.Title, a.Description)
 	}
 	if n := byKind[KindNew][0]; !strings.Contains(n.Title, "10.66.0.40:9000/tcp") || n.Severity != "Low" {
 		t.Errorf("new service: %+v", n.genericFinding)
 	}
-	if g := byKind[KindHostGone][0]; g.Title != "Host zniknął z sieci: 10.66.0.77 (ostatnio widziany 2026-11-18) [właściciel: lab@wi.agh.edu.pl]" || g.Severity != "Info" {
+	if g := byKind[KindHostGone][0]; g.Title != "Host gone from the network: 10.66.0.77 (last seen 2026-11-18) [owner: lab@wi.agh.edu.pl]" || g.Severity != "Info" {
 		t.Errorf("host gone: %q %s", g.Title, g.Severity)
 	}
 	for _, f := range fs {

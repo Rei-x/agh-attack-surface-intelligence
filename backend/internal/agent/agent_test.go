@@ -230,7 +230,7 @@ func TestAgentRefusesTargetsOutsideAllowlist(t *testing.T) {
 	}
 	runID := ts.queueRun(a.AgentID(), "10.77.1.0/28")
 	run := ts.waitRun(runID, 10*time.Second, func(r *domain.ScanRun) bool { return r.Status == domain.ScanStatusFailed })
-	if !strings.Contains(run.Notes, "odmówił") || !strings.Contains(run.Notes, "192.168.10.0/24") {
+	if !strings.Contains(run.Notes, "refused") || !strings.Contains(run.Notes, "192.168.10.0/24") {
 		t.Fatalf("refusal note: %q", run.Notes)
 	}
 	if hosts, _, _ := ts.store.ListHosts(context.Background(), db.HostFilter{}); len(hosts) != 0 {

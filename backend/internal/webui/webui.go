@@ -30,11 +30,11 @@ func Available() bool {
 
 // PlaceholderHTML is served when the binary was built without the frontend.
 const PlaceholderHTML = `<!doctype html>
-<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dzięcioł</title>
 <style>body{font-family:system-ui,sans-serif;background:#0b1020;color:#e6e9f2;display:grid;place-items:center;min-height:100vh;margin:0}
 main{max-width:40rem;padding:2rem}code{background:#1b2340;padding:.15rem .4rem;border-radius:4px}a{color:#7aa2ff}</style></head>
-<body><main><h1>Dzięcioł API działa</h1>
-<p>Ten plik binarny został zbudowany bez interfejsu webowego. Zbuduj go poleceniem <code>make build</code>
-(które uruchamia <code>make ui</code>) albo wskaż zbudowany frontend przez <code>DZIECIOL_STATIC_DIR=/ścieżka/do/dist</code>.</p>
+<body><main><h1>Dzięcioł API is running</h1>
+<p>This binary was built without the web UI. Build it with <code>make build</code>
+(which runs <code>make ui</code>) or point <code>DZIECIOL_STATIC_DIR=/path/to/dist</code> at a built frontend.</p>
 <p>API: <a href="/api/v1/health">/api/v1/health</a></p></main></body></html>`

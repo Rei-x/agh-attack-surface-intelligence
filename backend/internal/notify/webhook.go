@@ -148,7 +148,7 @@ func BuildPayload(run *domain.ScanRun, events []domain.ChangeEvent, title string
 		}
 		fmt.Fprintf(&b, "- [%s] %s: %s", strings.ToUpper(ev.Severity), ev.EventType, ev.Summary)
 		if owner := eventOwner(ev); owner != "" {
-			fmt.Fprintf(&b, " (właściciel: %s)", owner)
+			fmt.Fprintf(&b, " (owner: %s)", owner)
 		}
 		b.WriteString("\n")
 	}

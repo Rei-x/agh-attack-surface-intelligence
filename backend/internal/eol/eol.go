@@ -247,12 +247,12 @@ func distroPackaged(svc *domain.Service, version string) bool {
 
 var viaLabels = map[string]string{
 	"nmap":               "nmap -sV",
-	"cpe":                "CPE z nmap",
-	"banner":             "baner usługi",
-	"http-server-header": "nagłówek Server",
-	"http-page":          "treść strony HTTP",
-	"x-powered-by":       "nagłówek X-Powered-By",
-	"technology":         "fingerprint technologii",
+	"cpe":                "nmap CPE",
+	"banner":             "service banner",
+	"http-server-header": "Server header",
+	"http-page":          "HTTP page content",
+	"x-powered-by":       "X-Powered-By header",
+	"technology":         "technology fingerprint",
 }
 
 // Assess evaluates a service against the table at now and returns its end-of-life
@@ -297,7 +297,7 @@ func (d *Data) outdated(c candidate, b Branch, eolAt, now time.Time, distro bool
 		LatestInBranch: b.Latest,
 		Via:            c.via,
 		DistroPackaged: distro,
-		Label:          fmt.Sprintf("%s %s – gałąź EOL od %s", c.product.Name, b.Cycle, b.EOL[:7]),
+		Label:          fmt.Sprintf("%s %s – branch EOL since %s", c.product.Name, b.Cycle, b.EOL[:7]),
 		Source:         c.product.Source,
 		DataAsOf:       d.AsOf,
 	}
@@ -305,21 +305,21 @@ func (d *Data) outdated(c candidate, b Branch, eolAt, now time.Time, distro bool
 		oc.SupportedBranch = sb.Cycle
 	}
 	var ev strings.Builder
-	fmt.Fprintf(&ev, "%s %s (wersja z: %s) należy do gałęzi %s", c.product.Name, core, nonEmpty(viaLabels[c.via], c.via), b.Cycle)
+	fmt.Fprintf(&ev, "%s %s (version from: %s) belongs to branch %s", c.product.Name, core, nonEmpty(viaLabels[c.via], c.via), b.Cycle)
 	if b.Note != "" {
 		fmt.Fprintf(&ev, " (%s)", b.Note)
 	}
-	fmt.Fprintf(&ev, ", której wsparcie zakończyło się %s (%s temu).", b.EOL, Age(days))
+	fmt.Fprintf(&ev, ", whose support ended on %s (%s ago).", b.EOL, Age(days))
 	if b.Latest != "" {
-		fmt.Fprintf(&ev, " Ostatnie wydanie gałęzi: %s.", b.Latest)
+		fmt.Fprintf(&ev, " Latest release in the branch: %s.", b.Latest)
 	}
 	if oc.SupportedBranch != "" {
-		fmt.Fprintf(&ev, " Wspierana gałąź: %s.", oc.SupportedBranch)
+		fmt.Fprintf(&ev, " Supported branch: %s.", oc.SupportedBranch)
 	}
 	if distro {
-		ev.WriteString(" Wersja z pakietu dystrybucji: poprawki bezpieczeństwa mogą być backportowane, ale gałąź upstream nie jest już wspierana; sprawdź wsparcie wydania systemu.")
+		ev.WriteString(" Distro-packaged version: security fixes may be backported, but the upstream branch is no longer supported; check the OS release support.")
 	}
-	fmt.Fprintf(&ev, " Źródło: %s (dane z %s, bez zapytań sieciowych).", c.product.Source, d.AsOf)
+	fmt.Fprintf(&ev, " Source: %s (data as of %s, no network lookups).", c.product.Source, d.AsOf)
 	oc.Evidence = ev.String()
 	return oc
 }
@@ -345,10 +345,10 @@ func (d *Data) hint(kv KnownVuln, c candidate, distro bool) domain.VulnHint {
 		DistroPackaged: distro,
 		References:     kv.References,
 	}
-	h.Evidence = fmt.Sprintf("Pasywna wskazówka (tylko na podstawie wersji, nic nie wysłano do usługi): %s %s mieści się w zakresie podatnym na %s (%s): %s.",
+	h.Evidence = fmt.Sprintf("Passive hint (based on the version only, nothing was sent to the service): %s %s is in the range affected by %s (%s): %s.",
 		c.product.Name, c.version, kv.ID, kv.Name, h.Affected)
 	if distro {
-		h.Evidence += " Build dystrybucji: poprawka mogła zostać backportowana; potwierdź wersję pakietu."
+		h.Evidence += " Distro build: the fix may have been backported; confirm the package version."
 	}
 	return h
 }
@@ -411,22 +411,19 @@ func Age(days int) string {
 	years := days / 365
 	switch {
 	case years >= 1:
-		return fmt.Sprintf("%d %s", years, plYears(years))
+		return fmt.Sprintf("%d %s", years, enYears(years))
 	case days >= 60:
-		return fmt.Sprintf("%d mies.", days/30)
+		return fmt.Sprintf("%d months", days/30)
 	default:
-		return fmt.Sprintf("%d dni", days)
+		return fmt.Sprintf("%d days", days)
 	}
 }
 
-func plYears(n int) string {
+func enYears(n int) string {
 	if n == 1 {
-		return "rok"
+		return "year"
 	}
-	if n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14) {
-		return "lata"
-	}
-	return "lat"
+	return "years"
 }
 
 func nonEmpty(a, b string) string {

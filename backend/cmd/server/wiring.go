@@ -305,9 +305,9 @@ func (r *LiveScanRunner) StartScan(ctx context.Context, run *domain.ScanRun, pro
 	if prepared.TotalIPs == 0 {
 		// Nothing left to scan (all excluded or invalid): fail loudly instead of reporting an
 		// empty COMPLETED run that looks like "the scanner found nothing".
-		reason := "brak adresów do skanowania"
+		reason := "no addresses to scan"
 		if resolution != nil {
-			reason = fmt.Sprintf("brak adresów do skanowania: %d wykluczonych przez listę wykluczeń, %d niepoprawnych wpisów",
+			reason = fmt.Sprintf("no addresses to scan: %d excluded by the exclusion list, %d invalid entries",
 				resolution.ExcludedCount, len(resolution.InvalidEntries))
 		}
 		now := time.Now().UTC()
@@ -458,7 +458,7 @@ func (r *LiveScanRunner) launchAsync(
 			now := time.Now().UTC()
 			runCopy.Status = domain.ScanStatusFailed
 			runCopy.FinishedAt = &now
-			runCopy.Notes = strings.TrimSpace(runCopy.Notes + "\nzapis wyników nie powiódł się: " + ingestErr.Error())
+			runCopy.Notes = strings.TrimSpace(runCopy.Notes + "\nsaving results failed: " + ingestErr.Error())
 			_ = r.store.SaveScanChunks(bgCtx, runCopy.ID, runCopy.Chunks)
 			_ = r.store.UpdateScanRun(bgCtx, &runCopy)
 			return
@@ -618,7 +618,7 @@ func (r *LiveScanRunner) PauseScan(ctx context.Context, scanRunID string) error 
 	switch run.Status {
 	case domain.ScanStatusQueued, domain.ScanStatusCalibrating, domain.ScanStatusRunning, domain.ScanStatusPausedWindow:
 	default:
-		return scanStateErr("nie można wstrzymać skanu w stanie %s / cannot pause a scan that is %s", run.Status, run.Status)
+		return scanStateErr("cannot pause a scan that is %s", run.Status)
 	}
 	r.mu.Lock()
 	if h, ok := r.active[scanRunID]; ok {
@@ -640,13 +640,13 @@ func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error
 		return err
 	}
 	if run.Status != domain.ScanStatusPausedUser && run.Status != domain.ScanStatusPausedWindow {
-		return scanStateErr("można wznowić tylko wstrzymany skan (stan: %s) / only a paused scan can be resumed", run.Status)
+		return scanStateErr("only a paused scan can be resumed (status: %s)", run.Status)
 	}
 	// A pause cancels the worker, which then writes its final checkpoint: wait for it, or the
 	// old segment and the resumed one would run (and write) concurrently.
 	for deadline := time.Now().Add(15 * time.Second); r.IsScanActive(scanRunID); {
 		if time.Now().After(deadline) {
-			return scanStateErr("skan jest jeszcze wstrzymywany - spróbuj ponownie za chwilę / scan is still pausing, retry shortly")
+			return scanStateErr("scan is still pausing - retry in a moment")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -654,7 +654,7 @@ func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error
 		return err
 	}
 	if run.Status != domain.ScanStatusPausedUser && run.Status != domain.ScanStatusPausedWindow {
-		return scanStateErr("można wznowić tylko wstrzymany skan (stan: %s) / only a paused scan can be resumed", run.Status)
+		return scanStateErr("only a paused scan can be resumed (status: %s)", run.Status)
 	}
 	var profile *domain.ScanProfile
 	if run.ProfileID != "" {
@@ -666,7 +666,7 @@ func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error
 		p, ok := r.adhoc[scanRunID]
 		r.mu.Unlock()
 		if !ok {
-			return scanStateErr("tego szybkiego skanu (bez zapisanego profilu) nie można wznowić po restarcie serwera - uruchom go ponownie / quick scan without a saved profile cannot be resumed after a restart")
+			return scanStateErr("a quick scan without a saved profile cannot be resumed after a server restart - start it again")
 		}
 		profile = &p
 	}
@@ -703,7 +703,7 @@ func (r *LiveScanRunner) StopScan(ctx context.Context, scanRunID string) error {
 	}
 	switch run.Status {
 	case domain.ScanStatusCompleted, domain.ScanStatusFailed, domain.ScanStatusStopped:
-		return scanStateErr("skan jest już zakończony (%s) / scan already finished", run.Status)
+		return scanStateErr("scan already finished (%s)", run.Status)
 	}
 	r.mu.Lock()
 	if h, ok := r.active[scanRunID]; ok {
@@ -784,7 +784,7 @@ func (r *LiveScanRunner) RecoverInterrupted(ctx context.Context) (int, error) {
 			run.FinishedAt = &now
 			// Tell the user why in the UI, not only in the server log. Results ingested before
 			// the restart are kept.
-			run.Notes = strings.TrimSpace(run.Notes + "\nPrzerwany przez restart/awarię serwera - uruchom skan ponownie (wyniki zebrane do tej pory zostały zapisane). / Interrupted by a server restart.")
+			run.Notes = strings.TrimSpace(run.Notes + "\nInterrupted by a server restart/crash - run the scan again (results collected so far were saved).")
 			_ = r.store.UpdateScanRun(ctx, &run)
 			log.Printf("[WARN] scan %s (%s) was interrupted before its chunk ledger existed; marked FAILED", run.ID, run.Name)
 			recovered++

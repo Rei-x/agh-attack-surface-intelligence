@@ -66,7 +66,7 @@ func (m *Middleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 		}
 		user, err := m.users.GetUser(r.Context(), claims.Sub)
 		if err != nil && m.IsNotFound != nil && !m.IsNotFound(err) {
-			writeJSONError(w, http.StatusServiceUnavailable, "baza danych jest niedostępna - spróbuj ponownie za chwilę / database unavailable",
+			writeJSONError(w, http.StatusServiceUnavailable, "database unavailable - try again in a moment",
 				"store error while loading the user")
 			return
 		}
