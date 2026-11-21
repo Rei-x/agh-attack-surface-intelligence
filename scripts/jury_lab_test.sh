@@ -165,12 +165,14 @@ for stack in $ONLY; do
       check_svc "$stack" "$out" 15673 'RabbitMQ Management' admin
       ;;
   esac
-  # A second scan of the unchanged stack must not report changes.
+  # A second scan of the unchanged stack must not report service changes. (The host itself
+  # moves from NEW to ACTIVE on its second sighting: a HOST_STATE_CHANGED event, port 0.)
   out2="$WORK/$stack-2.json"
   if scan "$dd" "$out2"; then
-    n=$(jq '[.changes[] | select(.event_type != "OUTDATED_VERSION")] | length' "$out2")
-    if [ "$n" -eq 0 ]; then record PASS "$stack" "repeat scan: no changes" ""; else
-      record FAIL "$stack" "repeat scan: no changes" "$(jq -r '[.changes[] | .event_type + " " + (.port|tostring)] | join("; ")' "$out2" | cut -c1-120)"; fi
+    svcq='[.changes[] | select((.port // 0) > 0 and .event_type != "OUTDATED_VERSION")]'
+    n=$(jq "$svcq | length" "$out2")
+    if [ "$n" -eq 0 ]; then record PASS "$stack" "repeat scan: no service changes" "$(jq -r '[.changes[] | .event_type] | join(", ")' "$out2")"; else
+      record FAIL "$stack" "repeat scan: no service changes" "$(jq -r "$svcq | map(.event_type + \" \" + (.port|tostring) + \": \" + .summary) | join(\"; \")" "$out2" | cut -c1-160)"; fi
   fi
 done
 
@@ -188,15 +190,15 @@ if [ "$DO_QS" = 1 ]; then
   (cd "$LAB" && ./quickstart.sh change >/dev/null 2>&1)
   scan "$dd" "$WORK/qs-2.json"
   [ "$(changes_of "$WORK/qs-2.json" SERVICE_CLOSED 8787)" -ge 1 ] && record PASS quickstart "scan 2: 8787 reported closed" "" || record FAIL quickstart "scan 2: 8787 reported closed" ""
-  other=$(jq '[.changes[] | select(.port != 8787 and .event_type != "OUTDATED_VERSION")] | length' "$WORK/qs-2.json")
-  [ "$other" -eq 0 ] && record PASS quickstart "scan 2: other services unchanged" "" || record FAIL quickstart "scan 2: other services unchanged" "$(jq -r '[.changes[] | select(.port != 8787) | .event_type + " " + (.port|tostring)] | join("; ")' "$WORK/qs-2.json")"
+  other=$(jq '[.changes[] | select((.port // 0) > 0 and .port != 8787 and .event_type != "OUTDATED_VERSION")] | length' "$WORK/qs-2.json")
+  [ "$other" -eq 0 ] && record PASS quickstart "scan 2: other services unchanged" "" || record FAIL quickstart "scan 2: other services unchanged" "$(jq -r '[.changes[] | select((.port // 0) > 0 and .port != 8787) | .event_type + " " + (.port|tostring)] | join("; ")' "$WORK/qs-2.json")"
   (cd "$LAB" && ./quickstart.sh up >/dev/null 2>&1)
   sleep 5
   scan "$dd" "$WORK/qs-3.json"
   back=$(( $(changes_of "$WORK/qs-3.json" SERVICE_REOPENED 8787) + $(changes_of "$WORK/qs-3.json" NEW_SERVICE 8787) ))
   [ "$back" -ge 1 ] && record PASS quickstart "scan 3: 8787 reported back" "" || record FAIL quickstart "scan 3: 8787 reported back" ""
-  other=$(jq '[.changes[] | select(.port != 8787 and .event_type != "OUTDATED_VERSION")] | length' "$WORK/qs-3.json")
-  [ "$other" -eq 0 ] && record PASS quickstart "scan 3: other services unchanged" "" || record FAIL quickstart "scan 3: other services unchanged" "$(jq -r '[.changes[] | select(.port != 8787) | .event_type + " " + (.port|tostring)] | join("; ")' "$WORK/qs-3.json")"
+  other=$(jq '[.changes[] | select((.port // 0) > 0 and .port != 8787 and .event_type != "OUTDATED_VERSION")] | length' "$WORK/qs-3.json")
+  [ "$other" -eq 0 ] && record PASS quickstart "scan 3: other services unchanged" "" || record FAIL quickstart "scan 3: other services unchanged" "$(jq -r '[.changes[] | select((.port // 0) > 0 and .port != 8787) | .event_type + " " + (.port|tostring)] | join("; ")' "$WORK/qs-3.json")"
   (cd "$LAB" && ./quickstart.sh down >/dev/null 2>&1)
 fi
 

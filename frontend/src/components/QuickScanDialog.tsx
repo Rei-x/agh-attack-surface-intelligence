@@ -227,8 +227,8 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
           )}
           {estimate && estimate.excluded_ips > 0 && (
             <Notice tone={estimate.effective_ips === 0 ? 'danger' : 'warning'}>
-              {formatNumber(estimate.excluded_ips)} of {formatNumber(estimate.total_ips)} IPs are covered by target
-              exclusions (Settings) and will not be scanned.
+              {formatNumber(estimate.excluded_ips)} of {formatNumber(estimate.total_ips)} IPs are covered by exclusions
+              (Scans, Scope tab) and will not be scanned.
             </Notice>
           )}
           {estimateError && <Notice tone="danger">{estimateError}</Notice>}

@@ -306,7 +306,7 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 	exclusions, _ := s.store.ListExclusions(r.Context())
 	if res, err := scanner.ParseAndNormalizeTargets(r.Context(), profile.Targets, exclusions, nil); err == nil {
 		if len(res.IPs) == 0 && res.ExcludedCount > 0 {
-			writeErr(w, http.StatusBadRequest, "every target is covered by a target exclusion (Settings > Exclusions); remove the exclusion to scan it")
+			writeErr(w, http.StatusBadRequest, "every target is covered by an exclusion (Scans, Scope tab); remove the exclusion to scan it")
 			return
 		}
 		// Auto ports on a tiny scope scan all 65535 ports: raise the default rate so a
