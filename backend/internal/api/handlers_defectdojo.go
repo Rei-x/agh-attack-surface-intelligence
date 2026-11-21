@@ -217,7 +217,18 @@ func (s *Server) handlePushDefectDojoNmap(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	imp, err := s.dojo.ImportNmapXML(ctx, cfg, req.EngagementID, run.Name, run.RawNmapXML)
+	// One DefectDojo test per scan profile: each run reimports into it, so DefectDojo
+	// closes services that disappeared since the previous run of the same profile.
+	profileName := ""
+	if run.ProfileID != "" {
+		if p, perr := s.store.GetProfile(ctx, run.ProfileID); perr == nil && p != nil {
+			profileName = p.Name
+		}
+	}
+	if profileName == "" {
+		profileName = run.Name
+	}
+	imp, err := s.dojo.ImportNmapXML(ctx, cfg, req.EngagementID, defectdojo.NmapTestTitle(profileName), run.Name, run.RawNmapXML)
 	exp := &domain.DefectDojoExport{
 		ExportType: "nmap_xml",
 		SourceID:   run.ID,

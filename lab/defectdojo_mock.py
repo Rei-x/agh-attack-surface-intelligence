@@ -8,6 +8,8 @@ Implements DefectDojo API v2 endpoints used by AegisASI:
   - GET  /api/v2/tests/
   - POST /api/v2/tests/
   - POST /api/v2/import-scan/   (multipart/form-data Nmap Scan XML)
+  - POST /api/v2/reimport-scan/ (Nmap Scan / Generic Findings Import, auto_create_context)
+  - GET  /api/v2/{engagements,products,product_types}/<id>/
   - GET  /api/v2/findings/
   - POST /api/v2/findings/
   - POST /api/v2/reset/
@@ -50,6 +52,16 @@ class DefectDojoStore:
                     "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 }
             ]
+
+    def test_for_title(self, title: str) -> int:
+        with self._lock:
+            for t in self.tests:
+                if t.get("title") == title:
+                    return int(t["id"])
+            self.next_test_id += 1
+            self.tests.append({"id": self.next_test_id, "engagement": 1, "test_type": 1, "title": title,
+                               "created": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+            return self.next_test_id
 
     def add_test(self, data: dict[str, object]) -> dict[str, object]:
         with self._lock:
@@ -350,6 +362,15 @@ class DefectDojoHandler(BaseLabHandler):
             if not self._check_auth():
                 return
 
+        detail = {
+            "/api/v2/engagements/1/": {"id": 1, "name": "CBI AGH Continuous Attack Surface Discovery", "product": 1},
+            "/api/v2/products/1/": {"id": 1, "name": "AGH University Campus Network", "prod_type": 1},
+            "/api/v2/product_types/1/": {"id": 1, "name": "AegisASI"},
+        }
+        if path in detail:
+            self.send_response_body(200, json.dumps(detail[path]), content_type="application/json")
+            return
+
         if path in ("/api/v2/users/", "/api/v2/users"):
             self.send_response_body(
                 200,
@@ -438,6 +459,9 @@ class DefectDojoHandler(BaseLabHandler):
             _, findings = STORE.snapshot()
             qs = parse_qs(parsed.query)
             uid_filter = qs.get("unique_id_from_tool", [None])[0]
+            test_filter = qs.get("test", [None])[0]
+            if test_filter:
+                findings = [f for f in findings if str(f.get("test")) == test_filter]
             if uid_filter:
                 findings = [f for f in findings if f.get("unique_id_from_tool") == uid_filter]
             self.send_response_body(
@@ -464,6 +488,38 @@ class DefectDojoHandler(BaseLabHandler):
         if path in ("/api/v2/tests/", "/api/v2/tests"):
             created = STORE.add_test(self._read_json())
             self.send_response_body(201, json.dumps(created), content_type="application/json")
+        elif path in ("/api/v2/reimport-scan/", "/api/v2/reimport-scan"):
+            ctype = self.headers.get("Content-Type", "")
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            body = self.rfile.read(length) if length > 0 else b""
+            if "multipart/form-data" not in ctype:
+                self.send_response_body(400, json.dumps({"detail": "multipart/form-data required"}), content_type="application/json")
+                return
+            fields, files = parse_multipart(ctype, body)
+            if fields.get("auto_create_context") != "true" and not fields.get("test"):
+                self.send_response_body(400, json.dumps({"detail": "test or auto_create_context with names required"}), content_type="application/json")
+                return
+            scan_type = fields.get("scan_type") or "Nmap Scan"
+            title = fields.get("test_title") or scan_type
+            raw = files.get("file", ("", b""))[1].decode("utf-8", errors="replace")
+            test_id = STORE.test_for_title(title)
+            total = 0
+            if scan_type == "Generic Findings Import":
+                try:
+                    doc = json.loads(raw or "{}")
+                except ValueError:
+                    doc = {}
+                for f in doc.get("findings", []):
+                    f["test"] = test_id
+                    STORE.add_finding(f)
+                    total += 1
+            else:
+                rec = STORE.add_scan(scan_type, 1, fields.get("scan_date") or datetime.date.today().isoformat(),
+                                     files.get("file", ("nmap.xml", b""))[0], raw, ["aegis-asi"])
+                rec["test"] = rec["test_id"] = test_id
+                total = int(rec.get("finding_count", 0))
+            self.send_response_body(201, json.dumps({"test": test_id, "test_id": test_id, "engagement_id": 1, "product_id": 1,
+                                                     "statistics": {"after": {"total": {"total": total}}}}), content_type="application/json")
         elif path in ("/api/v2/import-scan/", "/api/v2/import-scan"):
             ctype = self.headers.get("Content-Type", "")
             length = int(self.headers.get("Content-Length", "0") or "0")
