@@ -21,8 +21,8 @@ func mysqlGreeting(version, plugin string, threadID byte) string {
 
 func TestIdentifyBannerRealDaemons(t *testing.T) {
 	cases := []struct {
-		port                   int
-		banner                 string
+		port                  int
+		banner                string
 		svc, product, version string
 	}{
 		{22, "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6", "ssh", "OpenSSH", "8.9p1"},
