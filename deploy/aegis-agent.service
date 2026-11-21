@@ -1,0 +1,35 @@
+[Unit]
+Description=AegisASI remote scanning agent
+Documentation=https://github.com/Rei-x/agh-attack-surface-intelligence/blob/main/docs/DEPLOYMENT.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# AEGIS_AGENT_SERVER / AEGIS_AGENT_TOKEN / AEGIS_AGENT_ALLOW_CIDR ... (0600, root).
+# The token is single-use: after the first start the credential lives in the state directory.
+EnvironmentFile=-/etc/aegis-agent.env
+ExecStart=/usr/local/bin/aegis agent
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=3
+DynamicUser=yes
+StateDirectory=aegis-agent
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
