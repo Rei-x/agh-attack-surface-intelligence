@@ -708,6 +708,9 @@ func (r *LiveScanRunner) RecoverInterrupted(ctx context.Context) (int, error) {
 			now := time.Now().UTC()
 			run.Status = domain.ScanStatusFailed
 			run.FinishedAt = &now
+			// Tell the user why in the UI, not only in the server log. Results ingested before
+			// the restart are kept.
+			run.Notes = strings.TrimSpace(run.Notes + "\nPrzerwany przez restart/awarię serwera - uruchom skan ponownie (wyniki zebrane do tej pory zostały zapisane). / Interrupted by a server restart.")
 			_ = r.store.UpdateScanRun(ctx, &run)
 			log.Printf("[WARN] scan %s (%s) was interrupted before its chunk ledger existed; marked FAILED", run.ID, run.Name)
 			recovered++

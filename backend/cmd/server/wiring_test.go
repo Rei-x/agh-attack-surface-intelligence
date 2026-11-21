@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -209,6 +210,9 @@ func TestRecoverInterruptedParksOrphanedRuns(t *testing.T) {
 	r3, _ := store.GetScanRun(ctx, "done-1")
 	if r1.Status != domain.ScanStatusPausedWindow || r2.Status != domain.ScanStatusFailed || r3.Status != domain.ScanStatusCompleted {
 		t.Fatalf("statuses after recovery: %s %s %s", r1.Status, r2.Status, r3.Status)
+	}
+	if !strings.Contains(r2.Notes, "restart") {
+		t.Fatalf("failed orphan must explain why in its notes, got %q", r2.Notes)
 	}
 	chunks, _ := store.GetScanChunks(ctx, "orphan-1")
 	if chunks[0].Status != domain.ChunkStatusDone || chunks[1].Status != domain.ChunkStatusPending || chunks[1].StartedAt != nil {
