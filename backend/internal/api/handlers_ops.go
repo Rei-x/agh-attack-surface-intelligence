@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -282,8 +283,9 @@ func (s *Server) handleSaveTagRules(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "too many rules (max 1000)")
 		return
 	}
+	prevRules := ingest.LoadTagRules(r.Context(), s.store)
 	prev := map[string]domain.TagRule{}
-	for _, p := range ingest.LoadTagRules(r.Context(), s.store) {
+	for _, p := range prevRules {
 		prev[p.ID] = p
 	}
 	now := time.Now().UTC()
@@ -301,42 +303,59 @@ func (s *Server) handleSaveTagRules(w http.ResponseWriter, r *http.Request) {
 			rule.CreatedBy, rule.CreatedAt = user, now
 		}
 	}
+	if body.Rules == nil {
+		body.Rules = []domain.TagRule{}
+	}
 	if err := ss.SaveSetting(r.Context(), db.SettingTagRules, body.Rules); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"rules": body.Rules})
-}
-
-// handleApplyTagRules applies the rules to the existing inventory right away (normally they
-// apply on the next ingest of each host).
-func (s *Server) handleApplyTagRules(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	rules := ingest.LoadTagRules(ctx, s.store)
-	if len(rules) == 0 {
-		writeJSON(w, http.StatusOK, map[string]any{"updated": 0, "checked": 0})
-		return
-	}
-	hosts, _, err := s.store.ListHosts(ctx, db.HostFilter{})
+	// Re-derive rule values on the whole inventory right away: an edited owner replaces the
+	// old one and a removed rule takes its tags with it (analyst overrides still win).
+	updated, checked, err := s.recomputeTagRules(r.Context(), prevRules, body.Rules)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	updated := 0
+	writeJSON(w, http.StatusOK, map[string]any{"rules": body.Rules, "updated": updated, "checked": checked})
+}
+
+// handleApplyTagRules re-applies the current rules to the existing inventory (saving the
+// rules already does this; kept for API clients and after imports).
+func (s *Server) handleApplyTagRules(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	rules := ingest.LoadTagRules(ctx, s.store)
+	updated, checked, err := s.recomputeTagRules(ctx, rules, rules)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"updated": updated, "checked": checked})
+}
+
+// recomputeTagRules moves every host from the values derived by oldRules to newRules and
+// persists the hosts that changed.
+func (s *Server) recomputeTagRules(ctx context.Context, oldRules, newRules []domain.TagRule) (updated, checked int, err error) {
+	if len(oldRules) == 0 && len(newRules) == 0 {
+		return 0, 0, nil
+	}
+	hosts, _, err := s.store.ListHosts(ctx, db.HostFilter{})
+	if err != nil {
+		return 0, 0, err
+	}
 	for i := range hosts {
 		h := hosts[i]
 		observedView(&h)
-		if !ingest.ApplyTagRules(&h, rules) {
+		if !ingest.RecomputeTagRules(&h, oldRules, newRules) {
 			continue
 		}
 		h.Services = nil
 		if _, err := s.store.UpsertObservedHost(ctx, &h); err != nil {
-			writeStoreErr(w, err)
-			return
+			return updated, len(hosts), err
 		}
 		updated++
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"updated": updated, "checked": len(hosts)})
+	return updated, len(hosts), nil
 }
 
 // observedView undoes the analyst-override merge on a listed host for the fields a tag rule
