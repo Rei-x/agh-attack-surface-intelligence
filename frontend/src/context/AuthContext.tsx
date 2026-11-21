@@ -94,6 +94,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Re-check health so a store problem that starts mid-session (DB down, disk full) shows up.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      api.health().then(setHealth).catch(() => {});
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const login = useCallback(async (username: string, password: string): Promise<User> => {
     const res = await api.login(username, password);
     setStoredToken(res.token);

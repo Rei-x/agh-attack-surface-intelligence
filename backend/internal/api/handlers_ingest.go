@@ -26,6 +26,22 @@ func (s *Server) handleIngestManual(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if ingest.NormalizeIP(obs.IP) == "" {
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("%q nie jest poprawnym adresem IPv4/IPv6 / not a valid IP address", obs.IP))
+		return
+	}
+	for _, svc := range obs.Services {
+		if svc.Port < 1 || svc.Port > 65535 {
+			writeErr(w, http.StatusBadRequest, fmt.Sprintf("port %d poza zakresem 1-65535 / port out of range", svc.Port))
+			return
+		}
+	}
+	clean, _, err := ingest.SanitizeObservations([]domain.ObservedHost{obs})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	obs = clean[0]
 	res, err := s.pipeline.ProcessObservations(r.Context(), ingest.IngestRequest{
 		RunType:      domain.ScanTypeManual,
 		ScanName:     nonEmptyStr(req.ScanName, "Manual Entry "+obs.IP),
@@ -47,9 +63,18 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 
 	if strings.HasPrefix(ct, "multipart/form-data") {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			if isBodyTooLarge(err) {
+				writeErr(w, http.StatusRequestEntityTooLarge, ingest.ErrImportTooLarge.Error())
+				return
+			}
 			writeErr(w, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
 			return
 		}
+		defer func() {
+			if r.MultipartForm != nil {
+				_ = r.MultipartForm.RemoveAll() // temp files of large uploads
+			}
+		}()
 		format = strings.ToLower(strings.TrimSpace(r.FormValue("format")))
 		scanName = strings.TrimSpace(r.FormValue("scan_name"))
 		file, hdr, err := r.FormFile("file")
@@ -68,14 +93,18 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 				format = "json"
 			}
 		}
-		data, err = io.ReadAll(io.LimitReader(file, 32<<20))
+		data, err = io.ReadAll(io.LimitReader(file, maxImportFileBytes+1))
 		if err != nil {
-			writeErr(w, http.StatusBadRequest, "failed reading uploaded file")
+			writeErr(w, http.StatusBadRequest, "nie udało się odczytać pliku / failed reading uploaded file")
 			return
 		}
 	} else {
-		raw, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
+		raw, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isBodyTooLarge(err) {
+				writeErr(w, http.StatusRequestEntityTooLarge, ingest.ErrImportTooLarge.Error())
+				return
+			}
 			writeErr(w, http.StatusBadRequest, "failed reading body")
 			return
 		}
@@ -106,8 +135,18 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if int64(len(data)) > maxImportFileBytes {
+		writeErr(w, http.StatusRequestEntityTooLarge, ingest.ErrImportTooLarge.Error())
+		return
+	}
+	data = ingest.StripNUL(ingest.DecodeText(data))
+	if len(bytes.TrimSpace(bytes.TrimPrefix(data, []byte("\ufeff")))) == 0 {
+		writeErr(w, http.StatusBadRequest, "plik jest pusty / the file is empty")
+		return
+	}
+
 	if format == "" {
-		trimmed := bytes.TrimSpace(data)
+		trimmed := bytes.TrimSpace(bytes.TrimPrefix(data, []byte("\ufeff")))
 		if len(trimmed) > 0 && (trimmed[0] == '[' || trimmed[0] == '{') {
 			format = "json"
 		} else if len(trimmed) > 0 && trimmed[0] == '<' {
@@ -150,6 +189,10 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "unsupported import format (use csv, json, nmap, scb, or passive)")
 		return
 	}
+	skipped := 0
+	if err == nil {
+		observations, skipped, err = ingest.SanitizeObservations(observations)
+	}
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -166,7 +209,10 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, res)
+	writeJSON(w, http.StatusCreated, struct {
+		*ingest.IngestResult
+		SkippedRecords int `json:"skipped_records"`
+	}{res, skipped})
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {

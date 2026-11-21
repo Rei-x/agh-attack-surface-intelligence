@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/url"
 	"fmt"
 	"net/http"
 	"strings"
@@ -23,10 +24,26 @@ func (s *Server) handleGetDefectDojoConfig(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, safe)
 }
 
+const errDojoURL = "skonfiguruj adres DefectDojo jako pełny URL http(s), np. https://dojo.example:8443 / DefectDojo URL must be an absolute http(s) URL"
+
+func isHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
 func (s *Server) handleSaveDefectDojoConfig(w http.ResponseWriter, r *http.Request) {
 	var cfg domain.DefectDojoConfig
 	if err := decodeJSON(r, &cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	cfg.URL = strings.TrimRight(strings.TrimSpace(cfg.URL), "/")
+	if cfg.URL != "" && !isHTTPURL(cfg.URL) {
+		writeErr(w, http.StatusBadRequest, errDojoURL)
+		return
+	}
+	if cfg.ProductID < 0 || cfg.EngagementID < 0 {
+		writeErr(w, http.StatusBadRequest, "product_id / engagement_id nie mogą być ujemne / must not be negative")
 		return
 	}
 	if err := s.store.SaveDefectDojoConfig(r.Context(), &cfg); err != nil {
@@ -61,6 +78,10 @@ func (s *Server) handleTestDefectDojo(w http.ResponseWriter, r *http.Request) {
 				cfg.EngagementID = override.EngagementID
 			}
 		}
+	}
+	if strings.TrimSpace(cfg.URL) == "" || !isHTTPURL(strings.TrimSpace(cfg.URL)) {
+		writeErr(w, http.StatusBadRequest, errDojoURL)
+		return
 	}
 	st, err := s.dojo.TestConnection(r.Context(), cfg)
 	if err != nil && st == nil {

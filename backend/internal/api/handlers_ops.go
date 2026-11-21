@@ -444,7 +444,13 @@ func (s *Server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = decodeJSON(r, &body) // optional: test an unsaved URL
 	if err := s.notifier.SendTest(r.Context(), strings.TrimSpace(body.URL)); err != nil {
-		writeErr(w, http.StatusBadGateway, err.Error())
+		// Missing / malformed URL is the caller's input (400); an unreachable or failing
+		// receiver is an upstream problem (502).
+		code := http.StatusBadGateway
+		if msg := err.Error(); strings.Contains(msg, "no webhook URL") || strings.Contains(msg, "must be an absolute") {
+			code = http.StatusBadRequest
+		}
+		writeErr(w, code, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -74,10 +75,31 @@ func ParseManual(req ManualEntryRequest) (domain.ObservedHost, error) {
 }
 
 // ParseCSV flexibly parses CSV exports/inventories into grouped ObservedHosts.
+// The delimiter (',' ';' or tab) is detected from the header line, so Excel exports with a
+// Polish locale (';') and an optional "sep=;" first line work; quotes are parsed leniently.
 func ParseCSV(r io.Reader) ([]domain.ObservedHost, error) {
-	cr := csv.NewReader(r)
+	raw, err := io.ReadAll(io.LimitReader(r, MaxImportBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read csv: %w", err)
+	}
+	if int64(len(raw)) > MaxImportBytes {
+		return nil, ErrImportTooLarge
+	}
+	raw = bytes.TrimPrefix(raw, []byte("\ufeff"))
+	delim := sniffCSVDelimiter(raw)
+	if line, rest, ok := bytes.Cut(raw, []byte("\n")); ok || len(line) > 0 {
+		if l := bytes.ToLower(bytes.TrimSpace(line)); bytes.HasPrefix(l, []byte("sep=")) {
+			if len(l) > 4 {
+				delim = rune(l[4])
+			}
+			raw = rest
+		}
+	}
+	cr := csv.NewReader(bytes.NewReader(raw))
+	cr.Comma = delim
 	cr.FieldsPerRecord = -1
 	cr.TrimLeadingSpace = true
+	cr.LazyQuotes = true
 
 	records, err := cr.ReadAll()
 	if err != nil {
@@ -199,12 +221,41 @@ func ParseCSV(r io.Reader) ([]domain.ObservedHost, error) {
 	return out, nil
 }
 
+// MaxImportBytes bounds a single imported file (CSV / JSON / nmap XML).
+const MaxImportBytes int64 = 64 << 20
+
+// ErrImportTooLarge is returned instead of silently truncating an oversized import.
+var ErrImportTooLarge = fmt.Errorf("plik importu jest za duży (limit %d MB) / import file too large (limit %d MB)", MaxImportBytes>>20, MaxImportBytes>>20)
+
+// sniffCSVDelimiter picks the most frequent of , ; and TAB in the first non-"sep=" line.
+func sniffCSVDelimiter(raw []byte) rune {
+	line := raw
+	for {
+		l, rest, _ := bytes.Cut(line, []byte("\n"))
+		if !bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(l)), []byte("sep=")) || len(rest) == 0 {
+			line = l
+			break
+		}
+		line = rest
+	}
+	best, bestN := ',', 0
+	for _, d := range []rune{',', ';', '\t'} {
+		if n := bytes.Count(line, []byte(string(d))); n > bestN {
+			best, bestN = d, n
+		}
+	}
+	return best
+}
+
 // ParseJSON flexibly parses structured ObservedHost arrays, wrapped {hosts/observations},
 // or flat JSON records into []domain.ObservedHost.
 func ParseJSON(r io.Reader) ([]domain.ObservedHost, error) {
-	raw, err := io.ReadAll(io.LimitReader(r, 16<<20))
+	raw, err := io.ReadAll(io.LimitReader(r, MaxImportBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if int64(len(raw)) > MaxImportBytes {
+		return nil, ErrImportTooLarge
 	}
 	raw = []byte(strings.TrimSpace(string(raw)))
 	if len(raw) == 0 {

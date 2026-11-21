@@ -13,6 +13,9 @@ import (
 
 type ctxKey struct{}
 
+// SSEPath is the only endpoint that accepts the token as a ?token= query parameter.
+const SSEPath = "/api/v1/events/stream"
+
 // UserLoader resolves a user by ID with current role permissions from persistence.
 type UserLoader interface {
 	GetUser(ctx context.Context, id string) (*domain.User, error)
@@ -28,6 +31,9 @@ type Middleware struct {
 	secret []byte
 	users  UserLoader
 	audit  AuditLogger
+	// IsNotFound classifies UserLoader errors. When set, any other error (database down) is
+	// answered with 503 instead of 401, so an outage does not log every user out.
+	IsNotFound func(error) bool
 }
 
 func NewMiddleware(secret []byte, users UserLoader, audit AuditLogger) *Middleware {
@@ -58,6 +64,11 @@ func (m *Middleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		user, err := m.users.GetUser(r.Context(), claims.Sub)
+		if err != nil && m.IsNotFound != nil && !m.IsNotFound(err) {
+			writeJSONError(w, http.StatusServiceUnavailable, "baza danych jest niedostępna - spróbuj ponownie za chwilę / database unavailable",
+				"store error while loading the user")
+			return
+		}
 		if err != nil || user == nil || !user.Active {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized", "account inactive or not found")
 			return
@@ -124,8 +135,12 @@ func extractToken(r *http.Request) string {
 	if len(authz) > 7 && strings.EqualFold(authz[:7], "Bearer ") {
 		return strings.TrimSpace(authz[7:])
 	}
-	if q := strings.TrimSpace(r.URL.Query().Get("token")); q != "" {
-		return q
+	// EventSource cannot send headers, so the SSE stream (only) accepts ?token=. Elsewhere a
+	// token in the URL would leak into proxy logs, browser history and Referer headers.
+	if r.URL.Path == SSEPath {
+		if q := strings.TrimSpace(r.URL.Query().Get("token")); q != "" {
+			return q
+		}
 	}
 	return ""
 }

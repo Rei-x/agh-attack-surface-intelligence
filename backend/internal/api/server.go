@@ -55,6 +55,9 @@ type Server struct {
 	localSched *scheduler.Scheduler
 
 	notifier *notify.Notifier // outbound alert webhook (fed by the ingest pipeline)
+
+	routes []string      // registered mux patterns (see handle)
+	logins *loginLimiter // failed-login throttling
 }
 
 // NewServer constructs a fully wired AegisASI HTTP Server.
@@ -82,126 +85,129 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 		dojo:     defectdojo.NewClient(),
 		hub:      hub,
 		mux:      http.NewServeMux(),
+		logins:   newLoginLimiter(),
 	}
+	s.authMW.IsNotFound = func(err error) bool { return errors.Is(err, db.ErrNotFound) }
 	s.notifier = notify.New(store)
 	pipeline.SetNotifier(s.notifier)
 	s.registerRoutes()
 	return s
 }
 
-// Handler returns the root HTTP handler wrapped with CORS middleware.
+// Handler returns the root HTTP handler wrapped with security headers, CORS policy and
+// request body limits.
 func (s *Server) Handler() http.Handler {
-	return s.corsMiddleware(s.mux)
+	return s.hardeningMiddleware(s.mux)
 }
 
 func (s *Server) registerRoutes() {
 	mw := s.authMW
 
 	// Public Health & Auth
-	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
-	s.mux.HandleFunc("GET /api/v1/auth/demo-accounts", s.handleDemoAccounts)
-	s.mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
-	s.mux.HandleFunc("GET /api/v1/auth/me", mw.Authenticate(s.handleMe))
+	s.handle("GET /api/v1/health", s.handleHealth)
+	s.handle("GET /api/v1/auth/demo-accounts", s.handleDemoAccounts)
+	s.handle("POST /api/v1/auth/login", s.handleLogin)
+	s.handle("GET /api/v1/auth/me", mw.Authenticate(s.handleMe))
 
 	// Dashboard, Graph, Clusters, SSE
-	s.mux.HandleFunc("GET /api/v1/dashboard/summary", mw.RequirePerm(domain.PermDashboardRead, s.handleDashboardSummary))
-	s.mux.HandleFunc("GET /api/v1/graph", mw.RequirePerm(domain.PermAssetsRead, s.handleGraph))
-	s.mux.HandleFunc("GET /api/v1/clusters", mw.RequirePerm(domain.PermAssetsRead, s.handleClusters))
-	s.mux.HandleFunc("GET /api/v1/events/stream", mw.Authenticate(s.hub.ServeHTTP))
+	s.handle("GET /api/v1/dashboard/summary", mw.RequirePerm(domain.PermDashboardRead, s.handleDashboardSummary))
+	s.handle("GET /api/v1/graph", mw.RequirePerm(domain.PermAssetsRead, s.handleGraph))
+	s.handle("GET /api/v1/clusters", mw.RequirePerm(domain.PermAssetsRead, s.handleClusters))
+	s.handle("GET /api/v1/events/stream", mw.Authenticate(s.hub.ServeHTTP))
 
 	// Targets, Exclusions, Profiles
-	s.mux.HandleFunc("GET /api/v1/targets", mw.RequirePerm(domain.PermScansRead, s.handleListTargets))
-	s.mux.HandleFunc("POST /api/v1/targets", mw.RequirePerm(domain.PermScansWrite, s.handleCreateTarget))
-	s.mux.HandleFunc("DELETE /api/v1/targets/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteTarget))
-	s.mux.HandleFunc("POST /api/v1/targets/estimate", mw.RequirePerm(domain.PermScansRead, s.handleEstimateTargets))
+	s.handle("GET /api/v1/targets", mw.RequirePerm(domain.PermScansRead, s.handleListTargets))
+	s.handle("POST /api/v1/targets", mw.RequirePerm(domain.PermScansWrite, s.handleCreateTarget))
+	s.handle("DELETE /api/v1/targets/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteTarget))
+	s.handle("POST /api/v1/targets/estimate", mw.RequirePerm(domain.PermScansRead, s.handleEstimateTargets))
 
-	s.mux.HandleFunc("GET /api/v1/exclusions", mw.RequirePerm(domain.PermScansRead, s.handleListExclusions))
-	s.mux.HandleFunc("POST /api/v1/exclusions", mw.RequirePerm(domain.PermScansWrite, s.handleCreateExclusion))
-	s.mux.HandleFunc("DELETE /api/v1/exclusions/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteExclusion))
+	s.handle("GET /api/v1/exclusions", mw.RequirePerm(domain.PermScansRead, s.handleListExclusions))
+	s.handle("POST /api/v1/exclusions", mw.RequirePerm(domain.PermScansWrite, s.handleCreateExclusion))
+	s.handle("DELETE /api/v1/exclusions/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteExclusion))
 
-	s.mux.HandleFunc("GET /api/v1/profiles", mw.RequirePerm(domain.PermScansRead, s.handleListProfiles))
-	s.mux.HandleFunc("POST /api/v1/profiles", mw.RequirePerm(domain.PermScansWrite, s.handleCreateProfile))
-	s.mux.HandleFunc("GET /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansRead, s.handleGetProfile))
-	s.mux.HandleFunc("PUT /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansWrite, s.handleUpdateProfile))
-	s.mux.HandleFunc("POST /api/v1/profiles/{id}/run", mw.RequirePerm(domain.PermScansRun, s.handleRunProfileNow))
-	s.mux.HandleFunc("DELETE /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteProfile))
+	s.handle("GET /api/v1/profiles", mw.RequirePerm(domain.PermScansRead, s.handleListProfiles))
+	s.handle("POST /api/v1/profiles", mw.RequirePerm(domain.PermScansWrite, s.handleCreateProfile))
+	s.handle("GET /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansRead, s.handleGetProfile))
+	s.handle("PUT /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansWrite, s.handleUpdateProfile))
+	s.handle("POST /api/v1/profiles/{id}/run", mw.RequirePerm(domain.PermScansRun, s.handleRunProfileNow))
+	s.handle("DELETE /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteProfile))
 
 	// Scan Runs & Diff
-	s.mux.HandleFunc("GET /api/v1/scans", mw.RequirePerm(domain.PermScansRead, s.handleListScans))
-	s.mux.HandleFunc("POST /api/v1/scans", mw.RequirePerm(domain.PermScansRun, s.handleStartScan))
-	s.mux.HandleFunc("GET /api/v1/scans/diff", mw.RequirePerm(domain.PermScansRead, s.handleScanDiff))
-	s.mux.HandleFunc("GET /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansRead, s.handleGetScan))
-	s.mux.HandleFunc("GET /api/v1/scans/{id}/nmap.xml", mw.RequirePerm(domain.PermScansRead, s.handleScanNmapXML))
-	s.mux.HandleFunc("PUT /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansWrite, s.handleUpdateScanMeta))
-	s.mux.HandleFunc("POST /api/v1/scans/{id}/pause", mw.RequirePerm(domain.PermScansRun, s.handlePauseScan))
-	s.mux.HandleFunc("POST /api/v1/scans/{id}/resume", mw.RequirePerm(domain.PermScansRun, s.handleResumeScan))
-	s.mux.HandleFunc("POST /api/v1/scans/{id}/stop", mw.RequirePerm(domain.PermScansRun, s.handleStopScan))
-	s.mux.HandleFunc("DELETE /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteScan))
+	s.handle("GET /api/v1/scans", mw.RequirePerm(domain.PermScansRead, s.handleListScans))
+	s.handle("POST /api/v1/scans", mw.RequirePerm(domain.PermScansRun, s.handleStartScan))
+	s.handle("GET /api/v1/scans/diff", mw.RequirePerm(domain.PermScansRead, s.handleScanDiff))
+	s.handle("GET /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansRead, s.handleGetScan))
+	s.handle("GET /api/v1/scans/{id}/nmap.xml", mw.RequirePerm(domain.PermScansRead, s.handleScanNmapXML))
+	s.handle("PUT /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansWrite, s.handleUpdateScanMeta))
+	s.handle("POST /api/v1/scans/{id}/pause", mw.RequirePerm(domain.PermScansRun, s.handlePauseScan))
+	s.handle("POST /api/v1/scans/{id}/resume", mw.RequirePerm(domain.PermScansRun, s.handleResumeScan))
+	s.handle("POST /api/v1/scans/{id}/stop", mw.RequirePerm(domain.PermScansRun, s.handleStopScan))
+	s.handle("DELETE /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteScan))
 
 	// Hosts, Services & Preserved Overrides
-	s.mux.HandleFunc("GET /api/v1/hosts", mw.RequirePerm(domain.PermAssetsRead, s.handleListHosts))
-	s.mux.HandleFunc("GET /api/v1/hosts/{id}", mw.RequirePerm(domain.PermAssetsRead, s.handleGetHost))
-	s.mux.HandleFunc("PATCH /api/v1/hosts/{id}/overrides", mw.RequirePerm(domain.PermAssetsWrite, s.handlePatchHostOverrides))
-	s.mux.HandleFunc("DELETE /api/v1/hosts/{id}", mw.RequirePerm(domain.PermAssetsDelete, s.handleDeleteHost))
+	s.handle("GET /api/v1/hosts", mw.RequirePerm(domain.PermAssetsRead, s.handleListHosts))
+	s.handle("GET /api/v1/hosts/{id}", mw.RequirePerm(domain.PermAssetsRead, s.handleGetHost))
+	s.handle("PATCH /api/v1/hosts/{id}/overrides", mw.RequirePerm(domain.PermAssetsWrite, s.handlePatchHostOverrides))
+	s.handle("DELETE /api/v1/hosts/{id}", mw.RequirePerm(domain.PermAssetsDelete, s.handleDeleteHost))
 
-	s.mux.HandleFunc("GET /api/v1/services", mw.RequirePerm(domain.PermAssetsRead, s.handleListServices))
-	s.mux.HandleFunc("PATCH /api/v1/services/{id}/overrides", mw.RequirePerm(domain.PermAssetsWrite, s.handlePatchServiceOverrides))
-	s.mux.HandleFunc("GET /api/v1/services/{id}/observations", mw.RequirePerm(domain.PermAssetsRead, s.handleServiceObservations))
+	s.handle("GET /api/v1/services", mw.RequirePerm(domain.PermAssetsRead, s.handleListServices))
+	s.handle("PATCH /api/v1/services/{id}/overrides", mw.RequirePerm(domain.PermAssetsWrite, s.handlePatchServiceOverrides))
+	s.handle("GET /api/v1/services/{id}/observations", mw.RequirePerm(domain.PermAssetsRead, s.handleServiceObservations))
 
 	// Changes
-	s.mux.HandleFunc("GET /api/v1/changes", mw.RequirePerm(domain.PermAssetsRead, s.handleListChanges))
-	s.mux.HandleFunc("POST /api/v1/changes/{id}/acknowledge", mw.RequirePerm(domain.PermAssetsWrite, s.handleAcknowledgeChange))
+	s.handle("GET /api/v1/changes", mw.RequirePerm(domain.PermAssetsRead, s.handleListChanges))
+	s.handle("POST /api/v1/changes/{id}/acknowledge", mw.RequirePerm(domain.PermAssetsWrite, s.handleAcknowledgeChange))
 
 	// Daily ops: host timeline, CIDR tag rules (ownership), alert webhook (handlers_ops.go)
-	s.mux.HandleFunc("GET /api/v1/hosts/{id}/timeline", mw.RequirePerm(domain.PermAssetsRead, s.handleHostTimeline))
-	s.mux.HandleFunc("GET /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsRead, s.handleListTagRules))
-	s.mux.HandleFunc("PUT /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsWrite, s.handleSaveTagRules))
-	s.mux.HandleFunc("POST /api/v1/tag-rules/apply", mw.RequirePerm(domain.PermAssetsWrite, s.handleApplyTagRules))
-	s.mux.HandleFunc("GET /api/v1/integrations/webhook", mw.RequirePerm(domain.PermAdminSettings, s.handleGetWebhook))
-	s.mux.HandleFunc("PUT /api/v1/integrations/webhook", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveWebhook))
-	s.mux.HandleFunc("POST /api/v1/integrations/webhook/test", mw.RequirePerm(domain.PermAdminSettings, s.handleTestWebhook))
+	s.handle("GET /api/v1/hosts/{id}/timeline", mw.RequirePerm(domain.PermAssetsRead, s.handleHostTimeline))
+	s.handle("GET /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsRead, s.handleListTagRules))
+	s.handle("PUT /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsWrite, s.handleSaveTagRules))
+	s.handle("POST /api/v1/tag-rules/apply", mw.RequirePerm(domain.PermAssetsWrite, s.handleApplyTagRules))
+	s.handle("GET /api/v1/integrations/webhook", mw.RequirePerm(domain.PermAdminSettings, s.handleGetWebhook))
+	s.handle("PUT /api/v1/integrations/webhook", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveWebhook))
+	s.handle("POST /api/v1/integrations/webhook/test", mw.RequirePerm(domain.PermAdminSettings, s.handleTestWebhook))
 
 	// Unified Manual Entry, Import & Export
-	s.mux.HandleFunc("POST /api/v1/ingest/manual", mw.RequirePerm(domain.PermAssetsWrite, s.handleIngestManual))
-	s.mux.HandleFunc("POST /api/v1/ingest/import", mw.RequirePerm(domain.PermImportWrite, s.handleIngestImport))
-	s.mux.HandleFunc("GET /api/v1/export", mw.RequirePerm(domain.PermExportRead, s.handleExport))
+	s.handle("POST /api/v1/ingest/manual", mw.RequirePerm(domain.PermAssetsWrite, s.handleIngestManual))
+	s.handle("POST /api/v1/ingest/import", mw.RequirePerm(domain.PermImportWrite, s.handleIngestImport))
+	s.handle("GET /api/v1/export", mw.RequirePerm(domain.PermExportRead, s.handleExport))
 
 	// Signatures Studio
-	s.mux.HandleFunc("GET /api/v1/signatures", mw.RequirePerm(domain.PermSignaturesRead, s.handleListSignatures))
-	s.mux.HandleFunc("POST /api/v1/signatures", mw.RequirePerm(domain.PermSignaturesWrite, s.handleCreateSignature))
-	s.mux.HandleFunc("POST /api/v1/signatures/validate", mw.RequirePerm(domain.PermSignaturesRead, s.handleValidateSignature))
-	s.mux.HandleFunc("POST /api/v1/signatures/test", mw.RequirePerm(domain.PermSignaturesRead, s.handleTestSignature))
-	s.mux.HandleFunc("POST /api/v1/signatures/import", mw.RequirePerm(domain.PermSignaturesWrite, s.handleImportSignatures))
-	s.mux.HandleFunc("GET /api/v1/signatures/export", mw.RequirePerm(domain.PermSignaturesRead, s.handleExportSignatures))
-	s.mux.HandleFunc("PUT /api/v1/signatures/{id}", mw.RequirePerm(domain.PermSignaturesWrite, s.handleUpdateSignature))
-	s.mux.HandleFunc("DELETE /api/v1/signatures/{id}", mw.RequirePerm(domain.PermSignaturesDelete, s.handleDeleteSignature))
+	s.handle("GET /api/v1/signatures", mw.RequirePerm(domain.PermSignaturesRead, s.handleListSignatures))
+	s.handle("POST /api/v1/signatures", mw.RequirePerm(domain.PermSignaturesWrite, s.handleCreateSignature))
+	s.handle("POST /api/v1/signatures/validate", mw.RequirePerm(domain.PermSignaturesRead, s.handleValidateSignature))
+	s.handle("POST /api/v1/signatures/test", mw.RequirePerm(domain.PermSignaturesRead, s.handleTestSignature))
+	s.handle("POST /api/v1/signatures/import", mw.RequirePerm(domain.PermSignaturesWrite, s.handleImportSignatures))
+	s.handle("GET /api/v1/signatures/export", mw.RequirePerm(domain.PermSignaturesRead, s.handleExportSignatures))
+	s.handle("PUT /api/v1/signatures/{id}", mw.RequirePerm(domain.PermSignaturesWrite, s.handleUpdateSignature))
+	s.handle("DELETE /api/v1/signatures/{id}", mw.RequirePerm(domain.PermSignaturesDelete, s.handleDeleteSignature))
 
 	// DefectDojo v2 Integration
-	s.mux.HandleFunc("GET /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermDefectDojoPush, s.handleGetDefectDojoConfig))
-	s.mux.HandleFunc("PUT /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveDefectDojoConfig))
-	s.mux.HandleFunc("POST /api/v1/integrations/defectdojo/test", mw.RequirePerm(domain.PermDefectDojoPush, s.handleTestDefectDojo))
-	s.mux.HandleFunc("POST /api/v1/integrations/defectdojo/push-findings", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoFindings))
-	s.mux.HandleFunc("POST /api/v1/integrations/defectdojo/push-nmap", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoNmap))
-	s.mux.HandleFunc("GET /api/v1/integrations/defectdojo/history", mw.RequirePerm(domain.PermDefectDojoPush, s.handleDefectDojoHistory))
+	s.handle("GET /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermDefectDojoPush, s.handleGetDefectDojoConfig))
+	s.handle("PUT /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveDefectDojoConfig))
+	s.handle("POST /api/v1/integrations/defectdojo/test", mw.RequirePerm(domain.PermDefectDojoPush, s.handleTestDefectDojo))
+	s.handle("POST /api/v1/integrations/defectdojo/push-findings", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoFindings))
+	s.handle("POST /api/v1/integrations/defectdojo/push-nmap", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoNmap))
+	s.handle("GET /api/v1/integrations/defectdojo/history", mw.RequirePerm(domain.PermDefectDojoPush, s.handleDefectDojoHistory))
 
 	// Admin: Users, Dynamic Roles, Permissions, Crypto Proof & Rotation, Audit
-	s.mux.HandleFunc("GET /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleListUsers))
-	s.mux.HandleFunc("POST /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleCreateUser))
-	s.mux.HandleFunc("PUT /api/v1/admin/users/{id}", mw.RequirePerm(domain.PermAdminUsers, s.handleUpdateUser))
-	s.mux.HandleFunc("DELETE /api/v1/admin/users/{id}", mw.RequirePerm(domain.PermAdminUsers, s.handleDeleteUser))
+	s.handle("GET /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleListUsers))
+	s.handle("POST /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleCreateUser))
+	s.handle("PUT /api/v1/admin/users/{id}", mw.RequirePerm(domain.PermAdminUsers, s.handleUpdateUser))
+	s.handle("DELETE /api/v1/admin/users/{id}", mw.RequirePerm(domain.PermAdminUsers, s.handleDeleteUser))
 
-	s.mux.HandleFunc("GET /api/v1/admin/roles", mw.RequirePerm(domain.PermAdminRoles, s.handleListRoles))
-	s.mux.HandleFunc("POST /api/v1/admin/roles", mw.RequirePerm(domain.PermAdminRoles, s.handleCreateRole))
-	s.mux.HandleFunc("PUT /api/v1/admin/roles/{id}", mw.RequirePerm(domain.PermAdminRoles, s.handleUpdateRole))
-	s.mux.HandleFunc("DELETE /api/v1/admin/roles/{id}", mw.RequirePerm(domain.PermAdminRoles, s.handleDeleteRole))
-	s.mux.HandleFunc("GET /api/v1/admin/permissions", mw.RequirePerm(domain.PermAdminRoles, s.handleListPermissions))
+	s.handle("GET /api/v1/admin/roles", mw.RequirePerm(domain.PermAdminRoles, s.handleListRoles))
+	s.handle("POST /api/v1/admin/roles", mw.RequirePerm(domain.PermAdminRoles, s.handleCreateRole))
+	s.handle("PUT /api/v1/admin/roles/{id}", mw.RequirePerm(domain.PermAdminRoles, s.handleUpdateRole))
+	s.handle("DELETE /api/v1/admin/roles/{id}", mw.RequirePerm(domain.PermAdminRoles, s.handleDeleteRole))
+	s.handle("GET /api/v1/admin/permissions", mw.RequirePerm(domain.PermAdminRoles, s.handleListPermissions))
 
-	s.mux.HandleFunc("GET /api/v1/admin/crypto/status", mw.RequirePerm(domain.PermAdminSettings, s.handleCryptoStatus))
-	s.mux.HandleFunc("POST /api/v1/admin/crypto/rotate", mw.RequirePerm(domain.PermAdminSettings, s.handleCryptoRotate))
-	s.mux.HandleFunc("GET /api/v1/admin/audit", mw.RequirePerm(domain.PermAdminAudit, s.handleListAudit))
+	s.handle("GET /api/v1/admin/crypto/status", mw.RequirePerm(domain.PermAdminSettings, s.handleCryptoStatus))
+	s.handle("POST /api/v1/admin/crypto/rotate", mw.RequirePerm(domain.PermAdminSettings, s.handleCryptoRotate))
+	s.handle("GET /api/v1/admin/audit", mw.RequirePerm(domain.PermAdminAudit, s.handleListAudit))
 
 	// Static SPA fallback
-	s.mux.HandleFunc("/", s.handleSPA)
+	s.handle("/", s.handleSPA)
 }
 
 func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
@@ -283,26 +289,6 @@ func (s *Server) serveSPAFromFS(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
-func (s *Server) corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := s.cfg.AllowedOrigin
-		if origin == "" {
-			origin = r.Header.Get("Origin")
-			if origin == "" {
-				origin = "*"
-			}
-		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -319,7 +305,11 @@ func writeStoreErr(w http.ResponseWriter, err error) {
 		return
 	}
 	if errors.Is(err, db.ErrConflict) {
-		writeErr(w, http.StatusConflict, "already exists")
+		msg := "already exists"
+		if err.Error() != db.ErrConflict.Error() { // a descriptive conflict (e.g. invalid scan state)
+			msg = strings.TrimSuffix(err.Error(), ": "+db.ErrConflict.Error())
+		}
+		writeErr(w, http.StatusConflict, msg)
 		return
 	}
 	writeErr(w, http.StatusInternalServerError, err.Error())

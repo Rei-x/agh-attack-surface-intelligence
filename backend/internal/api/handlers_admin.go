@@ -35,8 +35,12 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Username = strings.TrimSpace(req.Username)
-	if req.Username == "" || len(req.Password) < 6 {
-		writeErr(w, http.StatusBadRequest, "username and password (min 6 chars) are required")
+	if req.Username == "" || len(req.Password) < minPasswordLen {
+		writeErr(w, http.StatusBadRequest, "wymagana nazwa użytkownika i hasło (min. 8 znaków) / username and password (min 8 chars) are required")
+		return
+	}
+	if len(req.Username) > 64 || len(req.Password) > 1024 {
+		writeErr(w, http.StatusBadRequest, "nazwa użytkownika lub hasło za długie / username or password too long")
 		return
 	}
 
@@ -51,6 +55,10 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if roleID == "" {
 		writeErr(w, http.StatusBadRequest, "role_id or role_slug is required")
+		return
+	}
+	if _, err := s.store.GetRole(ctx, roleID); err != nil {
+		writeErr(w, http.StatusBadRequest, "nieznana rola / unknown role_id")
 		return
 	}
 
@@ -115,6 +123,12 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		roleID = role.ID
 	}
 
+	if roleID != existing.RoleID {
+		if _, err := s.store.GetRole(ctx, roleID); err != nil {
+			writeErr(w, http.StatusBadRequest, "nieznana rola / unknown role_id")
+			return
+		}
+	}
 	upd := &domain.User{
 		ID:     id,
 		Email:  strings.TrimSpace(req.Email),
@@ -123,6 +137,19 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Active != nil {
 		upd.Active = *req.Active
+	}
+	if err := s.guardLastAdmin(ctx, func(u *domain.User) bool {
+		if u.ID == id {
+			u.RoleID, u.Active = upd.RoleID, upd.Active
+		}
+		return true
+	}, nil); err != nil {
+		writeGuardErr(w, err)
+		return
+	}
+	if req.Password != "" && (len(req.Password) < minPasswordLen || len(req.Password) > 1024) {
+		writeErr(w, http.StatusBadRequest, "hasło musi mieć 8-1024 znaków / password must be 8-1024 characters")
+		return
 	}
 	if req.Password != "" {
 		hash, err := crypto.HashPassword(req.Password)
@@ -145,7 +172,12 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteUser(r.Context(), r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	if err := s.guardLastAdmin(r.Context(), func(u *domain.User) bool { return u.ID != id }, nil); err != nil {
+		writeGuardErr(w, err)
+		return
+	}
+	if err := s.store.DeleteUser(r.Context(), id); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
@@ -212,6 +244,14 @@ func (s *Server) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
 		Name:        req.Name,
 		Description: req.Description,
 		Permissions: req.Permissions,
+	}
+	if err := s.guardLastAdmin(r.Context(), nil, func(ro *domain.Role) {
+		if ro.ID == role.ID { // the store replaces the permission set
+			ro.Permissions = req.Permissions
+		}
+	}); err != nil {
+		writeGuardErr(w, err)
+		return
 	}
 	if err := s.store.UpdateRole(r.Context(), role); err != nil {
 		writeStoreErr(w, err)

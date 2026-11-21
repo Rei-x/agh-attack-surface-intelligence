@@ -78,6 +78,9 @@ func cmdServe(args []string) error {
 		TokenTTL:  24 * time.Hour,
 		SeedDemo:  *seedDemo,
 		StaticDir: strings.TrimSpace(*staticDir),
+		// Comma-separated extra origins allowed to call the API cross-origin (default: none,
+		// the bundled UI is same-origin).
+		AllowedOrigin: os.Getenv("ASI_CORS_ORIGINS"),
 	}
 	uiSource := "embedded"
 	if cfg.StaticDir != "" {
@@ -95,9 +98,14 @@ func cmdServe(args []string) error {
 	if rt.Lock != nil {
 		_ = rt.Lock.Update(localdata.LockInfo{PID: os.Getpid(), Command: "serve", URL: url, StartedAt: time.Now()})
 	}
+	// Timeouts against slow-client (slowloris) exhaustion. No WriteTimeout: the SSE stream and
+	// large exports are long-lived responses by design.
 	httpServer := &http.Server{
 		Handler:           srv.Handler(),
-		ReadHeaderTimeout: 15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       5 * time.Minute, // a 64 MB import over a slow VPN
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    64 << 10,
 	}
 	errCh := make(chan error, 1)
 	go func() {
@@ -108,6 +116,9 @@ func cmdServe(args []string) error {
 
 	printServeBanner(rt, url, uiSource, *seedDemo)
 	log.Printf("[INFO] AegisASI v%s listening on %s (seed_demo=%v, ui=%s)", api.AppVersion, ln.Addr(), *seedDemo, uiSource)
+	if *seedDemo {
+		log.Printf("[WARN] DEMO MODE: demo accounts with publicly known passwords are enabled (set ASI_SEED_DEMO=false outside a lab demo)")
+	}
 
 	select {
 	case <-ctx.Done():
@@ -158,6 +169,11 @@ func printServeBanner(rt *appRuntime, url, uiSource string, seedDemo bool) {
 		fmt.Fprintf(w, "  (disable with --seed-demo=false or ASI_SEED_DEMO=false)\n")
 	} else if seedDemo {
 		fmt.Fprintf(w, "  Login:    admin / Admin123! (demo accounts enabled)\n")
+	}
+	if seedDemo {
+		fmt.Fprintf(w, "\n  WARNING: DEMO MODE - accounts with publicly known passwords are active.\n")
+		fmt.Fprintf(w, "  For a lab demo only. For real use start with ASI_SEED_DEMO=false (or --seed-demo=false):\n")
+		fmt.Fprintf(w, "  demo accounts are then disabled and a random admin password is printed once.\n")
 	}
 	fmt.Fprintf(w, "\n  Press Ctrl+C to stop.\n\n")
 }

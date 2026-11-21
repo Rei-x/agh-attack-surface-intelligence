@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
@@ -27,6 +28,10 @@ type Resolver interface {
 type defaultResolver struct{}
 
 func (defaultResolver) LookupHost(ctx context.Context, host string) ([]string, error) {
+	// Bound each lookup: a target list full of names behind a dead/slow DNS server must not
+	// hang the estimate request or the scan start for minutes.
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
 	return net.DefaultResolver.LookupHost(ctx, host)
 }
 
