@@ -69,8 +69,9 @@ func FindChrome() string {
 	return ""
 }
 
-// chromeArgs are the flags of a disposable, quiet, headless browser.
-func chromeArgs(userDataDir string) []string {
+// chromeArgs are the flags of a disposable, quiet, headless browser. noSandbox adds
+// --no-sandbox (see sandboxUnavailable).
+func chromeArgs(userDataDir string, noSandbox bool) []string {
 	args := []string{
 		"--headless",
 		"--remote-debugging-pipe",
@@ -97,12 +98,40 @@ func chromeArgs(userDataDir string) []string {
 	}
 	if runtime.GOOS == "linux" {
 		args = append(args, "--disable-dev-shm-usage")
-		// Chromium refuses to start its sandbox as root (typical for a systemd agent).
-		if os.Geteuid() == 0 || os.Getenv("DZIECIOL_CHROME_NO_SANDBOX") != "" {
+		if noSandbox {
 			args = append(args, "--no-sandbox")
 		}
 	}
 	return append(args, "about:blank")
+}
+
+// sandboxUnavailable reports, with the reason, when Chromium's own sandbox cannot start:
+//   - running as root (Chromium refuses to sandbox itself as root);
+//   - DZIECIOL_CHROME_NO_SANDBOX is set;
+//   - no_new_privs is set (systemd NoNewPrivileges=, DynamicUser=): the setuid sandbox
+//     helper cannot gain privileges, and a unit that also has RestrictNamespaces= blocks the
+//     user-namespace sandbox, so the zygote exits with "failed to move to new namespaces".
+//
+// The browser only renders pages of hosts that are being scanned anyway and runs as the
+// unprivileged service user in a throwaway profile; the systemd unit is the outer sandbox.
+func sandboxUnavailable() (bool, string) {
+	if runtime.GOOS != "linux" {
+		return false, ""
+	}
+	if os.Getenv("DZIECIOL_CHROME_NO_SANDBOX") != "" {
+		return true, "DZIECIOL_CHROME_NO_SANDBOX is set"
+	}
+	if os.Geteuid() == 0 {
+		return true, "running as root"
+	}
+	if raw, err := os.ReadFile("/proc/self/status"); err == nil {
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.HasPrefix(line, "NoNewPrivs:") && strings.TrimSpace(strings.TrimPrefix(line, "NoNewPrivs:")) == "1" {
+				return true, "no_new_privs is set (systemd NoNewPrivileges/DynamicUser)"
+			}
+		}
+	}
+	return false, ""
 }
 
 // chromeBrowser is one running headless browser driven over the DevTools pipe.

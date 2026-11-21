@@ -13,6 +13,9 @@ ExecStart=/usr/local/bin/dzieciol agent
 Restart=on-failure
 RestartSec=10
 RestartPreventExitStatus=3
+# Screenshots: NoNewPrivileges/RestrictNamespaces leave Chromium's own sandbox no way to start,
+# so the agent launches it with --no-sandbox (logged once) inside this unit's sandbox, with its
+# profile in the private /tmp. Set DZIECIOL_CHROME_PATH if Chrome is not on PATH.
 DynamicUser=yes
 StateDirectory=dzieciol-agent
 StateDirectoryMode=0700

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -100,6 +101,11 @@ func (c *Capturer) acquire() (Browser, error) {
 		}
 		b, err := c.launch()
 		if err != nil {
+			// One clear warning per distinct failure: a browser that cannot start must not
+			// silently produce a scan without screenshots.
+			if c.launchErr == nil || c.launchErr.Error() != err.Error() {
+				log.Printf("[WARN] screenshots: cannot start the browser, pages will not be captured: %v", err)
+			}
 			c.launchErr, c.failedAt = err, time.Now()
 			return nil, err
 		}
