@@ -18,10 +18,12 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/digest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/notify"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/policy"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/remediation"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
 )
@@ -63,6 +65,9 @@ type Server struct {
 	notifier *notify.Notifier // outbound alert webhook (fed by the ingest pipeline)
 	agents   *agenthub.Coordinator
 	policy   *policy.Engine // zone policies (handlers_policy.go)
+
+	remediation *remediation.Service // owner tickets verified by scans (handlers_remediation.go)
+	digest      *digest.Service      // morning digest
 
 	routes []string      // registered mux patterns (see handle)
 	logins *loginLimiter // failed-login throttling
@@ -115,6 +120,7 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 	s.notifier = notify.New(store)
 	pipeline.SetNotifier(s.notifier)
 	s.initPolicy()
+	s.initRemediation()
 	s.registerRoutes()
 	return s
 }
@@ -250,6 +256,8 @@ func (s *Server) registerRoutes() {
 	// Web screenshot gallery
 	s.registerScreenshotRoutes()
 	s.registerPolicyRoutes()
+	// Remediation tickets and morning digest (handlers_remediation.go)
+	s.registerRemediationRoutes()
 
 	// Static SPA fallback
 	s.handle("/", s.handleSPA)

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
+  RiMailSendLine,
   RiAddLine,
   RiArrowDownSLine,
   RiGalleryView2,
@@ -56,6 +57,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/assets', label: 'Assets', icon: RiServerLine, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/gallery', label: 'Gallery', icon: RiGalleryView2, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/diff', label: 'Diff', icon: RiGitMergeLine, perms: [PERMISSIONS.SCANS_READ] },
+  { to: '/remediation', label: 'Remediation', icon: RiMailSendLine, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/scans', label: 'Scans', icon: RiRadarLine, perms: [PERMISSIONS.SCANS_READ] },
   { to: '/policies', label: 'Policies', icon: RiShieldCrossLine, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/signatures', label: 'Signatures', icon: RiSparklingLine, perms: [PERMISSIONS.SIGNATURES_READ] },
