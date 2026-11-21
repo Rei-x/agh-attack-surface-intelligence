@@ -10,6 +10,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 )
 
 // IngestRequest drives the unified ingestion pipeline for MANUAL, IMPORT_CSV,
@@ -142,7 +143,15 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 	servicesUpserted := 0
 	activeHostsCount := 0
 
+	// Owner from the CIDR tag rules travels with every change event ("kto tym zarządza?").
+	ownerByHost := map[string]string{}
 	recordChange := func(ev domain.ChangeEvent) {
+		if owner := ownerByHost[ev.HostID]; owner != "" {
+			if ev.After == nil {
+				ev.After = map[string]any{}
+			}
+			ev.After["owner"] = owner
+		}
 		ev.ID = db.NewID()
 		ev.ScanRunID = run.ID
 		ev.PrevScanRunID = prevScanRunID
@@ -265,6 +274,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		if err != nil {
 			return nil, fmt.Errorf("upsert host %s: %w", ip, err)
 		}
+		ownerByHost[savedHost.ID] = savedHost.Owner
 
 		if prevHost == nil {
 			recordChange(domain.ChangeEvent{
@@ -372,6 +382,8 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 				svcModel.FirstSeen = prevSvc.FirstSeen
 				svcModel.TriageStatus = observedTriageStatus(&prevSvc)
 			}
+			// Offline end-of-life / known-CVE check of the identified versions (raises the score).
+			eol.ApplyScore(svcModel, now)
 
 			savedSvc, err := p.store.UpsertObservedService(ctx, svcModel)
 			if err != nil {
@@ -446,6 +458,10 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 					})
 				}
 			}
+			if ev, ok := outdatedEvent(existed, &prevSvc, svcModel); ok {
+				ev.HostID, ev.HostIP, ev.ServiceID, ev.TimeSlot = savedHost.ID, ip, savedSvc.ID, domain.TimeSlotFor(obsAt)
+				recordChange(ev)
+			}
 		}
 
 		// Detect closed services on an alive host when full service list was observed
@@ -509,6 +525,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			h.TimeOfDayStats = trans.TimeOfDayStats
 			h.Liveness = trans.Liveness
 			_, _ = p.store.UpsertObservedHost(ctx, h)
+			ownerByHost[h.ID] = h.Owner
 
 			if trans.Changed || trans.IsTimeAnomaly {
 				evType := "HOST_MISSING"

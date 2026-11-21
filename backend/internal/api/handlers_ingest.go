@@ -11,6 +11,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
 )
@@ -262,6 +263,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	eol.AnnotateHosts(hosts, time.Now().UTC())
 	stamp := time.Now().UTC().Format("20060102-150405")
 	switch format {
 	case "csv":
