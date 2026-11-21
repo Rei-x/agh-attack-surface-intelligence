@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { Link } from 'react-router-dom';
+import { RiArrowRightUpLine } from '@remixicon/react';
 import { cn } from '@/lib/utils';
 import { TONE, type Tone } from '@/lib/format';
 import { Label } from '@/components/ui/label';
@@ -87,12 +89,17 @@ export function Stat({
   hint,
   tone,
   className,
+  to,
+  title,
 }: {
   label: React.ReactNode;
   value: React.ReactNode;
   hint?: React.ReactNode;
   tone?: 'danger' | 'warning' | 'success';
   className?: string;
+  /** Drill-down: the whole tile links to the list behind the number. */
+  to?: string;
+  title?: string;
 }) {
   const toneText =
     tone === 'danger'
@@ -102,15 +109,37 @@ export function Stat({
         : tone === 'success'
           ? 'text-emerald-600 dark:text-emerald-400'
           : '';
-  return (
-    <div className={cn('flex min-w-0 flex-col gap-1.5 px-5 py-4', className)}>
-      <span className="truncate text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+  const body = (
+    <>
+      <span className="flex items-center justify-between gap-2 truncate text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
         {label}
+        {to && (
+          <RiArrowRightUpLine className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/stat:opacity-100" />
+        )}
       </span>
       <span className={cn('font-heading text-2xl font-semibold tabular-nums', toneText)}>
         {value}
       </span>
       {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
+    </>
+  );
+  if (to) {
+    return (
+      <Link
+        to={to}
+        title={title}
+        className={cn(
+          'group/stat flex min-w-0 flex-col gap-1.5 px-5 py-4 transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50',
+          className
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <div title={title} className={cn('flex min-w-0 flex-col gap-1.5 px-5 py-4', className)}>
+      {body}
     </div>
   );
 }

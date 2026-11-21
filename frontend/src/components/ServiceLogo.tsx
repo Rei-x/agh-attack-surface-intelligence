@@ -197,6 +197,7 @@ const APP_RULES: Rule[] = [
   // Windows remote access
   { keys: ['microsoft terminal services', 'terminal services', 'ms-wbt-server', 'rdp'], Icon: RiWindowsFill, label: 'Windows RDP', color: '#0078D4' },
   // Operating systems visible from the outside (default pages, telnetd)
+  { keys: ['windows', 'windows server'], Icon: RiWindowsFill, label: 'Windows', color: '#0078D4' },
   { keys: ['ubuntu'], si: siUbuntu },
   { keys: ['debian'], si: siDebian },
   { keys: ['centos'], si: siCentos },
