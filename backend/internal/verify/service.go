@@ -10,6 +10,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
 )
 
@@ -180,6 +181,34 @@ func (s *Service) AfterScan(ctx context.Context, run *domain.ScanRun) {
 	if _, err := s.RunProfile(ctx, run.ProfileID, "", run.ID, "scan"); err != nil && !errors.Is(err, ErrDisabled) {
 		s.publish("verify.failed", run.ID, map[string]any{"profile_id": run.ProfileID, "error": err.Error()})
 	}
+}
+
+// ---- process-wide activation -----------------------------------------------------------
+
+var (
+	activeMu     sync.RWMutex
+	active       *Service
+	registerOnce sync.Once
+)
+
+// Activate makes s the service whose results annotate every service read (eol.Annotate).
+// Safe to call more than once (tests build several API servers); the last one wins.
+func Activate(s *Service) {
+	activeMu.Lock()
+	active = s
+	activeMu.Unlock()
+	registerOnce.Do(func() { eol.RegisterAnnotator(annotateActive, FactorVerified) })
+}
+
+func annotateActive(svc *domain.Service, now time.Time) []domain.InterestingnessFactor {
+	activeMu.RLock()
+	s := active
+	activeMu.RUnlock()
+	if s == nil {
+		svc.Verified = nil
+		return nil
+	}
+	return s.Annotator(svc, now)
 }
 
 // ---- read-time annotation --------------------------------------------------------------

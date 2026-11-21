@@ -42,6 +42,7 @@ Commands:
   diff [runA runB]          Compare two scan runs (default: the last two)
   runs                      List recent scan runs
   agent                     Run a remote scanning agent (outbound HTTPS to a server; 'agent install' = systemd)
+  vulndb [info|update]      Show or refresh the offline CVE / KEV / EPSS snapshot
   version                   Print version information
 
 Common flags:
@@ -86,6 +87,8 @@ func run(args []string) int {
 		err = cmdRuns(rest)
 	case "agent":
 		err = cmdAgent(rest)
+	case "vulndb":
+		err = cmdVulnDB(rest)
 	case "version", "--version", "-v":
 		printVersion(os.Stdout)
 		return 0

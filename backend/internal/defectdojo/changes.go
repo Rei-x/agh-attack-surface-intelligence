@@ -58,6 +58,7 @@ const (
 	KindKnownVuln = "known-vuln"
 	KindNew       = "new-service"
 	KindHostGone  = "host-gone"
+	KindVerified  = "verified"
 )
 
 // ChangesTestTitle is the stable DefectDojo test title for a profile's change findings.
@@ -189,6 +190,16 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 				}
 				g.Mitigation += "; if this is a distro package, check whether the OS release itself is still supported."
 			})
+	}
+	for _, v := range s.Vulns {
+		v := v
+		add(KindKnownVuln, ":vulndb:"+tagSlug(v.Product), vulnTitle(v, where), vulnSeverity(v), vulnEvidence(v),
+			func(g *genericFinding) { applyVulnFields(g, v) })
+	}
+	for _, vf := range s.Verified {
+		vf := vf
+		add(KindVerified, ":"+vf.CheckID, fmt.Sprintf("Verified: %s on %s", vf.Name, where), verifiedSeverity(vf.Severity),
+			verifiedEvidence(vf), func(g *genericFinding) { applyVerifiedFields(g, vf) })
 	}
 	for _, v := range s.KnownVulns {
 		v := v

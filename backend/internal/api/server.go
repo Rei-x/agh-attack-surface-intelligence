@@ -26,6 +26,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/remediation"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/verify"
 )
 
 // AppVersion is overridden at build time via -ldflags "-X .../internal/api.AppVersion=..."
@@ -74,6 +75,8 @@ type Server struct {
 
 	shots *screenshot.Store // web screenshot gallery (handlers_screenshots.go), nil = off
 
+	verify *verify.Service // safe verification checks (handlers_verify.go), nil = unavailable
+
 	dojoSyncMu    sync.Mutex
 	dojoSyncTimer *time.Timer // debounced triage -> DefectDojo sync (queueDojoSync)
 }
@@ -121,6 +124,7 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 	pipeline.SetNotifier(s.notifier)
 	s.initPolicy()
 	s.initRemediation()
+	s.initVerify()
 	s.registerRoutes()
 	return s
 }
@@ -258,6 +262,8 @@ func (s *Server) registerRoutes() {
 	s.registerPolicyRoutes()
 	// Remediation tickets and morning digest (handlers_remediation.go)
 	s.registerRemediationRoutes()
+	// Vulnerability intelligence and safe verification (handlers_verify.go)
+	s.registerVerifyRoutes()
 
 	// Static SPA fallback
 	s.handle("/", s.handleSPA)
