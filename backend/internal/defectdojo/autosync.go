@@ -30,6 +30,7 @@ type ChangeSyncResult struct {
 // history + sync state used by the header chip and the per-service status).
 func SyncChangeFindings(ctx context.Context, store db.Store, c *Client, cfg *domain.DefectDojoConfig, hosts []domain.Host, testTitle, runLabel, runID, exportedBy string) (*ChangeSyncResult, error) {
 	findings := BuildChangeFindings(hosts, time.Now().UTC())
+	findings = append(findings, PolicyFindingsFor(ctx, store, hosts)...) // zone policy violations (policy_findings.go)
 	res := &ChangeSyncResult{TestTitle: testTitle, Findings: len(findings)}
 	imp, err := c.ImportChangeFindings(ctx, cfg, 0, testTitle, runLabel, findings)
 	exp := &domain.DefectDojoExport{

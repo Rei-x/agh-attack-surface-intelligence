@@ -20,6 +20,8 @@ const KEYS: Array<{ key: string; desc: string }> = [
   { key: 'db:true', desc: 'exposed database' },
   { key: 'cleartext:true', desc: 'telnet / ftp management' },
   { key: 'iot:true', desc: 'IoT device, BMC, printer, camera' },
+  { key: 'violation:true', desc: 'breaks its zone policy (Policies page)' },
+  { key: 'policy:"server zone"', desc: 'zone name, rule or category (policy:database)' },
   { key: 'triage:accepted_risk', desc: 'new, triaged, accepted_risk, false_positive' },
   { key: 'score:>=70', desc: 'minimum score' },
 ];

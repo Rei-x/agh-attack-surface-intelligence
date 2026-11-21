@@ -15,6 +15,7 @@ import {
 import { api, type TriagePatch } from '@/lib/api';
 import { HostTimeline } from '@/components/HostTimeline';
 import { TriageEditor } from '@/components/TriageEditor';
+import { PolicyViolationNotice } from '@/components/PolicyViolationNotice';
 import { TriageBadge } from '@/components/AssetQueryHelp';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -662,6 +663,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                           {/* Service details */}
                           {isOpen && (
                             <div className="space-y-6 border-t border-border bg-muted/20 px-4 py-5">
+                              <PolicyViolationNotice hits={(svc as { policy_violations?: Parameters<typeof PolicyViolationNotice>[0]['hits'] }).policy_violations} />
                               {/* Action bar */}
                               <div className="space-y-2">
                                 <div className="flex flex-wrap items-start justify-between gap-2">

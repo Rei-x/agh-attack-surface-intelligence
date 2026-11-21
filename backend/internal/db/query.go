@@ -18,6 +18,7 @@ import (
 //	port:3389 tech:wordpress tag:wi state:new cidr:10.66.0.0/24 env:staging title:"admin" cert:expired
 //	eol:true (end-of-life version, offline table in internal/eol) vuln:true (passive known-CVE hint)
 //	db:true (exposed database) iot:true staging:true cleartext:true (telnet/ftp/r-services)
+//	violation:true (open zone policy violation) policy:<zone name, rule or category>
 //
 // Terms are AND-ed. A comma inside a value is an OR (port:80,443). A leading "-" negates a
 // term (-env:prod). Quoted values may contain spaces. Anything that is not a known key:value
@@ -80,6 +81,11 @@ var queryKeyAliases = map[string]string{
 	"staging":   "staging",
 	"cleartext": "cleartext",
 	"plaintext": "cleartext",
+	// Zone policies (internal/policy).
+	"violation":  "violation",
+	"violations": "violation",
+	"policy":     "policy",
+	"zone":       "policy",
 }
 
 // serviceLevelKeys are evaluated per service (all must match one service).
@@ -90,7 +96,7 @@ var serviceLevelKeys = map[string]bool{
 }
 
 // QueryKeys lists the canonical keys (used by the UI help and error messages).
-var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score", "eol", "vuln", "db", "iot", "staging", "cleartext"}
+var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score", "eol", "vuln", "db", "iot", "staging", "cleartext", "violation", "policy"}
 
 // ParseAssetQuery parses a search expression. It returns an error for malformed values of
 // known keys (bad port, bad CIDR, unknown cert condition, unterminated quote) so the API can
@@ -251,7 +257,7 @@ func compileTerm(t *QueryTerm) error {
 			return fmt.Errorf("score: expected a number, e.g. score:>=70")
 		}
 		t.minimum = n
-	case "admin", "eol", "vuln", "db", "iot", "staging", "cleartext":
+	case "admin", "eol", "vuln", "db", "iot", "staging", "cleartext", "violation":
 		switch t.Values[0] {
 		case "true", "yes", "1", "tak":
 			t.Values = []string{"true"}
@@ -400,6 +406,8 @@ func (t *QueryTerm) matchHostLevel(h *domain.Host, now time.Time) bool {
 		return anyContains(t.Values, h.OSGuess)
 	case "score":
 		return h.Interestingness >= t.minimum
+	case "violation", "policy":
+		return t.matchPolicyTerm(h.ID, "")
 	case "triage":
 		// Host decision or any service decision.
 		if anyEqual(t.Values, effectiveTriage(h.TriageStatus)) && h.TriageStatus != "" {
@@ -505,6 +513,8 @@ func (t *QueryTerm) matchService(s *domain.Service, now time.Time) bool {
 		return false
 	case "triage":
 		return anyEqual(t.Values, effectiveTriage(s.TriageStatus))
+	case "violation", "policy":
+		return t.matchPolicyTerm(s.HostID, s.ID)
 	}
 	return false
 }

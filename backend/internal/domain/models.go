@@ -483,6 +483,9 @@ type Service struct {
 	ScannerObserved    map[string]any          `json:"scanner_observed,omitempty"`
 	FirstSeen          time.Time               `json:"first_seen"`
 	LastSeen           time.Time               `json:"last_seen"`
+
+	// PolicyViolations is derived by internal/policy on read, not stored.
+	PolicyViolations []PolicyHit `json:"policy_violations,omitempty"`
 }
 
 // ObservedService is a raw observation emitted by the scanner or an importer before diff/merge.

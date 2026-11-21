@@ -44,6 +44,7 @@ import { LiveTelemetryBanner } from '@/components/LiveTelemetryBanner';
 import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
 import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
 import { CategoryBadges, serviceFlags } from '@/components/CategoryBadge';
+import { PolicyViolationsCard } from '@/components/PolicyViolationsCard';
 import { changeOwner } from '@/components/EolBadges';
 import type { DashboardSummary, InventoryProduct, InventoryResponse, Service } from '@/types/api';
 
@@ -550,6 +551,7 @@ export function DashboardPage() {
         </Card>
 
         <div className="flex flex-col gap-6 xl:col-span-5">
+          <PolicyViolationsCard titleClassName={cardTitleCls} />
           <Card size="sm">
             <CardHeader>
               <CardTitle className={cardTitleCls}>Risk by technology</CardTitle>
