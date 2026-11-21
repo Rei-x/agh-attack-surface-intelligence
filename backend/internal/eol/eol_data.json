@@ -36,7 +36,8 @@
       {"cycle": "7.0", "eol": "2020-01-14", "latest": "", "note": "Windows Server 2008"},
       {"cycle": "6.0", "eol": "2015-07-14", "latest": "", "note": "Windows Server 2003"}
     ]},
-    {"key": "openssh", "name": "OpenSSH", "source": "https://www.openssh.com/releasenotes.html", "aliases": ["openssh"], "branches": [], "note": "no per-branch EOL policy; known_vulns only"}
+    {"key": "openssh", "name": "OpenSSH", "source": "https://www.openssh.com/releasenotes.html", "aliases": ["openssh"], "branches": [], "note": "no per-branch EOL policy; known_vulns only"},
+    {"key": "vsftpd", "name": "vsftpd", "source": "https://security.appspot.com/vsftpd.html", "aliases": ["vsftpd"], "branches": [], "note": "no per-branch EOL policy; known_vulns only"}
   ],
   "known_vulns": [
     {"id": "CVE-2024-6387", "name": "regreSSHion (unauthenticated RCE in the sshd SIGALRM handler)", "product": "openssh",
@@ -50,6 +51,15 @@
      "references": ["https://httpd.apache.org/security/vulnerabilities_24.html"]},
     {"id": "CVE-2019-10149", "name": "Exim \"Return of the WIZard\" remote command execution", "product": "exim",
      "ranges": [{"from": "4.87", "before": "4.92"}],
-     "references": ["https://www.exim.org/static/doc/security/CVE-2019-10149.txt"]}
+     "references": ["https://www.exim.org/static/doc/security/CVE-2019-10149.txt"]},
+    {"id": "CVE-2017-1001000", "name": "WordPress REST API content injection (unauthenticated post modification)", "product": "wordpress",
+     "ranges": [{"exact": "4.7.0"}, {"exact": "4.7.1"}],
+     "references": ["https://wordpress.org/news/2017/02/wordpress-4-7-2-security-release/"]},
+    {"id": "CVE-2017-16510", "name": "WordPress $wpdb->prepare() SQL injection", "product": "wordpress",
+     "ranges": [{"from": "4.7", "before": "4.7.7"}, {"from": "4.8", "before": "4.8.3"}],
+     "references": ["https://wordpress.org/news/2017/10/wordpress-4-8-3-security-release/"]},
+    {"id": "CVE-2015-1419", "name": "vsftpd deny_file access restriction bypass", "product": "vsftpd",
+     "ranges": [{"from": "", "before": "3.0.3"}],
+     "references": ["https://security.appspot.com/vsftpd/Changelog.txt"]}
   ]
 }

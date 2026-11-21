@@ -66,6 +66,7 @@ var EvidenceChannels = map[string]ChannelWeight{
 	"cookie":    {0.75, "framework session-cookie names; lab precision 100% (n=44), generic names collide"},
 	"tls":       {0.60, "certificate CN/issuer or JARM: identifies the TLS stack or vendor appliance, not the application"},
 	"path":      {0.25, "a safe-path hit (status/title of e.g. /metrics) alone; lab precision 0% (n=23, Grafana also serves /metrics): many apps expose the same paths"},
+	"path_body": {0.70, "a safe path whose body matches a vendor-specific structure (Toxiproxy /proxies JSON, Traefik /api/version Codename, Gitea /api/v1/version)"},
 	"signature": {0.70, "signature without a typed matcher"},
 }
 

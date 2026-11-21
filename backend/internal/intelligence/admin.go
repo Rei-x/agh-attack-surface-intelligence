@@ -44,6 +44,11 @@ var adminTools = map[string]bool{
 	"synology dsm":                      true, // NAS management (DSM)
 	"server bmc (dell idrac / hpe ilo)": true, // out-of-band server management
 	"exposed docker engine api":         true,
+	"unfinished web installer":          true, // whoever opens it first becomes the administrator
+	"rabbitmq management":               true,
+	"nginx proxy manager":               true,
+	"traefik dashboard / api":           true,
+	"toxiproxy api":                     true,
 }
 
 var (

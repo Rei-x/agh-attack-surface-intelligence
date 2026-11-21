@@ -100,15 +100,16 @@ func ComputeScanDiff(fromID, toID string, fromHosts, toHosts []domain.Host, toCh
 			}
 			before := map[string]any{}
 			after := map[string]any{}
-			if fs.Product != ts.Product {
+			// An empty new value is "not observed this time", not a change.
+			if fs.Product != ts.Product && ts.Product != "" {
 				before["product"] = fs.Product
 				after["product"] = ts.Product
 			}
-			if fs.Version != ts.Version {
+			if fs.Version != ts.Version && ts.Version != "" {
 				before["version"] = fs.Version
 				after["version"] = ts.Version
 			}
-			if fs.Banner != ts.Banner {
+			if fs.Banner != ts.Banner && ts.Banner != "" {
 				before["banner"] = fs.Banner
 				after["banner"] = ts.Banner
 			}
@@ -123,7 +124,7 @@ func ComputeScanDiff(fromID, toID string, fromHosts, toHosts []domain.Host, toCh
 			if ts.HTTP != nil {
 				tsTitle = ts.HTTP.Title
 			}
-			if fsTitle != tsTitle {
+			if fsTitle != tsTitle && tsTitle != "" {
 				before["http_title"] = fsTitle
 				after["http_title"] = tsTitle
 			}

@@ -181,7 +181,7 @@ func evalCompiled(cs compiledSignature, svc domain.ObservedService) MatchResult 
 				version = ver
 			}
 			evidence = append(evidence, domain.TechEvidence{
-				SignalType: normalizeSignalType(cm.matcher.Type),
+				SignalType: signalTypeOf(cm.matcher),
 				Detail:     detail,
 				Weight:     cs.sig.ConfidenceWeight,
 			})
@@ -206,6 +206,16 @@ func evalCompiled(cs compiledSignature, svc domain.ObservedService) MatchResult 
 		Version:   version,
 		Evidence:  evidence,
 	}
+}
+
+// signalTypeOf is normalizeSignalType, except that a safe_path matcher whose regex checks
+// the response body for a vendor-specific structure (Toxiproxy's /proxies JSON, Traefik's
+// /api/version with its Codename) is "path_body": stronger than a bare path status.
+func signalTypeOf(m domain.SignatureMatcher) string {
+	if strings.EqualFold(m.Type, "safe_path") && m.Regex && m.Key != "" && m.Pattern != m.Key {
+		return "path_body"
+	}
+	return normalizeSignalType(m.Type)
 }
 
 func normalizeSignalType(matcherType string) string {
@@ -449,7 +459,7 @@ func matchString(cm compiledMatcher, value string) (bool, string) {
 		}
 		var ver string
 		if cm.matcher.VersionGroup > 0 && cm.matcher.VersionGroup < len(m) {
-			ver = strings.TrimSpace(m[cm.matcher.VersionGroup])
+			ver = normalizeVersion(strings.TrimSpace(m[cm.matcher.VersionGroup]))
 		}
 		return true, ver
 	}
@@ -457,6 +467,17 @@ func matchString(cm compiledMatcher, value string) (bool, string) {
 		return value != "", ""
 	}
 	return strings.Contains(strings.ToLower(value), strings.ToLower(cm.matcher.Pattern)), ""
+}
+
+var reDigits = regexp.MustCompile(`[0-9]+`)
+
+// normalizeVersion turns a captured JSON fragment such as 2,"minor":17,"revision":1 (Nginx
+// Proxy Manager's /api/ version object) into 2.17.1. Plain versions are returned unchanged.
+func normalizeVersion(v string) string {
+	if !strings.ContainsAny(v, "\":,") {
+		return v
+	}
+	return strings.Join(reDigits.FindAllString(v, 4), ".")
 }
 
 func getHeaderCaseInsensitive(headers map[string]string, key string) string {

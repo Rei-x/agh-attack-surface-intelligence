@@ -354,13 +354,21 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 				productSource, versionSource = analysis.ProductSource, analysis.VersionSource
 			}
 
+			// An empty product/version (nmap's light probe timed out, the banner was not
+			// sent this time) is "no new information": keep what an earlier scan learned, so
+			// two scans of an unchanged service never report a change.
+			svcName := nonEmpty(osvc.ServiceName, inferServiceName(osvc.Port))
+			if existed {
+				product, version, productSource, versionSource, svcName = carryForward(&prevSvc, product, version, productSource, versionSource, svcName)
+			}
+
 			svcModel := &domain.Service{
 				HostID:             savedHost.ID,
 				HostIP:             ip,
 				Port:               osvc.Port,
 				Protocol:           proto,
 				State:              state,
-				ServiceName:        nonEmpty(osvc.ServiceName, inferServiceName(osvc.Port)),
+				ServiceName:        svcName,
 				Product:            product,
 				Version:            version,
 				ProductSource:      productSource,
@@ -754,6 +762,26 @@ func diffService(prev, curr *domain.Service) (map[string]any, map[string]any, st
 		}
 	}
 	return before, after, strings.Join(parts, ", "), sev
+}
+
+// genericServiceNames carry no identification (nmap could not name the service).
+var genericServiceNames = map[string]bool{"": true, "tcp": true, "unknown": true, "tcpwrapped": true}
+
+// carryForward keeps the previous product, version and service name when the current
+// observation has none (or only a generic name); a non-empty new value always wins.
+func carryForward(prev *domain.Service, product, version, productSource, versionSource, svcName string) (string, string, string, string, string) {
+	if product == "" && prev.Product != "" {
+		product, productSource = prev.Product, prev.ProductSource
+		if version == "" {
+			version, versionSource = prev.Version, prev.VersionSource
+		}
+	} else if version == "" && prev.Version != "" && strings.EqualFold(product, prev.Product) {
+		version, versionSource = prev.Version, prev.VersionSource
+	}
+	if genericServiceNames[strings.ToLower(svcName)] && !genericServiceNames[strings.ToLower(prev.ServiceName)] {
+		svcName = prev.ServiceName
+	}
+	return product, version, productSource, versionSource, svcName
 }
 
 // Response time change thresholds: a change is reported when the new median is at least

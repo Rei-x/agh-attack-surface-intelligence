@@ -205,7 +205,8 @@ func ComputeDiff(scanRunID, prevScanRunID string, prevHosts, currHosts []domain.
 			}
 
 			// Both exist -> check version/product, HTTP title/status, TLS cert SHA256, technologies.
-			if ps.Product != cs.Product || ps.Version != cs.Version {
+			// An empty new product/version means "not observed this time", not a change.
+			if (ps.Product != cs.Product && cs.Product != "") || (ps.Version != cs.Version && cs.Version != "") {
 				ev := makeEvent(curr, cs.ID, cs.Port, "service_version_changed", "medium",
 					fmt.Sprintf("Service %s:%d version changed (%s %s -> %s %s)", curr.IP, cs.Port, ps.Product, ps.Version, cs.Product, cs.Version),
 					false, false,
@@ -216,7 +217,7 @@ func ComputeDiff(scanRunID, prevScanRunID string, prevHosts, currHosts []domain.
 			}
 
 			if ps.HTTP != nil && cs.HTTP != nil {
-				if ps.HTTP.Title != cs.HTTP.Title {
+				if ps.HTTP.Title != cs.HTTP.Title && cs.HTTP.Title != "" {
 					ev := makeEvent(curr, cs.ID, cs.Port, "http_title_changed", "low",
 						fmt.Sprintf("HTTP title changed on %s:%d (%q -> %q)", curr.IP, cs.Port, ps.HTTP.Title, cs.HTTP.Title),
 						false, false,
