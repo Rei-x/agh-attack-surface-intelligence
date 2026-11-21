@@ -88,7 +88,12 @@ func (a *IntelligenceAnalyzer) AnalyzeService(obs *domain.ObservedService, custo
 		addTag("iot")
 	}
 
+	id := intelligence.IdentifyProduct(*obs)
 	return ingest.ServiceAnalysis{
+		Product:            id.Product,
+		Version:            id.Version,
+		ProductSource:      id.Source,
+		VersionSource:      id.VersionSource,
 		Technologies:       svc.Technologies,
 		MatchedSignatures:  svc.MatchedSignatures,
 		IsAdminPanel:       svc.IsAdminPanel,

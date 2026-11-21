@@ -196,6 +196,8 @@ func BuiltinSignatures() []domain.Signature {
 			Matchers: []domain.SignatureMatcher{
 				{Type: "cookie", Key: "csrftoken", Pattern: "csrftoken"},
 				{Type: "html_body", Pattern: `csrfmiddlewaretoken|__admin_media_prefix__`, Regex: true},
+				// Django's own pages: default "install worked" page, admin login, DEBUG 404 page
+				{Type: "html_body", Pattern: `(?i)<title>The install worked successfully! Congratulations!</title>|Django site admin|Using the URLconf defined in`, Regex: true},
 			},
 		},
 		{
@@ -356,6 +358,8 @@ func BuiltinSignatures() []domain.Signature {
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)\bGrafana\b`, Regex: true},
 				{Type: "html_body", Pattern: `(?i)grafanaBootData|Grafana v([0-9]+\.[0-9]+(?:\.[0-9]+)?)`, Regex: true, VersionGroup: 1},
+				// login page: window.grafanaBootData = {... "buildInfo":{...,"version":"10.2.3"}
+				{Type: "html_body", Pattern: `"buildInfo":\{[^}]*?"version":"([0-9]+\.[0-9]+\.[0-9]+)"`, Regex: true, VersionGroup: 1},
 				{Type: "cookie", Key: "grafana_session", Pattern: "grafana_session"},
 				{Type: "favicon_mmh3", Pattern: "1943789861"},
 			},
@@ -488,7 +492,8 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"monitoring", "metrics", "prometheus"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)Prometheus Time Series Collection`, Regex: true},
-				{Type: "safe_path", Key: "/metrics", Pattern: "/metrics", StatusCodes: []int{200}},
+				// No bare /metrics matcher: Grafana, exporters and most Go/Java services expose
+				// the Prometheus text format there without being Prometheus.
 			},
 		},
 		{
@@ -504,6 +509,24 @@ func BuiltinSignatures() []domain.Signature {
 				{Type: "header", Key: "kbn-name", Pattern: `.+`, Regex: true},
 				{Type: "header", Key: "kbn-version", Pattern: `([0-9]+\.[0-9]+(?:\.[0-9]+)?)`, Regex: true, VersionGroup: 1},
 				{Type: "title", Pattern: `(?i)^Kibana$|^Elastic$`, Regex: true},
+				// <kbn-injected-metadata data="{&quot;version&quot;:&quot;8.11.3&quot;,...
+				{Type: "html_body", Pattern: `kbn-injected-metadata data="\{&quot;version&quot;:&quot;([0-9]+\.[0-9]+\.[0-9]+)`, Regex: true, VersionGroup: 1},
+			},
+		},
+		{
+			ID:               "builtin-tool-elasticsearch",
+			Name:             "Elasticsearch",
+			Description:      "Detects the Elasticsearch REST API (root JSON banner or X-Elastic-Product header).",
+			Category:         "server",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.90,
+			InterestingPts:   20,
+			Tags:             []string{"database", "search", "elastic"},
+			Matchers: []domain.SignatureMatcher{
+				// sent by Elasticsearch >= 7.14 on every response, including 401s
+				{Type: "header", Key: "X-Elastic-Product", Pattern: `(?i)^Elasticsearch$`, Regex: true},
+				// GET / : {"name":..., "version":{"number":"7.17.9",...}, "tagline":"You Know, for Search"}
+				{Type: "html_body", Pattern: `(?s)"number"\s*:\s*"([0-9]+\.[0-9]+\.[0-9]+)".*You Know, for Search`, Regex: true, VersionGroup: 1},
 			},
 		},
 		{
@@ -617,8 +640,10 @@ func BuiltinSignatures() []domain.Signature {
 			InterestingPts:   18,
 			Tags:             []string{"iot", "nas", "storage", "synology"},
 			Matchers: []domain.SignatureMatcher{
-				{Type: "title", Pattern: `(?i)Synology DiskStation|Synology RackStation`, Regex: true},
-				{Type: "html_body", Pattern: `(?i)SYNO\.SDS|webman/index\.cgi`, Regex: true},
+				// DSM 6: "<HOST> - Synology DiskStation"; DSM 7: "<HOST> - Synology NAS"
+				{Type: "title", Pattern: `(?i)Synology (?:DiskStation|RackStation|NAS)\b`, Regex: true},
+				// login page loads webman/sso/synoSSO-1.0.0.js and SYNO.* webapi modules
+				{Type: "html_body", Pattern: `(?i)SYNO\.SDS|SYNO\.Core\.|webman/index\.cgi|webman/sso/synoSSO`, Regex: true},
 			},
 		},
 		{
@@ -631,7 +656,8 @@ func BuiltinSignatures() []domain.Signature {
 			InterestingPts:   28,
 			Tags:             []string{"iot", "bmc", "management", "idrac", "ilo"},
 			Matchers: []domain.SignatureMatcher{
-				{Type: "title", Pattern: `(?i)Integrated Dell Remote Access Controller|iDRAC\d*|HP Integrated Lights-Out|iLO \d`, Regex: true},
+				{Type: "title", Pattern: `(?i)Integrated (?:Dell )?Remote Access Controller|iDRAC\d*|HP Integrated Lights-Out|iLO \d`, Regex: true},
+				{Type: "html_body", Pattern: `(?i)Integrated Dell Remote Access Controller|Integrated Lights-Out`, Regex: true},
 				{Type: "tls_cert", Pattern: `(?i)iDRAC|Default iLO|HP-iLO`, Regex: true},
 			},
 		},
@@ -709,14 +735,15 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"admin", "management"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)\b(admin(?:istration|istrator)?|management console|control panel|backoffice|cpanel|plesk|webmin)\b`, Regex: true},
-				{Type: "safe_path", Key: "/admin", Pattern: "/admin", StatusCodes: []int{200, 301, 302, 401, 403}},
+				// 200/401 only: nearly every app redirects /admin to its generic login, and 403 is a closed door.
+				{Type: "safe_path", Key: "/admin", Pattern: "/admin", StatusCodes: []int{200, 401}},
 			},
 		},
 		{
 			ID:               "builtin-admin-login-portal",
 			Name:             "Authentication / Login Portal",
-			Description:      "Detects exposed /login endpoints or authentication portals.",
-			Category:         "admin_panel",
+			Description:      "Detects exposed /login endpoints or authentication portals (end-user logins are not admin panels).",
+			Category:         "custom",
 			MatchMode:        "any",
 			ConfidenceWeight: 0.72,
 			InterestingPts:   12,
@@ -730,7 +757,7 @@ func BuiltinSignatures() []domain.Signature {
 			ID:               "builtin-admin-db-exposed",
 			Name:             "Exposed Database Service",
 			Description:      "Detects directly exposed database ports (MySQL, PostgreSQL, Redis, MongoDB, Elasticsearch).",
-			Category:         "admin_panel",
+			Category:         "custom",
 			MatchMode:        "any",
 			ConfidenceWeight: 0.86,
 			InterestingPts:   24,

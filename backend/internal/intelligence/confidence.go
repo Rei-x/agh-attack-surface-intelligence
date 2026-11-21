@@ -237,8 +237,11 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 		}
 	}
 
-	// 2. Service product / banner from Nmap or TCP probe.
-	if strings.TrimSpace(svc.Product) != "" {
+	// 2. Service product / banner from Nmap or TCP probe. A generic nmap answer
+	// ("Golang net/http server" is a guess from how the stack answers malformed probes)
+	// is dropped once the HTTP layer identified the server or the application itself.
+	httpIdentified := len(buckets) > 0 || (svc.HTTP != nil && IdentifyProduct(svc).Source != SourceNmap)
+	if strings.TrimSpace(svc.Product) != "" && !(genericNmapProducts[strings.ToLower(strings.TrimSpace(svc.Product))] && httpIdentified) {
 		detail := fmt.Sprintf("product=%s", svc.Product)
 		if svc.Version != "" {
 			detail += " version=" + svc.Version
@@ -340,7 +343,7 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *signatures.Engine, temporalScansSeen int) []signatures.MatchResult {
 	var matches []signatures.MatchResult
 	if sigEngine != nil {
-		matches = sigEngine.Evaluate(obs)
+		matches = dropDefaultTestPageStaging(sigEngine.Evaluate(obs), obs)
 	}
 
 	svc.Technologies = DetectTechnologies(obs, matches, temporalScansSeen)
@@ -350,7 +353,13 @@ func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *s
 		sigNames = append(sigNames, m.Signature.Name)
 		switch m.Signature.Category {
 		case "admin_panel":
-			svc.IsAdminPanel = true
+			// Built-in admin signatures only contribute identity; whether the service
+			// really exposes a console is decided by AdminPanelEvidence below (a database
+			// port, a generic login or an /admin redirect is not an admin panel).
+			// Analyst-written signatures keep their declared meaning.
+			if !m.Signature.IsBuiltin {
+				svc.IsAdminPanel = true
+			}
 		case "staging":
 			svc.IsStagingEnv = true
 		case "iot":
@@ -359,14 +368,15 @@ func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *s
 	}
 	svc.MatchedSignatures = sigNames
 
-	// Also mark admin/staging from HTTP safe paths or title heuristics.
+	if reason := AdminPanelEvidence(obs, svc.Technologies); reason != "" {
+		svc.IsAdminPanel = true
+		svc.Technologies = addFlagEvidence(svc.Technologies, "Admin Panel / Management Console", "admin_panel", reason)
+	}
+	if reason := StagingEvidence(obs); reason != "" {
+		svc.IsStagingEnv = true
+		svc.Technologies = addFlagEvidence(svc.Technologies, "Staging / Dev / Test Environment", "staging", reason)
+	}
 	if svc.HTTP != nil {
-		for _, hit := range svc.HTTP.SafePathHits {
-			p := strings.ToLower(hit.Path)
-			if p == "/admin" || p == "/wp-login.php" || p == "/phpmyadmin" {
-				svc.IsAdminPanel = true
-			}
-		}
 		tl := strings.ToLower(svc.HTTP.Title + " " + svc.HTTP.URL)
 		if strings.Contains(tl, "staging") || strings.Contains(tl, "dev.") || strings.Contains(tl, "test.") {
 			svc.IsStagingEnv = true
@@ -381,13 +391,67 @@ func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *s
 	return matches
 }
 
+// addFlagEvidence records why a flag was raised as evidence on the matching generic
+// finding (creating it when no signature produced one), so the UI can show the reason.
+func addFlagEvidence(techs []domain.DetectedTechnology, name, category, reason string) []domain.DetectedTechnology {
+	ev := domain.TechEvidence{SignalType: "html", Detail: reason, Weight: 0.8}
+	for i := range techs {
+		if strings.EqualFold(techs[i].Name, name) {
+			for _, e := range techs[i].Evidence {
+				if e.Detail == reason {
+					return techs
+				}
+			}
+			techs[i].Evidence = append(techs[i].Evidence, ev)
+			return techs
+		}
+	}
+	conf, expl := FuseConfidenceExplained([]domain.TechEvidence{ev}, 1, false)
+	return append(techs, domain.DetectedTechnology{
+		Name: name, Category: category, Confidence: conf, Evidence: []domain.TechEvidence{ev}, Explanation: expl,
+	})
+}
+
 func canonicalTech(raw, category string) (string, string) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return "", category
 	}
 	sl := strings.ToLower(s)
+	// nmap product names of daemons whose technology has a plainer name.
+	switch {
+	case strings.HasPrefix(sl, "mikrotik routeros") || strings.HasPrefix(sl, "mikrotik router"):
+		return "MikroTik RouterOS", "iot"
+	case strings.HasPrefix(sl, "hikvision"):
+		return "Hikvision IP Camera / NVR", "iot"
+	case sl == "debut embedded httpd": // Brother printers' embedded web server
+		return "Brother Printer Web Interface", "iot"
+	case sl == "hp http server" || sl == "hp-chaisoe" || strings.HasPrefix(sl, "hp jetdirect"):
+		return "HP Printer / Embedded Web Server", "iot"
+	case strings.HasPrefix(sl, "dovecot"):
+		return "Dovecot", "server"
+	}
 	switch sl {
+	case "microsoft iis httpd":
+		return "Microsoft IIS", "server"
+	case "apache tomcat/coyote jsp engine":
+		return "Apache Tomcat", "server"
+	case "postgresql db", "postgresql":
+		return "PostgreSQL", "server"
+	case "exim smtpd":
+		return "Exim", "server"
+	case "postfix smtpd":
+		return "Postfix", "server"
+	case "redis key-value store", "redis":
+		return "Redis", "server"
+	case "mysql":
+		return "MySQL", "server"
+	case "mariadb":
+		return "MariaDB", "server"
+	case "jetty":
+		return "Jetty", "server"
+	case "elasticsearch rest api":
+		return "Elasticsearch", "server"
 	case "nginx":
 		return "Nginx", "server"
 	case "apache", "apache httpd", "apache http server":

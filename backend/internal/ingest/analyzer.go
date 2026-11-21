@@ -14,6 +14,12 @@ import (
 
 // ServiceAnalysis holds the intelligence output for a single observed service.
 type ServiceAnalysis struct {
+	// Best evidence-backed product / version (empty = keep the scanner's raw values) and
+	// where each came from (nmap, cpe, banner, http-server-header, http-page).
+	Product            string
+	Version            string
+	ProductSource      string
+	VersionSource      string
 	Technologies       []domain.DetectedTechnology
 	MatchedSignatures  []string
 	IsAdminPanel       bool

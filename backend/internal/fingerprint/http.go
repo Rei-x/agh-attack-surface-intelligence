@@ -327,6 +327,7 @@ func (f *Fingerprinter) probeWithScheme(ctx context.Context, scheme, ip string, 
 		MetaGenerator:      metaGen,
 		FooterVersion:      footerVer,
 		BodySnippet:        cleanBodySnippet(bodyStr),
+		LoginForm:          hasPasswordField(bodyStr),
 		ResponseTimeMs:     elapsedMs,
 	}
 
@@ -338,7 +339,9 @@ func (f *Fingerprinter) probeWithScheme(ctx context.Context, scheme, ip string, 
 
 	// Probe safe read-only paths if enabled.
 	if opts.ProbeSafePaths && len(opts.SafePaths) > 0 {
-		fp.SafePathHits, fp.CatchAll = f.probeSafePaths(ctx, client, rootURL, ip, opts)
+		po := opts
+		po.SafePaths = append(append([]string(nil), opts.SafePaths...), followupPaths(fp, opts.SafePaths)...)
+		fp.SafePathHits, fp.CatchAll = f.probeSafePaths(ctx, client, rootURL, ip, po)
 	}
 
 	return fp, nil
@@ -535,12 +538,17 @@ func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client,
 		if loc := hdr.Get("Location"); loc != "" && snippet == "" {
 			snippet = "Location: " + loc
 		}
-		hits = append(hits, domain.SafePathHit{
+		hit := domain.SafePathHit{
 			Path:       p,
 			StatusCode: r.status,
 			Title:      r.title,
 			Snippet:    snippet,
-		})
+			LoginForm:  hasPasswordField(bodyStr),
+		}
+		if r.status == 401 {
+			hit.AuthChallenge = truncateHeader(hdr.Get("WWW-Authenticate"), 200)
+		}
+		hits = append(hits, hit)
 	}
 	return hits, catchAll
 }

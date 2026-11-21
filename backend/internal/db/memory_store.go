@@ -56,6 +56,8 @@ type encServiceRow struct {
 	ServiceName        string
 	Product            string
 	Version            string
+	ProductSource      string `json:",omitempty"`
+	VersionSource      string `json:",omitempty"`
 	CPE                string
 	BannerEnc          string
 	HTTPEnc            string
@@ -1046,6 +1048,8 @@ func (m *MemoryStore) decryptServiceLocked(row encServiceRow, hostIP string) (*d
 		ServiceName:        row.ServiceName,
 		Product:            row.Product,
 		Version:            row.Version,
+		ProductSource:      row.ProductSource,
+		VersionSource:      row.VersionSource,
 		CPE:                row.CPE,
 		Banner:             banner,
 		HTTP:               httpFP,
@@ -1388,6 +1392,8 @@ func (m *MemoryStore) UpsertObservedService(_ context.Context, svc *domain.Servi
 		ServiceName:        svc.ServiceName,
 		Product:            svc.Product,
 		Version:            svc.Version,
+		ProductSource:      svc.ProductSource,
+		VersionSource:      svc.VersionSource,
 		CPE:                svc.CPE,
 		BannerEnc:          bannerEnc,
 		HTTPEnc:            httpEnc,

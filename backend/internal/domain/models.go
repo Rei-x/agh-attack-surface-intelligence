@@ -274,6 +274,10 @@ type SafePathHit struct {
 	StatusCode int    `json:"status_code"`
 	Title      string `json:"title,omitempty"`
 	Snippet    string `json:"snippet,omitempty"`
+	// LoginForm: the response is an HTML page with a password field.
+	LoginForm bool `json:"login_form,omitempty"`
+	// AuthChallenge is the WWW-Authenticate header of a 401 (e.g. Basic realm="Tomcat Manager Application").
+	AuthChallenge string `json:"auth_challenge,omitempty"`
 }
 
 type HTTPFingerprint struct {
@@ -293,6 +297,7 @@ type HTTPFingerprint struct {
 	MetaGenerator      string            `json:"meta_generator,omitempty"`
 	FooterVersion      string            `json:"footer_version,omitempty"`
 	BodySnippet        string            `json:"body_snippet,omitempty"`
+	LoginForm          bool              `json:"login_form,omitempty"` // final page has a password field
 	SafePathHits       []SafePathHit     `json:"safe_path_hits,omitempty"`
 	// CatchAll is set when a random, non-existent path answers like a real page (SPA fallback,
 	// custom 200/403 error page, redirect-everything-to-login). Path hits that look the same as
@@ -393,6 +398,8 @@ type Service struct {
 	ServiceName        string                  `json:"service_name"`
 	Product            string                  `json:"product,omitempty"`
 	Version            string                  `json:"version,omitempty"`
+	ProductSource      string                  `json:"product_source,omitempty"` // nmap, cpe, banner, http-server-header, http-page
+	VersionSource      string                  `json:"version_source,omitempty"`
 	CPE                string                  `json:"cpe,omitempty"`
 	Banner             string                  `json:"banner,omitempty"`
 	HTTP               *HTTPFingerprint        `json:"http,omitempty"`

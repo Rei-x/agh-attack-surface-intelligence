@@ -1254,7 +1254,8 @@ func (s *PostgresStore) ListServices(ctx context.Context, filter ServiceFilter) 
 	q := `
 		SELECT sv.id, sv.host_id, h.ip_enc, sv.port, sv.protocol, sv.state, sv.service_name, sv.product, sv.version, sv.cpe,
 		       sv.banner_enc, sv.http_enc, sv.technologies, sv.matched_signatures, sv.is_admin_panel, sv.is_staging_env, sv.is_iot,
-		       sv.cluster_key, sv.interestingness, sv.interesting_factors, sv.triage_status, sv.notes_enc, sv.tags, sv.first_seen, sv.last_seen
+		       sv.cluster_key, sv.interestingness, sv.interesting_factors, sv.triage_status, sv.notes_enc, sv.tags, sv.first_seen, sv.last_seen,
+		       sv.product_source, sv.version_source
 		FROM services sv JOIN hosts h ON h.id = sv.host_id`
 	var args []any
 	if filter.HostID != "" {
@@ -1280,7 +1281,8 @@ func (s *PostgresStore) ListServices(ctx context.Context, filter ServiceFilter) 
 		if err := rows.Scan(&r.svc.ID, &r.svc.HostID, &r.hostIPEnc, &r.svc.Port, &r.svc.Protocol, &r.svc.State,
 			&r.svc.ServiceName, &r.svc.Product, &r.svc.Version, &r.svc.CPE, &r.bannerEnc, &r.httpEnc, &r.techRaw,
 			&r.sigRaw, &r.svc.IsAdminPanel, &r.svc.IsStagingEnv, &r.svc.IsIoT, &r.svc.ClusterKey, &r.svc.Interestingness,
-			&r.factorsRaw, &r.svc.TriageStatus, &r.notesEnc, &r.tagsRaw, &r.svc.FirstSeen, &r.svc.LastSeen); err != nil {
+			&r.factorsRaw, &r.svc.TriageStatus, &r.notesEnc, &r.tagsRaw, &r.svc.FirstSeen, &r.svc.LastSeen,
+			&r.svc.ProductSource, &r.svc.VersionSource); err != nil {
 			return nil, err
 		}
 		list = append(list, r)
@@ -1314,12 +1316,13 @@ func (s *PostgresStore) GetService(ctx context.Context, id string) (*domain.Serv
 	err := s.pool.QueryRow(ctx, `
 		SELECT sv.id, sv.host_id, h.ip_enc, sv.port, sv.protocol, sv.state, sv.service_name, sv.product, sv.version, sv.cpe,
 		       sv.banner_enc, sv.http_enc, sv.technologies, sv.matched_signatures, sv.is_admin_panel, sv.is_staging_env, sv.is_iot,
-		       sv.cluster_key, sv.interestingness, sv.interesting_factors, sv.triage_status, sv.notes_enc, sv.tags, sv.first_seen, sv.last_seen
+		       sv.cluster_key, sv.interestingness, sv.interesting_factors, sv.triage_status, sv.notes_enc, sv.tags, sv.first_seen, sv.last_seen,
+		       sv.product_source, sv.version_source
 		FROM services sv JOIN hosts h ON h.id = sv.host_id WHERE sv.id=$1`, id).
 		Scan(&svc.ID, &svc.HostID, &hostIPEnc, &svc.Port, &svc.Protocol, &svc.State, &svc.ServiceName, &svc.Product,
 			&svc.Version, &svc.CPE, &bannerEnc, &httpEnc, &techRaw, &sigRaw, &svc.IsAdminPanel, &svc.IsStagingEnv,
 			&svc.IsIoT, &svc.ClusterKey, &svc.Interestingness, &factorsRaw, &svc.TriageStatus, &notesEnc, &tagsRaw,
-			&svc.FirstSeen, &svc.LastSeen)
+			&svc.FirstSeen, &svc.LastSeen, &svc.ProductSource, &svc.VersionSource)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -1366,18 +1369,20 @@ func (s *PostgresStore) UpsertObservedService(ctx context.Context, svc *domain.S
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO services (id, host_id, port, protocol, state, service_name, product, version, cpe, banner_enc, http_enc,
 		       technologies, matched_signatures, is_admin_panel, is_staging_env, is_iot, cluster_key, interestingness,
-		       interesting_factors, triage_status, notes_enc, tags, first_seen, last_seen)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+		       interesting_factors, triage_status, notes_enc, tags, first_seen, last_seen, product_source, version_source)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
 		ON CONFLICT (host_id, port, protocol) DO UPDATE SET
 		       state=EXCLUDED.state, service_name=EXCLUDED.service_name, product=EXCLUDED.product, version=EXCLUDED.version,
 		       cpe=EXCLUDED.cpe, banner_enc=EXCLUDED.banner_enc, http_enc=EXCLUDED.http_enc, technologies=EXCLUDED.technologies,
 		       matched_signatures=EXCLUDED.matched_signatures, is_admin_panel=EXCLUDED.is_admin_panel,
 		       is_staging_env=EXCLUDED.is_staging_env, is_iot=EXCLUDED.is_iot, cluster_key=EXCLUDED.cluster_key,
 		       interestingness=EXCLUDED.interestingness, interesting_factors=EXCLUDED.interesting_factors,
-		       notes_enc=EXCLUDED.notes_enc, tags=EXCLUDED.tags, last_seen=EXCLUDED.last_seen`,
+		       notes_enc=EXCLUDED.notes_enc, tags=EXCLUDED.tags, last_seen=EXCLUDED.last_seen,
+		       product_source=EXCLUDED.product_source, version_source=EXCLUDED.version_source`,
 		svc.ID, svc.HostID, svc.Port, svc.Protocol, svc.State, svc.ServiceName, svc.Product, svc.Version, svc.CPE,
 		bannerEnc, httpEnc, techJSON, sigJSON, svc.IsAdminPanel, svc.IsStagingEnv, svc.IsIoT, svc.ClusterKey,
-		svc.Interestingness, factorsJSON, svc.TriageStatus, notesEnc, tagsJSON, svc.FirstSeen, svc.LastSeen)
+		svc.Interestingness, factorsJSON, svc.TriageStatus, notesEnc, tagsJSON, svc.FirstSeen, svc.LastSeen,
+		svc.ProductSource, svc.VersionSource)
 	if err != nil {
 		return nil, err
 	}
