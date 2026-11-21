@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strconv"
@@ -145,6 +146,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		PerHostRatePerSec: httpRPS,
 		MinRatePerSec:     math.Min(float64(govRate), math.Max(5, float64(govRate)*0.1)),
 		OnThrottle: func(te ThrottleEvent) {
+			log.Printf("[INFO] scan %s governor throttle: host=%s reason=%s rate %.1f -> %.1f (%d events)", run.ID, te.Host, te.Reason, te.OldRate, te.NewRate, te.ErrorCount)
 			emit("governor.throttle", map[string]any{
 				"host": te.Host, "reason": te.Reason, "old_rate": te.OldRate, "new_rate": te.NewRate, "error_count": te.ErrorCount,
 			})
@@ -447,14 +449,13 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	if minShare < MinWorkerRatePPS {
 		minShare = MinWorkerRatePPS
 	}
-	// throttled scales an nmap share by the Governor's current/initial rate, so a backoff
-	// triggered by target distress (HTTP 429/503, resets, timeouts on live hosts) also slows
-	// every nmap process launched afterwards, not only the Go-side probes.
+	// throttled scales an nmap share by the Governor's distress factor, so explicit target
+	// distress (HTTP 429/503, reset bursts) also slows every nmap process launched afterwards.
+	// Timeouts deliberately don't: on the Hetzner /18 run, HTTP timeouts pushed the Governor
+	// to its floor and, through this coupling, cut every sweep to 29 pps (10x slower).
 	throttled := func(n int) int {
-		if initial := float64(govRate); initial > 0 {
-			if f := gov.CurrentRate() / initial; f < 1 {
-				n = int(float64(n) * f)
-			}
+		if f := gov.DistressFactor(); f < 1 {
+			n = int(float64(n) * f)
 		}
 		if n < 1 {
 			n = 1

@@ -71,3 +71,39 @@ func TestPureGoServiceScanFilteredPortsDoNotThrottle(t *testing.T) {
 	}
 }
 
+// One silent host timing out over and over backs off only that host; the same number of
+// timeouts spread over several hosts backs off globally; neither slows nmap (distress = 1).
+// Explicit distress (429) slows nmap shares too.
+func TestGovernorTimeoutsSingleHostVsManyAndDistress(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	gov := NewGovernor(GovernorConfig{GlobalRatePerSec: 100, PerHostRatePerSec: 20, MinRatePerSec: 10,
+		ErrorThreshold: 5, ErrorWindow: 10 * time.Second, Now: func() time.Time { return now }})
+	for i := 0; i < 20; i++ {
+		gov.RecordTimeout("10.9.0.7")
+	}
+	if r := gov.CurrentRate(); r != 100 {
+		t.Fatalf("single silent host throttled the whole scan: rate=%.1f", r)
+	}
+	gov.mu.Lock()
+	hostRate := gov.perHost["10.9.0.7"].rate
+	gov.mu.Unlock()
+	if hostRate >= 20 {
+		t.Fatalf("silent host's own bucket not backed off: %.1f", hostRate)
+	}
+	for i := 0; i < 5; i++ {
+		gov.RecordTimeout("10.9.1." + strconv.Itoa(i))
+	}
+	if r := gov.CurrentRate(); r != 50 {
+		t.Fatalf("multi-host timeouts should halve the global rate, got %.1f", r)
+	}
+	if f := gov.DistressFactor(); f != 1 {
+		t.Fatalf("timeouts must not slow nmap shares, distress=%.2f", f)
+	}
+	gov.RecordHTTPStatus("10.9.0.9", 429)
+	gov.RecordHTTPStatus("10.9.0.9", 429)
+	gov.RecordHTTPStatus("10.9.0.9", 429)
+	if f := gov.DistressFactor(); f != 0.5 {
+		t.Fatalf("explicit 429 distress should halve nmap shares, distress=%.2f", f)
+	}
+}
+
