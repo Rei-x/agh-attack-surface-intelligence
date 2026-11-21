@@ -205,7 +205,7 @@ export function ScansPage() {
 
   // File Import state
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importFormat, setImportFormat] = useState<'csv' | 'json' | 'nmap'>('csv');
+  const [importFormat, setImportFormat] = useState<'csv' | 'json' | 'nmap' | 'scb'>('csv');
   const [importScanName, setImportScanName] = useState('');
   const [importPreview, setImportPreview] = useState<string>('');
   const [importing, setImporting] = useState(false);
@@ -1488,11 +1488,12 @@ export function ScansPage() {
                           <Field label="Format">
                             <SimpleSelect
                               value={importFormat}
-                              onValueChange={(v) => setImportFormat(v as 'csv' | 'json' | 'nmap')}
+                              onValueChange={(v) => setImportFormat(v as 'csv' | 'json' | 'nmap' | 'scb')}
                               options={[
                                 { value: 'csv', label: 'CSV' },
                                 { value: 'json', label: 'JSON' },
                                 { value: 'nmap', label: 'nmap XML (-oX)' },
+                                { value: 'scb', label: 'secureCodeBox findings.json' },
                               ]}
                             />
                           </Field>
@@ -1597,6 +1598,14 @@ export function ScansPage() {
                         onClick={() => runExport('ecs')}
                       >
                         <RiDownload2Line data-icon="inline-start" /> ECS (ELK)
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title="findings.json w formacie OWASP secureCodeBox (Host / Open Port + TLS/SSH)"
+                        onClick={() => runExport('scb')}
+                      >
+                        <RiDownload2Line data-icon="inline-start" /> secureCodeBox
                       </Button>
                     </>
                   ) : (

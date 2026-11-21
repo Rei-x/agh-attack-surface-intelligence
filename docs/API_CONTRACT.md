@@ -65,8 +65,8 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 
 ### Unified Manual Entry, Import & Export
 - `POST /api/v1/ingest/manual` → formularz ręczny (host + usługi + HTTP/TLS/nagłówki/ciasteczka/notatki) → tworzy `scan_run(MANUAL)` i przepuszcza przez pełny pipeline!
-- `POST /api/v1/ingest/import` → upload `multipart/form-data` lub JSON body (`format: csv|json|passive`, opcjonalne `scan_name`) → tworzy `scan_run(IMPORT_*)` i przepuszcza przez pełny pipeline!
-- `GET /api/v1/export?format=json|csv&scan_id=&state=&tag=` → pobranie pliku JSON lub CSV
+- `POST /api/v1/ingest/import` → upload `multipart/form-data` lub JSON body (`format: csv|json|nmap|scb|passive`, opcjonalne `scan_name`; findings.json z OWASP secureCodeBox jest wykrywany automatycznie także przy `json`) → tworzy `scan_run(IMPORT_*)` i przepuszcza przez pełny pipeline!
+- `GET /api/v1/export?format=json|csv|nmap|urls|ecs|scb&scan_id=&state=&tag=` → pobranie pliku (JSON, CSV, nmap XML, lista URL, ECS NDJSON, `scb` = findings.json OWASP secureCodeBox, zob. `docs/SECURECODEBOX.md`)
 
 ### Signatures Studio
 - `GET /api/v1/signatures` | `POST /api/v1/signatures` | `PUT /api/v1/signatures/:id` | `DELETE /api/v1/signatures/:id`

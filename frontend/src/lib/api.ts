@@ -164,15 +164,18 @@ function buildQuery(params: Record<string, string | number | boolean | undefined
   return str ? `?${str}` : '';
 }
 
-export type ImportFormat = 'csv' | 'json' | 'nmap' | 'passive';
-/** json/csv = inventory; nmap = nmap XML; urls = httpx/nuclei list; ecs = NDJSON for ELK/Splunk. */
-export type ExportFormat = 'json' | 'csv' | 'nmap' | 'urls' | 'ecs';
+/** scb = OWASP secureCodeBox findings.json (also auto-detected server-side for json). */
+export type ImportFormat = 'csv' | 'json' | 'nmap' | 'scb' | 'passive';
+/** json/csv = inventory; nmap = nmap XML; urls = httpx/nuclei list; ecs = NDJSON for ELK/Splunk;
+ * scb = OWASP secureCodeBox findings.json. */
+export type ExportFormat = 'json' | 'csv' | 'nmap' | 'urls' | 'ecs' | 'scb';
 const EXPORT_EXT: Record<ExportFormat, string> = {
   json: '.json',
   csv: '.csv',
   nmap: '-nmap.xml',
   urls: '-urls.txt',
   ecs: '-ecs.ndjson',
+  scb: '-scb-findings.json',
 };
 
 function saveBlob(blob: Blob, filename: string): void {
