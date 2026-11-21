@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 )
 
 func (s *Server) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +100,7 @@ func (s *Server) handleDashboardSummary(w http.ResponseWriter, r *http.Request) 
 	if len(topFindings) > 10 {
 		topFindings = topFindings[:10]
 	}
+	eol.AnnotateServices(topFindings, now)
 
 	var activeScan *domain.ScanRun
 	changesLastScan := 0
