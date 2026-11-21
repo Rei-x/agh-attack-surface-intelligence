@@ -1,12 +1,14 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/auth"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
@@ -77,6 +79,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := s.store.GetUserByUsername(r.Context(), strings.TrimSpace(req.Username))
+	if err != nil && !errors.Is(err, db.ErrNotFound) {
+		writeErr(w, http.StatusServiceUnavailable, "baza danych jest niedostępna - spróbuj ponownie za chwilę / database unavailable")
+		return
+	}
 	ok := false
 	if err == nil && user != nil {
 		ok = crypto.VerifyPassword(req.Password, user.PasswordHash) && user.Active

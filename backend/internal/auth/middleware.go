@@ -31,6 +31,9 @@ type Middleware struct {
 	secret []byte
 	users  UserLoader
 	audit  AuditLogger
+	// IsNotFound classifies UserLoader errors. When set, any other error (database down) is
+	// answered with 503 instead of 401, so an outage does not log every user out.
+	IsNotFound func(error) bool
 }
 
 func NewMiddleware(secret []byte, users UserLoader, audit AuditLogger) *Middleware {
@@ -61,6 +64,11 @@ func (m *Middleware) Authenticate(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		user, err := m.users.GetUser(r.Context(), claims.Sub)
+		if err != nil && m.IsNotFound != nil && !m.IsNotFound(err) {
+			writeJSONError(w, http.StatusServiceUnavailable, "baza danych jest niedostępna - spróbuj ponownie za chwilę / database unavailable",
+				"store error while loading the user")
+			return
+		}
 		if err != nil || user == nil || !user.Active {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized", "account inactive or not found")
 			return

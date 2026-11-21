@@ -87,6 +87,7 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 		mux:      http.NewServeMux(),
 		logins:   newLoginLimiter(),
 	}
+	s.authMW.IsNotFound = func(err error) bool { return errors.Is(err, db.ErrNotFound) }
 	s.notifier = notify.New(store)
 	pipeline.SetNotifier(s.notifier)
 	s.registerRoutes()
