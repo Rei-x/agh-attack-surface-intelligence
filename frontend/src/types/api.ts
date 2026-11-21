@@ -117,6 +117,8 @@ export interface ScanProfile {
   grace_period_hours: number;
   retry_unstable_count: number;
   enable_http_fingerprint: boolean;
+  /** Picture of every web service (headless Chromium on the scanning host). Missing = on. */
+  capture_screenshots?: boolean;
   user_agent?: string;
   enabled: boolean;
   /** Remote scanning agent executing this profile ('' = this server). */

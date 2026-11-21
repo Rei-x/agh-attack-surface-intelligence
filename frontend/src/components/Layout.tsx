@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   RiAddLine,
   RiArrowDownSLine,
+  RiGalleryView2,
   RiGitMergeLine,
   RiLayoutLeftLine,
   RiLockLine,
@@ -52,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: RiPulseLine, perms: [PERMISSIONS.DASHBOARD_READ], end: true },
   { to: '/graph', label: 'Graph', icon: RiNodeTree, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/assets', label: 'Assets', icon: RiServerLine, perms: [PERMISSIONS.ASSETS_READ] },
+  { to: '/gallery', label: 'Gallery', icon: RiGalleryView2, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/diff', label: 'Diff', icon: RiGitMergeLine, perms: [PERMISSIONS.SCANS_READ] },
   { to: '/scans', label: 'Scans', icon: RiRadarLine, perms: [PERMISSIONS.SCANS_READ] },
   { to: '/signatures', label: 'Signatures', icon: RiSparklingLine, perms: [PERMISSIONS.SIGNATURES_READ] },

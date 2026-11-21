@@ -100,6 +100,7 @@ const EMPTY_PROFILE_FORM = {
   grace_period_hours: 24,
   retry_unstable_count: 2,
   enable_http_fingerprint: true,
+  capture_screenshots: true,
   agent_id: LOCAL_AGENT,
 };
 type ProfileFormState = typeof EMPTY_PROFILE_FORM;
@@ -384,6 +385,7 @@ export function ScansPage() {
       grace_period_hours: p.grace_period_hours,
       retry_unstable_count: p.retry_unstable_count,
       enable_http_fingerprint: p.enable_http_fingerprint,
+      capture_screenshots: p.capture_screenshots !== false,
       agent_id: p.agent_id || LOCAL_AGENT,
     });
     requestAnimationFrame(() => profileFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -413,6 +415,7 @@ export function ScansPage() {
         grace_period_hours: profileForm.grace_period_hours,
         retry_unstable_count: profileForm.retry_unstable_count,
         enable_http_fingerprint: profileForm.enable_http_fingerprint,
+        capture_screenshots: profileForm.capture_screenshots,
         agent_id: profileForm.agent_id === LOCAL_AGENT ? '' : profileForm.agent_id,
         enabled: true,
     };
@@ -1202,6 +1205,17 @@ export function ScansPage() {
                       />
                       <Label htmlFor="http_fp" className="text-xs">
                         HTTP/TLS fingerprint + safe paths
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-3 self-end pb-2">
+                      <Switch
+                        id="shots"
+                        checked={profileForm.capture_screenshots && profileForm.enable_http_fingerprint}
+                        disabled={!profileForm.enable_http_fingerprint}
+                        onCheckedChange={(checked) => setProfileForm((p) => ({ ...p, capture_screenshots: checked }))}
+                      />
+                      <Label htmlFor="shots" className="text-xs" title="Needs Chromium on the scanning host. Each page counts against the HTTP rate.">
+                        Capture screenshots
                       </Label>
                     </div>
                     <p className="text-[11px] text-muted-foreground sm:col-span-2">

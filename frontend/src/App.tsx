@@ -8,6 +8,7 @@ import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { AssetsPage } from './pages/AssetsPage';
+import { GalleryPage } from './pages/GalleryPage';
 import { DiffPage } from './pages/DiffPage';
 import { ScansPage } from './pages/ScansPage';
 import { SignaturesPage } from './pages/SignaturesPage';
@@ -99,6 +100,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute anyPerms={[PERMISSIONS.ASSETS_READ]}>
               <AssetsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="gallery"
+          element={
+            <ProtectedRoute anyPerms={[PERMISSIONS.ASSETS_READ]}>
+              <GalleryPage />
             </ProtectedRoute>
           }
         />

@@ -38,6 +38,7 @@ import { Empty, Notice, Pill, SectionTitle, SimpleSelect } from '@/components/co
 import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
 import { CategoryBadges, serviceFlags } from '@/components/CategoryBadge';
 import { EolEvidence } from '@/components/EolBadges';
+import { ServiceScreenshot } from '@/components/ServiceScreenshot';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -890,6 +891,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 <div className="space-y-2">
                                   <SectionTitle>Evidence · HTTP</SectionTitle>
                                   <div className="space-y-4 border border-border bg-card p-4">
+                                    <ServiceScreenshot host={host} service={svc} />
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                       <KV label="URL">
                                         {(() => {
