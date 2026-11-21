@@ -13,6 +13,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/notify"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/outbound"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/remediation"
@@ -221,6 +222,16 @@ func (s *Service) Compose(ctx context.Context, run *domain.ScanRun) (*Digest, er
 	hosts, _, err := s.store.ListHosts(ctx, db.HostFilter{})
 	if err != nil {
 		return nil, err
+	}
+	// Owner from the CIDR rules when the host record has none (rules added after ingest).
+	if rules := ingest.LoadTagRules(ctx, s.store); len(rules) > 0 {
+		for i := range hosts {
+			if strings.TrimSpace(hosts[i].Owner) == "" {
+				cp := domain.Host{IP: hosts[i].IP}
+				ingest.ApplyTagRules(&cp, rules)
+				hosts[i].Owner = cp.Owner
+			}
+		}
 	}
 	var tickets []remediation.Ticket
 	if s.tickets != nil {

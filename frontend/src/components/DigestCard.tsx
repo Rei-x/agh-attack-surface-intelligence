@@ -4,7 +4,7 @@ import { RiArrowRightUpLine } from '@remixicon/react';
 import { useLiveEvents } from '@/context/LiveEventsContext';
 import { formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { kindCategory, remediationApi, type Digest } from '@/lib/remediation';
+import { kindCategory, ownerLabel, remediationApi, type Digest } from '@/lib/remediation';
 import { Empty, Pill } from '@/components/common';
 import { CategoryBadge } from '@/components/CategoryBadge';
 import { Button } from '@/components/ui/button';
@@ -80,7 +80,7 @@ export function DigestCard({ className, onOpenHost }: { className?: string; onOp
                         {cat ? <CategoryBadge kind={cat} size="xs" /> : <span className="size-[18px]" />}
                         <span className="min-w-0 flex-1 truncate">{r.title}</span>
                         {r.ticket_status && <Pill tone="info">{r.ticket_status.replace('_', ' ')}</Pill>}
-                        <span className="w-28 shrink-0 truncate text-right text-muted-foreground">{r.owner || 'Unassigned'}</span>
+                        <span className="w-28 shrink-0 truncate text-right text-muted-foreground">{ownerLabel(r.owner)}</span>
                       </button>
                     </li>
                   );

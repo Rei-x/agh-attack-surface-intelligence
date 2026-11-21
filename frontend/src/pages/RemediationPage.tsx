@@ -138,7 +138,7 @@ function TicketDetail({ t, canWrite, onChanged }: { t: Ticket; canWrite: boolean
           <ol className="mt-1.5 space-y-1">
             {[...t.history].reverse().map((h, i) => (
               <li key={i} className="flex gap-3">
-                <span className="w-32 shrink-0 font-mono text-[11px] text-muted-foreground">{formatDateTime(h.at)}</span>
+                <span className="w-40 shrink-0 font-mono text-[11px] whitespace-nowrap text-muted-foreground">{formatDateTime(h.at)}</span>
                 <span className="min-w-0">
                   <span className="font-semibold">{HISTORY_LABEL[h.action] || h.action}</span>
                   {h.to && h.action === 'status' && <> to {STATUS_META[h.to as TicketStatus]?.label || h.to}</>}
@@ -370,7 +370,7 @@ export function RemediationPage() {
                 <TableHead className="w-40">Where</TableHead>
                 <TableHead className="w-48">Owner</TableHead>
                 <TableHead className="w-16 text-right">Age</TableHead>
-                <TableHead className="w-20">Due</TableHead>
+                <TableHead className="w-20" title="Due date, or the day it was closed">Due</TableHead>
                 <TableHead className="w-10 pr-4" />
               </TableRow>
             </TableHeader>
@@ -417,11 +417,15 @@ export function RemediationPage() {
                         </button>
                       </TableCell>
                       <TableCell className="truncate text-xs" title={t.owner_email || t.owner}>
-                        {t.owner || <span className="text-muted-foreground">Unassigned</span>}
+                        {t.owner ? t.owner.replace(/\s*<[^>]*>\s*$/, '') : <span className="text-muted-foreground">Unassigned</span>}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums">{t.age_days ?? 0}d</TableCell>
                       <TableCell className={cn('font-mono text-xs', overdue(t) && 'text-amber-700 dark:text-amber-400')}>
-                        {isActive(t.status) ? formatDay(t.due_at) : formatDay(t.fixed_at || t.updated_at)}
+                        {isActive(t.status) ? (
+                          formatDay(t.due_at)
+                        ) : (
+                          <span className="text-muted-foreground">{formatDay(t.fixed_at || t.updated_at)}</span>
+                        )}
                       </TableCell>
                       <TableCell className="pr-4 text-right">
                         <Button

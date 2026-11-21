@@ -432,3 +432,9 @@ export function formatDay(value?: string): string {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
+
+/** "FTIMS admins <admin@ftims.agh.edu.pl>" -> "FTIMS admins"; empty -> "Unassigned". */
+export function ownerLabel(owner?: string): string {
+  const name = (owner || '').replace(/\s*<[^>]*>\s*$/, '').trim();
+  return name || 'Unassigned';
+}

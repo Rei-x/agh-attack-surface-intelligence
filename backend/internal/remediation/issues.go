@@ -165,16 +165,25 @@ func GenericIssue(svc *domain.Service, host *domain.Host) Issue {
 }
 
 func adminName(s *domain.Service) string {
+	generic := func(n string) bool {
+		l := strings.ToLower(n)
+		return n == "" || strings.Contains(l, "admin panel") || strings.Contains(l, "management console")
+	}
 	for _, t := range s.Technologies {
-		if t.Category == "admin_panel" && t.Name != "" {
+		if t.Category == "admin_panel" && !generic(t.Name) {
 			return t.Name
+		}
+	}
+	for _, t := range s.Technologies {
+		if t.Confidence >= 50 && !generic(t.Name) && t.Category != "server" && t.Category != "framework" {
+			return t.Name + " admin panel"
 		}
 	}
 	return "Admin panel"
 }
 
 func shortVersion(v string) string {
-	if i := strings.IndexAny(v, " ("); i > 0 {
+	if i := strings.IndexAny(v, " (-+~"); i > 0 {
 		return v[:i]
 	}
 	return v

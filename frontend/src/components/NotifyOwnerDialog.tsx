@@ -154,7 +154,7 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-4 sm:max-w-2xl">
+      <DialogContent className="z-[60]! gap-4 sm:max-w-2xl" overlayClassName="z-[60]!">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RiMailSendLine className="size-5 text-muted-foreground" />
@@ -182,9 +182,7 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Owner">
-                <div className="flex h-9 items-center truncate border border-border bg-muted/30 px-3 text-sm">
-                  {draft.owner || <span className="text-muted-foreground">Not assigned</span>}
-                </div>
+                <Input readOnly value={draft.owner || 'Not assigned'} className={cn(!draft.owner && 'text-muted-foreground')} />
               </Field>
               <Field label="Contact email" htmlFor="no-to">
                 <Input
@@ -211,7 +209,7 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
                     options={draft.issues.map((i) => ({ value: i.key, label: `${KIND_LABEL[i.kind] || i.kind}: ${i.title}` }))}
                   />
                 ) : (
-                  <div className="flex h-9 items-center truncate border border-border px-3 text-sm">{issue?.title}</div>
+                  <Input readOnly value={issue?.title || ''} />
                 )}
               </Field>
               <Field label="Due" htmlFor="no-due">
@@ -235,7 +233,7 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
                 rows={12}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                className="font-mono text-xs leading-relaxed"
+                className="font-mono text-xs leading-relaxed md:text-xs"
               />
             </Field>
 
@@ -264,7 +262,7 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
               Mail app
             </Button>
           </div>
-          {line?.ready && !result ? (
+          {(!draft || line?.ready) && !result ? (
             <Button size="sm" disabled={!draft || !!sending || !subject.trim() || !body.trim()} onClick={() => send('auto')}>
               <RiSendPlaneLine data-icon="inline-start" />
               {sending === 'auto' ? 'Sending' : 'Send'}

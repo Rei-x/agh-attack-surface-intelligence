@@ -8,6 +8,7 @@ import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   kindCategory,
+  ownerLabel,
   remediationApi,
   type Digest,
   type DigestRisk,
@@ -35,7 +36,7 @@ function RiskRow({ r, onOpen }: { r: DigestRisk; onOpen: (id: string) => void })
       {cat ? <CategoryBadge kind={cat} size="xs" /> : <span className="size-[18px] shrink-0" />}
       <span className="min-w-0 flex-1 truncate text-foreground">{r.title}</span>
       {r.ticket_status && <Pill tone="info">{r.ticket_status.replace('_', ' ')}</Pill>}
-      <span className="w-48 shrink-0 truncate text-right text-muted-foreground">{r.owner || 'Unassigned'}</span>
+      <span className="w-48 shrink-0 truncate text-right text-muted-foreground">{ownerLabel(r.owner)}</span>
       <span className="w-8 shrink-0 text-right font-mono tabular-nums text-muted-foreground">{r.score}</span>
     </button>
   );
@@ -310,7 +311,7 @@ export function DigestPage() {
                       <Link key={t.id} to={`/remediation?status=overdue&ticket=${t.id}`} className="flex items-center gap-3 px-5 py-2.5 text-xs hover:bg-muted/40">
                         <Pill tone="warning">Overdue</Pill>
                         <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                        <span className="w-48 truncate text-right text-muted-foreground">{t.owner || 'Unassigned'}</span>
+                        <span className="w-48 truncate text-right text-muted-foreground">{ownerLabel(t.owner)}</span>
                       </Link>
                     ))}
                   </>

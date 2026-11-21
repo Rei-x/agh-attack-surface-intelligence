@@ -101,7 +101,7 @@ func TestBuildDigest(t *testing.T) {
 			t.Errorf("markdown misses %q\n%s", want, md)
 		}
 	}
-	if strings.ContainsAny(md, "–—") {
+	if strings.ContainsAny(md, "\u2013\u2014") {
 		t.Error("markdown must not contain dashes")
 	}
 
