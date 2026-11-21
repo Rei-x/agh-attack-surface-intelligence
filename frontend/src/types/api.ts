@@ -267,6 +267,7 @@ export interface DetectedTechnology {
   version?: string;
   confidence: number;
   evidence?: TechEvidence[];
+  explanation?: string;
 }
 
 export interface InterestingnessFactor {

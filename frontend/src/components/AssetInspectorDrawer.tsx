@@ -717,6 +717,11 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                                   </span>
                                                 </div>
                                               ))}
+                                              {tech.explanation && (
+                                                <div className="pt-1 font-mono text-[11px] text-muted-foreground">
+                                                  noisy-OR: {tech.explanation}
+                                                </div>
+                                              )}
                                             </div>
                                           )}
                                         </div>

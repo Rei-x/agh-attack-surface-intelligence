@@ -312,6 +312,9 @@ type DetectedTechnology struct {
 	Version    string         `json:"version,omitempty"`
 	Confidence int            `json:"confidence"` // 0..100 (Noisy-OR fused)
 	Evidence   []TechEvidence `json:"evidence"`
+	// Explanation shows the fusion arithmetic, e.g.
+	// "header 0.80 ⊕ html 0.80 → 1-(0.20·0.20) = 96%".
+	Explanation string `json:"explanation,omitempty"`
 }
 
 type InterestingnessFactor struct {
