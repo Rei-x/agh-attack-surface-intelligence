@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
-	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 )
 
 // EventOutdatedVersion is emitted when a service is first seen running an end-of-life
@@ -18,7 +17,9 @@ func outdatedEvent(existed bool, prev, curr *domain.Service) (domain.ChangeEvent
 	if len(curr.Outdated) == 0 {
 		return domain.ChangeEvent{}, false
 	}
-	if existed && prev.Version == curr.Version && prev.Product == curr.Product && hasTagFold(prev.Tags, eol.TagEOL) {
+	// Only a real change of the observed product/version (or a new service) is a change:
+	// re-classification by a newer EOL table or a re-annotated record is not.
+	if existed && strings.EqualFold(prev.Version, curr.Version) && strings.EqualFold(prev.Product, curr.Product) {
 		return domain.ChangeEvent{}, false
 	}
 	labels := make([]string, 0, len(curr.Outdated))
