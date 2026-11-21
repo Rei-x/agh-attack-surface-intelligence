@@ -530,17 +530,23 @@ func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 		return
 	}
 	run, err := r.store.GetScanRun(ctx, runID)
-	if err != nil || run.Status != domain.ScanStatusCompleted || strings.TrimSpace(run.RawNmapXML) == "" {
+	if err != nil || run.Status != domain.ScanStatusCompleted {
 		return
 	}
 	profileName := run.Name
+	var profile *domain.ScanProfile
 	if run.ProfileID != "" {
 		if p, perr := r.store.GetProfile(ctx, run.ProfileID); perr == nil && p != nil && p.Name != "" {
-			profileName = p.Name
+			profileName, profile = p.Name, p
 		}
 	}
 	pushCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
+	// Actionable change findings (risky exposures, admin/staging, EOL, new, gone) with owners.
+	defer r.pushChangeFindings(pushCtx, cfg, run, profile, profileName)
+	if strings.TrimSpace(run.RawNmapXML) == "" {
+		return
+	}
 	imp, err := r.dojo.ImportNmapXML(pushCtx, cfg, 0, defectdojo.NmapTestTitle(profileName), run.Name, run.RawNmapXML)
 	exp := &domain.DefectDojoExport{
 		ExportType: "nmap_xml",

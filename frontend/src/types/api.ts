@@ -344,6 +344,33 @@ export interface LivenessEstimate {
   model: string;
 }
 
+export interface OutdatedComponent {
+  product: string;
+  version: string;
+  branch: string;
+  eol_date: string;
+  days_since_eol: number;
+  latest_in_branch?: string;
+  supported_branch?: string;
+  via: string;
+  distro_packaged?: boolean;
+  label: string;
+  evidence: string;
+  source: string;
+  data_as_of: string;
+}
+
+export interface VulnHint {
+  id: string;
+  name: string;
+  product: string;
+  version: string;
+  affected: string;
+  distro_packaged?: boolean;
+  evidence: string;
+  references: string[];
+}
+
 export interface Service {
   id: string;
   host_id: string;
@@ -362,6 +389,10 @@ export interface Service {
   is_admin_panel: boolean;
   is_staging_env: boolean;
   is_iot: boolean;
+  /** End-of-life components (offline table, derived by the backend). */
+  outdated?: OutdatedComponent[];
+  /** Passive, version-only hints at well-known CVEs. */
+  known_vulns?: VulnHint[];
   cluster_key?: string;
   interestingness: number;
   interesting_factors?: InterestingnessFactor[];

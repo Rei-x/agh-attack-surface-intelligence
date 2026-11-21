@@ -37,6 +37,7 @@ import { Empty, PageHeader, Pill, Stat, StatStrip } from '@/components/common';
 import { LiveTelemetryBanner } from '@/components/LiveTelemetryBanner';
 import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
 import { ServiceLogo, ServiceLogoFor, serviceLogoNames } from '@/components/ServiceLogo';
+import { EolBadges, changeOwner } from '@/components/EolBadges';
 import type { DashboardSummary, Service } from '@/types/api';
 
 type SeriesKey = 'active_hosts' | 'services_found' | 'changes_detected';
@@ -452,6 +453,7 @@ export function DashboardPage() {
                           </span>
                           {svc.is_admin_panel && <Pill tone="danger">Admin</Pill>}
                           {svc.is_staging_env && <Pill tone="warning">Staging</Pill>}
+                          <EolBadges service={svc} />
                         </div>
                       </TableCell>
                       <TableCell className="pr-5 text-right">
@@ -616,7 +618,10 @@ export function DashboardPage() {
                           {formatRelativeTime(ch.created_at)}
                         </span>
                       </div>
-                      <p className="truncate text-xs text-muted-foreground">{ch.summary}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {ch.summary}
+                        {changeOwner(ch.after) && ` · właściciel: ${changeOwner(ch.after)}`}
+                      </p>
                     </li>
                   );
                 })}

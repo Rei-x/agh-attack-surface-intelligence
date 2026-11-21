@@ -14,6 +14,8 @@ const KEYS: Array<{ key: string; desc: string }> = [
   { key: 'owner:wi.agh', desc: 'właściciel' },
   { key: 'triage:accepted_risk', desc: 'decyzja: new, triaged, accepted_risk, false_positive' },
   { key: 'admin:true', desc: 'panel administracyjny' },
+  { key: 'eol:true', desc: 'wersja po końcu wsparcia (EOL, tabela offline)' },
+  { key: 'vuln:true', desc: 'pasywna wskazówka znanego CVE (po wersji)' },
   { key: 'score:>=70', desc: 'minimalny score' },
 ];
 
@@ -22,6 +24,7 @@ const EXAMPLES = [
   'tech:wordpress cidr:10.66.0.0/22',
   'cert:expired,expiring',
   'admin:true state:new',
+  'eol:true',
 ];
 
 /** Short syntax help for the Shodan-like asset query (evaluated server-side). */

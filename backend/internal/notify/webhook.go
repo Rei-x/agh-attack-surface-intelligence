@@ -146,7 +146,11 @@ func BuildPayload(run *domain.ScanRun, events []domain.ChangeEvent, title string
 			fmt.Fprintf(&b, "... and %d more\n", len(events)-MaxListedEvents)
 			break
 		}
-		fmt.Fprintf(&b, "- [%s] %s: %s\n", strings.ToUpper(ev.Severity), ev.EventType, ev.Summary)
+		fmt.Fprintf(&b, "- [%s] %s: %s", strings.ToUpper(ev.Severity), ev.EventType, ev.Summary)
+		if owner := eventOwner(ev); owner != "" {
+			fmt.Fprintf(&b, " (właściciel: %s)", owner)
+		}
+		b.WriteString("\n")
 	}
 	text := strings.TrimRight(b.String(), "\n")
 	content := text
@@ -163,6 +167,7 @@ func BuildPayload(run *domain.ScanRun, events []domain.ChangeEvent, title string
 			"host_ip":    ev.HostIP,
 			"port":       ev.Port,
 			"summary":    ev.Summary,
+			"owner":      eventOwner(ev),
 			"created_at": ev.CreatedAt,
 		})
 	}
@@ -340,4 +345,10 @@ func (n *Notifier) Send(ctx context.Context, rawURL string, payload any) error {
 		return fmt.Errorf("webhook answered HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 	return nil
+}
+
+// eventOwner is the CIDR-rule owner the pipeline stamped on the event ("" when none).
+func eventOwner(ev domain.ChangeEvent) string {
+	owner, _ := ev.After["owner"].(string)
+	return owner
 }

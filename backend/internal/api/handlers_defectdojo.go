@@ -10,6 +10,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 )
 
 func (s *Server) handleGetDefectDojoConfig(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +125,7 @@ func (s *Server) handlePushDefectDojoFindings(w http.ResponseWriter, r *http.Req
 			continue
 		}
 		host, _ := s.store.GetHost(ctx, svc.HostID)
+		eol.Annotate(svc, time.Now().UTC())
 		sev := req.Severity
 		if sev == "" {
 			switch {
@@ -165,13 +167,19 @@ func (s *Server) handlePushDefectDojoFindings(w http.ResponseWriter, r *http.Req
 				continue
 			}
 			sev := nonEmptyStr(req.Severity, ev.Severity)
+			owner, _ := ev.After["owner"].(string)
+			if owner == "" && ev.HostID != "" {
+				if h, herr := s.store.GetHost(ctx, ev.HostID); herr == nil {
+					owner = h.Owner
+				}
+			}
 			inputs = append(inputs, defectdojo.FindingInput{
 				SourceID:    ev.ID,
 				HostIP:      ev.HostIP,
 				Port:        ev.Port,
 				Protocol:    "tcp",
 				Title:       fmt.Sprintf("[%s] %s", ev.EventType, ev.Summary),
-				Description: fmt.Sprintf("## Attack Surface Change Detected\n\n- **Host:** `%s`\n- **Event:** `%s`\n- **Time Slot:** `%s`\n- **Summary:** %s\n", ev.HostIP, ev.EventType, ev.TimeSlot, ev.Summary),
+				Description: fmt.Sprintf("## Attack Surface Change Detected\n\n- **Host:** `%s`\n- **Event:** `%s`\n- **Time Slot:** `%s`\n- **Summary:** %s\n- **Owner (CIDR rule):** %s\n", ev.HostIP, ev.EventType, ev.TimeSlot, ev.Summary, nonEmptyStr(owner, "none")),
 				Severity:    sev,
 				Tags:        []string{strings.ToLower(ev.EventType)},
 			})

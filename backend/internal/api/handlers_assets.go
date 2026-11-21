@@ -7,6 +7,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/intelligence"
 )
 
@@ -42,6 +43,7 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
+	eol.AnnotateHosts(hosts, time.Now().UTC())
 	totalPages := (total + limit - 1) / limit
 	if totalPages < 1 {
 		totalPages = 1
@@ -67,6 +69,7 @@ func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
 		l := intelligence.EstimateLiveness(*host, time.Now().UTC(), intelligence.LifecycleConfig{})
 		host.Liveness = &l
 	}
+	eol.AnnotateServices(host.Services, time.Now().UTC())
 	allChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{HostID: host.ID, Limit: 20})
 	hostChanges := make([]domain.ChangeEvent, 0)
 	for _, ev := range allChanges {
@@ -168,6 +171,7 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 		}
 		svcs = filtered
 	}
+	eol.AnnotateServices(svcs, time.Now().UTC())
 	writeJSON(w, http.StatusOK, map[string]any{"services": svcs, "total": len(svcs)})
 }
 
@@ -236,6 +240,7 @@ func (s *Server) handleListChanges(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
+	s.withOwners(r.Context(), events)
 	writeJSON(w, http.StatusOK, map[string]any{"changes": events})
 }
 

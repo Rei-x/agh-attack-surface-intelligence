@@ -496,6 +496,13 @@ func BuildServiceEvidenceDescription(host *domain.Host, svc *domain.Service) str
 	fmt.Fprintf(&b, "- **Interestingness Score:** `%d/100`\n", svc.Interestingness)
 	if host != nil {
 		fmt.Fprintf(&b, "- **Lifecycle State:** `%s` | **Environment:** `%s`\n", host.LifecycleState, host.Environment)
+		fmt.Fprintf(&b, "- **Owner (CIDR rule):** %s\n", nonEmpty(host.Owner, "none (add a CIDR rule)"))
+	}
+	for _, o := range svc.Outdated {
+		fmt.Fprintf(&b, "- **End of life:** %s\n", o.Evidence)
+	}
+	for _, v := range svc.KnownVulns {
+		fmt.Fprintf(&b, "- **Passive CVE hint:** %s\n", v.Evidence)
 	}
 	if len(svc.Technologies) > 0 {
 		fmt.Fprintf(&b, "\n### Detected Technologies (Noisy-OR Confidence)\n")

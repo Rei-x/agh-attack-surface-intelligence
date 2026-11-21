@@ -26,6 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Empty, Notice, Pill, SectionTitle, SimpleSelect } from '@/components/common';
 import { ServiceLogoFor } from '@/components/ServiceLogo';
+import { EolBadges, EolEvidence } from '@/components/EolBadges';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -520,6 +521,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 {svc.is_admin_panel && <Pill tone="danger">Admin</Pill>}
                                 {svc.is_staging_env && <Pill tone="warning">Staging/Dev</Pill>}
                                 {svc.is_iot && <Pill tone="violet">IoT</Pill>}
+                                <EolBadges service={svc} />
                                 {(svc.locked_fields?.length || 0) > 0 && (
                                   <RiLockLine className="size-3.5 text-violet-600 dark:text-violet-400" />
                                 )}
@@ -579,6 +581,8 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                   )}
                                 </div>
                               </div>
+
+                              <EolEvidence service={svc} />
 
                               {/* Service override editor */}
                               {isEditing && canWrite && (

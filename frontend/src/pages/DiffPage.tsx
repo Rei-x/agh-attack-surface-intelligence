@@ -37,6 +37,7 @@ import {
   StatStrip,
 } from '@/components/common';
 import type { ChangeEvent, ChangedServiceDiff, ScanDiffResponse, ScanRun } from '@/types/api';
+import { changeOwner } from '@/components/EolBadges';
 
 type BeforeAfter = { before?: Record<string, unknown>; after?: Record<string, unknown> };
 
@@ -484,7 +485,12 @@ export function DiffPage() {
                           {ch.event_type}
                         </TableCell>
                         <TableCell>{hostLink(ch.host_id, ch.host_ip, ch.port)}</TableCell>
-                        <TableCell className="max-w-[420px] truncate text-xs">{ch.summary}</TableCell>
+                        <TableCell className="max-w-[420px] truncate text-xs">
+                          {ch.summary}
+                          {changeOwner(ch.after) && (
+                            <span className="text-muted-foreground"> · właściciel: {changeOwner(ch.after)}</span>
+                          )}
+                        </TableCell>
                         <TableCell className="font-mono text-[11px] text-muted-foreground">
                           {formatDateTime(ch.created_at)}
                         </TableCell>

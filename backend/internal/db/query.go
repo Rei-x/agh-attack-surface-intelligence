@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 )
 
 // Asset search query language (Shodan-like), evaluated server-side by both stores for the
 // hosts and services list endpoints (the `q` parameter):
 //
 //	port:3389 tech:wordpress tag:wi state:new cidr:10.66.0.0/24 env:staging title:"admin" cert:expired
+//	eol:true (end-of-life version, offline table in internal/eol) vuln:true (passive known-CVE hint)
 //
 // Terms are AND-ed. A comma inside a value is an OR (port:80,443). A leading "-" negates a
 // term (-env:prod). Quoted values may contain spaces. Anything that is not a known key:value
@@ -66,16 +68,20 @@ var queryKeyAliases = map[string]string{
 	"triage":   "triage",
 	"admin":    "admin",
 	"score":    "score",
+	"eol":      "eol",
+	"outdated": "eol",
+	"vuln":     "vuln",
+	"cve":      "vuln",
 }
 
 // serviceLevelKeys are evaluated per service (all must match one service).
 var serviceLevelKeys = map[string]bool{
 	"port": true, "tech": true, "title": true, "cert": true, "service": true,
-	"product": true, "version": true, "admin": true,
+	"product": true, "version": true, "admin": true, "eol": true, "vuln": true,
 }
 
 // QueryKeys lists the canonical keys (used by the UI help and error messages).
-var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score"}
+var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score", "eol", "vuln"}
 
 // ParseAssetQuery parses a search expression. It returns an error for malformed values of
 // known keys (bad port, bad CIDR, unknown cert condition, unterminated quote) so the API can
@@ -209,14 +215,14 @@ func compileTerm(t *QueryTerm) error {
 			return fmt.Errorf("score: oczekiwano liczby, np. score:>=70")
 		}
 		t.minimum = n
-	case "admin":
+	case "admin", "eol", "vuln":
 		switch t.Values[0] {
 		case "true", "yes", "1", "tak":
 			t.Values = []string{"true"}
 		case "false", "no", "0", "nie":
 			t.Values = []string{"false"}
 		default:
-			return fmt.Errorf("admin: oczekiwano true/false")
+			return fmt.Errorf("%s: oczekiwano true/false", t.Key)
 		}
 	}
 	return nil
@@ -409,6 +415,12 @@ func (t *QueryTerm) matchService(s *domain.Service, now time.Time) bool {
 		return anyContains(t.Values, s.Version)
 	case "admin":
 		return s.IsAdminPanel == (t.Values[0] == "true")
+	case "eol", "vuln":
+		outdated, hints := eol.Assess(s, now)
+		if t.Key == "eol" {
+			return (len(outdated) > 0) == (t.Values[0] == "true")
+		}
+		return (len(hints) > 0) == (t.Values[0] == "true")
 	case "cert":
 		if s.HTTP == nil || s.HTTP.TLS == nil {
 			return false
