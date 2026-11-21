@@ -188,7 +188,17 @@ function matchedServices(host: Host, q: string): Service[] {
   return (host.services || []).filter((s) => serviceMatches(s, terms));
 }
 
-function serviceShortLabel(s: Service): string {
+function serviceShortLabel(s: Service, q = ""): string {
+  const terms = parseTerms(q);
+  if (terms.some((t) => t.key === "eol" && t.value !== "false") && s.outdated?.length) {
+    return s.outdated.map((o) => `${o.product} ${o.version.split(" ")[0]} (EOL)`).join(", ");
+  }
+  if (terms.some((t) => (t.key === "vuln" || t.key === "cve") && t.value !== "false") && s.known_vulns?.length) {
+    return s.known_vulns.map((v) => `${v.product} ${v.version.split(" ")[0]} ${v.id}`).join(", ");
+  }
+  const want = terms.filter((t) => t.key === "tech" || t.key === "product").flatMap((t) => t.value.split(","));
+  const hit = want.length ? (s.technologies || []).find((t) => want.some((w) => t.name.toLowerCase().includes(w))) : undefined;
+  if (hit) return [hit.name, (hit.version || "").split(" ")[0]].filter(Boolean).join(" ");
   const tech = [...(s.technologies || [])]
     .filter((t) => !['admin_panel', 'staging', 'custom', 'interesting_header', 'interesting_cookie'].includes(t.category))
     .sort((a, b) => b.confidence - a.confidence)[0];
@@ -514,7 +524,7 @@ export function AssetsPage() {
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder='Search IP / hostname, or e.g. tech:wordpress · port:3389 · owner:wi · tech:"server bmc" -env:prod'
+                placeholder='IP, hostname, or tech:wordpress port:3389 eol:true'
                 className="pr-24 pl-6 font-mono"
                 aria-invalid={queryError ? true : undefined}
               />
@@ -859,9 +869,9 @@ function HostRow({
         {matched.length > 0 && (
           <div
             className="mt-0.5 truncate text-[11px] text-sky-700 dark:text-sky-300"
-            title={matched.map((s) => `:${s.port} ${serviceShortLabel(s)}`).join('\n')}
+            title={matched.map((s) => `:${s.port} ${serviceShortLabel(s, q)}`).join('\n')}
           >
-            ↳ {matched.slice(0, 2).map((s) => `${serviceShortLabel(s)} :${s.port}`).join(', ')}
+            ↳ {matched.slice(0, 2).map((s) => `${serviceShortLabel(s, q)} :${s.port}`).join(', ')}
             {matched.length > 2 && ` +${matched.length - 2}`}
           </div>
         )}
@@ -929,16 +939,11 @@ function HostRow({
 
       <TableCell>
         <div className="flex items-center gap-1 overflow-hidden">
-          {services.slice(0, 4).map((s) => (
+          {services.slice(0, 3).map((s) => (
             <ServiceLogoFor key={s.id} service={s} size="xs" />
           ))}
-          <span className="ml-1 font-mono text-xs tabular-nums">{h.service_count ?? services.length}</span>
-          <span className="truncate font-mono text-[11px] text-muted-foreground">
-            {services
-              .slice(0, 4)
-              .map((s) => s.port)
-              .sort((a, b) => a - b)
-              .join(' ')}
+          <span className="ml-1 font-mono text-xs tabular-nums" title={services.map((s) => `${s.port}/${s.service_name}`).join(", ")}>
+            {h.service_count ?? services.length}
           </span>
         </div>
       </TableCell>

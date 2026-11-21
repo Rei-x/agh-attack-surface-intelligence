@@ -52,7 +52,7 @@ export function ProductInventory({
           {n}
         </button>
       ) : (
-        <span className="font-mono text-xs text-muted-foreground/50">n/a</span>
+        <span className="sr-only">none</span>
       )}
     </TableCell>
   );

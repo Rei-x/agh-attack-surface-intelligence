@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { RiArrowRightUpLine, RiNodeTree, RiRefreshLine, RiSendPlaneLine } from '@remixicon/react';
 import { Bar, BarChart, CartesianGrid, Cell, Label, Line, LineChart, Pie, PieChart, XAxis, YAxis } from 'recharts';
@@ -18,6 +18,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { useDefectDojoStatus } from '@/lib/defectdojo';
 import {
   assetsLink,
+  eolLabel,
   formatNumber,
   formatRelativeTime,
   lifecycleMeta,
@@ -70,7 +71,8 @@ const RISK_LABEL_W = 150;
 const riskConfig = { score: { label: 'Max score' } } satisfies ChartConfig;
 
 function scoreFill(score: number): string {
-  if (score >= 75) return '#f43f5e';
+  if (score >= 90) return '#f43f5e';
+  if (score >= 75) return '#f97316';
   if (score >= 50) return '#f59e0b';
   if (score >= 25) return '#0ea5e9';
   return '#a8a29e';
@@ -186,7 +188,7 @@ export function DashboardPage() {
   }));
   const lifecycleSum = lifecycleData.reduce((a, d) => a + d.value, 0);
 
-  const riskRows = buildRiskRows(inventory?.products || []);
+  const riskRows = useMemo(() => buildRiskRows(inventory?.products || []), [inventory]);
 
   const canPush = can(PERMISSIONS.DEFECTDOJO_PUSH);
   const dd = useDefectDojoStatus(canPush);
@@ -254,7 +256,7 @@ export function DashboardPage() {
         <Stat
           label="Score ≥ 50"
           value={formatNumber(interestingFindingsCount)}
-          tone={interestingFindingsCount > 0 ? 'danger' : undefined}
+          tone={interestingFindingsCount > 0 ? 'warning' : undefined}
           to={assetsLink('score:>=50')}
           title="Services scoring 50 or more (accepted risks excluded)"
         />
@@ -575,7 +577,7 @@ export function DashboardPage() {
                   <BarChart
                     data={riskRows}
                     layout="vertical"
-                    margin={{ top: 0, right: 64, left: 0, bottom: 0 }}
+                    margin={{ top: 0, right: 84, left: 0, bottom: 0 }}
                     barSize={14}
                   >
                     <XAxis type="number" dataKey="max_score" domain={[0, 100]} hide />
@@ -593,7 +595,7 @@ export function DashboardPage() {
                             <Link to={assetsLink(row.query)} className="flex h-full items-center gap-2 hover:underline">
                               <ServiceLogo names={row.logo_names} size="xs" title={false} />
                               <span className="truncate text-[11px] text-muted-foreground" title={row.name}>
-                                {row.name}
+                                {row.name.replace(/\s*\(.*\)$/, "")}
                               </span>
                             </Link>
                           </foreignObject>
@@ -620,6 +622,7 @@ export function DashboardPage() {
                     />
                     <Bar
                       dataKey="max_score"
+                      isAnimationActive={false}
                       radius={2}
                       background={{ fill: 'var(--muted)', radius: 2 }}
                       className="cursor-pointer"
@@ -638,7 +641,7 @@ export function DashboardPage() {
                             className="fill-foreground font-mono text-[11px]"
                           >
                             {row.max_score}
-                            <tspan className="fill-muted-foreground"> · {row.host_count}h</tspan>
+                            <tspan className="fill-muted-foreground"> · {row.host_count === 1 ? "1 host" : `${row.host_count} hosts`}</tspan>
                           </text>
                         );
                       }}
@@ -694,7 +697,7 @@ export function DashboardPage() {
                           </span>
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
-                          {ch.summary}
+                          {eolLabel(ch.summary)}
                           {owner && ` · owner: ${owner}`}
                         </p>
                       </li>

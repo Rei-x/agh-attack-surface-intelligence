@@ -20,6 +20,8 @@ export interface HostIdentity {
 
 type Svc = Pick<Service, 'port' | 'service_name' | 'product' | 'version' | 'technologies' | 'matched_signatures' | 'http'>;
 
+const APP_CATEGORY_RANK: Record<string, number> = { cms: 0, admin_panel: 1, iot: 2, framework: 3, server: 4 };
+
 function texts(s: Svc): string {
   return [
     s.product,
@@ -141,6 +143,23 @@ export function hostIdentity(host: Pick<Host, 'os_guess' | 'services'>): HostIde
     if (o.os) {
       id.os = o.os;
       id.evidence = id.evidence || o.evidence;
+    }
+  }
+  if (!id.product && !id.os) {
+    // Nothing about the box itself: name it after its riskiest identified application.
+    const ranked = [...(host.services || [])].sort((a, b) => (b.interestingness || 0) - (a.interestingness || 0));
+    for (const s of ranked) {
+      const tech = [...(s.technologies || [])]
+        .filter((t) => t.category in APP_CATEGORY_RANK && !/admin panel|login portal/i.test(t.name))
+        .sort((a, b) => (APP_CATEGORY_RANK[a.category] ?? 9) - (APP_CATEGORY_RANK[b.category] ?? 9))[0];
+      const name = tech?.name || s.product;
+      if (name) {
+        id.product = name;
+        id.version = tech?.version || undefined;
+        id.logoNames = [name];
+        id.evidence = `${s.service_name || 'port'}/${s.port}`;
+        break;
+      }
     }
   }
   if (!id.kind && services.length > 0) {

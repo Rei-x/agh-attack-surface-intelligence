@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { RiAlertLine } from '@remixicon/react';
 import { api } from '@/lib/api';
 import type { HostTimelineEntry } from '@/types/api';
-import { formatDateTime } from '@/lib/format';
+import { eolLabel, formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Empty, Pill } from '@/components/common';
 import { Input } from '@/components/ui/input';
@@ -95,7 +95,7 @@ export function HostTimeline({ hostId }: { hostId: string }) {
                   <RiAlertLine className="size-3.5 text-rose-600 dark:text-rose-400" />
                 )}
                 <span className={cn(e.kind === 'observation' && 'font-mono text-muted-foreground')}>
-                  {e.summary}
+                  {eolLabel(e.summary)}
                 </span>
                 {e.kind === 'change' && e.severity && (
                   <Pill tone={SEVERITY_TONE[e.severity] || 'neutral'}>{e.severity}</Pill>

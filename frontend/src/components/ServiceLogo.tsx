@@ -196,13 +196,23 @@ const APP_RULES: Rule[] = [
   { keys: ['printer', 'ipp'], Icon: RiPrinterLine, label: 'Printer', color: '#0EA5E9' },
   // Windows remote access
   { keys: ['microsoft terminal services', 'terminal services', 'ms-wbt-server', 'rdp'], Icon: RiWindowsFill, label: 'Windows RDP', color: '#0078D4' },
-  // Operating systems visible from the outside (default pages, telnetd)
+  { keys: ['linux telnetd'], si: siLinux },
+];
+
+/**
+ * Operating systems. An OS default / test page ("Apache2 Ubuntu Default Page") is the whole
+ * story and wins at tier 1 (see OS_DEFAULT_PAGE); otherwise the OS is the last resort after
+ * frameworks and servers, so "nginx (Ubuntu)" + PHP still shows PHP.
+ */
+const OS_RULES: Rule[] = [
   { keys: ['windows', 'windows server'], Icon: RiWindowsFill, label: 'Windows', color: '#0078D4' },
   { keys: ['ubuntu'], si: siUbuntu },
   { keys: ['debian'], si: siDebian },
   { keys: ['centos'], si: siCentos },
-  { keys: ['linux telnetd', 'linux'], si: siLinux },
+  { keys: ['linux'], si: siLinux },
 ];
+
+const OS_DEFAULT_PAGE = /(default|test) page|it works/;
 
 /** Tier 1b: device categories when no vendor is known (a BMC signature without a brand). */
 const DEVICE_RULES: Rule[] = [
@@ -322,7 +332,8 @@ function compile(rules: Rule[]): CompiledRule[] {
   }));
 }
 
-const TIERS: CompiledRule[][] = [APP_RULES, DEVICE_RULES, FRAMEWORK_RULES, SERVER_RULES].map(compile);
+const OS = compile(OS_RULES);
+const TIERS: CompiledRule[][] = [APP_RULES, DEVICE_RULES, FRAMEWORK_RULES, SERVER_RULES, OS_RULES].map(compile);
 const ALL_BRANDS = TIERS.flat();
 const GENERIC = compile(GENERIC_RULES);
 
@@ -391,6 +402,11 @@ export function resolveServiceLogo(
 
   const resolve = (): ResolvedLogo => {
     if (hints.kind === 'scope') return genericByKey('scope');
+    for (const c of list) {
+      if (!OS_DEFAULT_PAGE.test(c)) continue;
+      const r = OS.find((b) => b.re.test(c));
+      if (r) return toLogo(r);
+    }
     for (const tier of TIERS) {
       for (const c of list) {
         const r = tier.find((b) => b.re.test(c));

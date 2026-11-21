@@ -150,14 +150,17 @@ export function severityMeta(severity?: string): {
 }
 
 export function scoreColor(score: number): string {
-  if (score >= 75) return TONE.danger;
+  // Red only for the truly critical; high is orange, medium amber (keeps the page calm).
+  if (score >= 90) return TONE.danger;
+  if (score >= 75) return TONE.orange;
   if (score >= 50) return TONE.warning;
   if (score >= 25) return TONE.info;
   return TONE.neutral;
 }
 
 export function scoreBarColor(score: number): string {
-  if (score >= 75) return 'bg-rose-500';
+  if (score >= 90) return "bg-rose-500";
+  if (score >= 75) return "bg-orange-500";
   if (score >= 50) return 'bg-amber-500';
   if (score >= 25) return 'bg-sky-500';
   return 'bg-stone-400';

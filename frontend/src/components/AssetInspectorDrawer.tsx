@@ -23,6 +23,7 @@ import { useDefectDojoStatus } from '@/lib/defectdojo';
 import { hostIdentity, identityLabel } from '@/lib/identity';
 import {
   assetsLink,
+  eolLabel,
   envLabel,
   formatDateTime,
   formatRelativeTime,
@@ -80,7 +81,7 @@ function inCidr(ip: string, cidr: string): boolean {
   return (toNum(ip) & mask) === (toNum(net) & mask);
 }
 
-const EMAIL_RE = /[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}/i;
+const EMAIL_RE = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/i;
 
 /** Clickable tag / technology chip that lists every host with it. */
 function QueryChip({ q, children, title }: { q: string; children: React.ReactNode; title?: string }) {
@@ -312,7 +313,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       setTagsInput((h.tags || []).join(', '));
       setNotes(h.notes || '');
       if (h.services && h.services.length > 0 && !expandedServiceId) {
-        setExpandedServiceId(h.services[0].id);
+        setExpandedServiceId([...h.services].sort((a, b) => b.interestingness - a.interestingness)[0].id);
       }
     } catch (err) {
       toast.error('Could not load host', (err as Error).message);
@@ -1241,7 +1242,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                               {ch.is_time_anomaly && (
                                 <RiAlertLine className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
                               )}
-                              {ch.summary}
+                              {eolLabel(ch.summary)}
                             </div>
                             <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                               {ch.event_type}{ch.time_slot ? ` · slot ${ch.time_slot}` : ''} · {formatDateTime(ch.created_at)}
