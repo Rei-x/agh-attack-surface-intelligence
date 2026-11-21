@@ -53,6 +53,7 @@ type Options struct {
 	RateLimiter    func(ctx context.Context, host string) error
 	OnThrottle     func(host string, statusCode int, err error)
 	Now            func() time.Time
+	DisableJARM    bool // skip the 10-probe JARM TLS fingerprint (see jarm.go)
 }
 
 // DefaultOptions returns safe read-only defaults.
@@ -141,6 +142,7 @@ func mergeOptions(base, override Options) Options {
 	if override.Now != nil {
 		out.Now = override.Now
 	}
+	out.DisableJARM = out.DisableJARM || override.DisableJARM
 	return normalizeOptions(out)
 }
 
@@ -327,6 +329,9 @@ func (f *Fingerprinter) probeWithScheme(ctx context.Context, scheme, ip string, 
 		BodySnippet:        cleanBodySnippet(bodyStr),
 		ResponseTimeMs:     elapsedMs,
 	}
+
+	// JARM TLS server fingerprint (jarm.go); rate-limited, bounded budget.
+	f.attachJARM(ctx, fp, scheme, ip, port, serverName, opts)
 
 	// Fetch favicon via safe GET.
 	f.fetchFavicon(ctx, client, finalURL, bodyStr, ip, opts, fp)

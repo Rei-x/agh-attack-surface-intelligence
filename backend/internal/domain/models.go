@@ -265,6 +265,7 @@ type TLSInfo struct {
 	IsSelfSigned bool      `json:"is_self_signed"`
 	IsExpired    bool      `json:"is_expired"`
 	SHA256       string    `json:"sha256"`
+	JARM         string    `json:"jarm,omitempty"` // 62-char JARM TLS server fingerprint (Salesforce algorithm)
 }
 
 type SafePathHit struct {
