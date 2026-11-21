@@ -7,15 +7,15 @@ import (
 )
 
 // DefectDojo naming, aligned with the OWASP secureCodeBox persistence-defectdojo hook.
-// SCB sets these per scan with annotations; AegisASI uses the same four levels and lets the
+// SCB sets these per scan with annotations; Dzięcioł uses the same four levels and lets the
 // operator override the defaults with environment variables of the same names:
 //
-//	SCB annotation (defectdojo.securecodebox.io/...)  AegisASI
-//	product-type-name                                 ASI_DEFECTDOJO_PRODUCT_TYPE_NAME   (default "AegisASI")
+//	SCB annotation (defectdojo.securecodebox.io/...)  Dzięcioł
+//	product-type-name                                 ASI_DEFECTDOJO_PRODUCT_TYPE_NAME   (default "Dzięcioł")
 //	product-name                                      ASI_DEFECTDOJO_PRODUCT_NAME        (default "AGH Attack Surface")
-//	engagement-name                                   ASI_DEFECTDOJO_ENGAGEMENT_NAME     (default "AegisASI continuous discovery")
+//	engagement-name                                   ASI_DEFECTDOJO_ENGAGEMENT_NAME     (default "Dzięcioł continuous discovery")
 //	engagement-deduplicate-on-engagement              ASI_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT (default false)
-//	test-title                                        per scan profile: "AegisASI Nmap: <profile>" (SCB: scan name)
+//	test-title                                        per scan profile: "Dzięcioł Nmap: <profile>" (SCB: scan name)
 //	minimum_severity                                  ASI_DEFECTDOJO_MINIMUM_SEVERITY    (default "Info")
 //
 // A product/engagement pinned by ID in the DefectDojo settings still wins over these names.

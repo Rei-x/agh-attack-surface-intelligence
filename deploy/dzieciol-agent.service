@@ -1,20 +1,20 @@
 [Unit]
-Description=AegisASI remote scanning agent
+Description=Dzięcioł remote scanning agent
 Documentation=https://github.com/Rei-x/agh-attack-surface-intelligence/blob/main/docs/DEPLOYMENT.md
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
-# AEGIS_AGENT_SERVER / AEGIS_AGENT_TOKEN / AEGIS_AGENT_ALLOW_CIDR ... (0600, root).
+# DZIECIOL_AGENT_SERVER / _TOKEN / _ALLOW_CIDR ... (0600, root; AEGIS_AGENT_* also read).
 # The token is single-use: after the first start the credential lives in the state directory.
-EnvironmentFile=-/etc/aegis-agent.env
-ExecStart=/usr/local/bin/aegis agent
+EnvironmentFile=-/etc/dzieciol-agent.env
+ExecStart=/usr/local/bin/dzieciol agent
 Restart=on-failure
 RestartSec=10
 RestartPreventExitStatus=3
 DynamicUser=yes
-StateDirectory=aegis-agent
+StateDirectory=dzieciol-agent
 StateDirectoryMode=0700
 NoNewPrivileges=yes
 ProtectSystem=strict

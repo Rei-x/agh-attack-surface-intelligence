@@ -43,7 +43,7 @@ type Config struct {
 	Agents *agenthub.Coordinator
 }
 
-// Server serves the complete AegisASI v1 REST API, SSE stream, and embedded/static SPA.
+// Server serves the complete Dzięcioł v1 REST API, SSE stream, and embedded/static SPA.
 type Server struct {
 	cfg      Config
 	store    db.Store
@@ -65,7 +65,7 @@ type Server struct {
 	logins *loginLimiter // failed-login throttling
 }
 
-// NewServer constructs a fully wired AegisASI HTTP Server.
+// NewServer constructs a fully wired Dzięcioł HTTP Server.
 func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest.Pipeline, runner ScanRunner, hub *SSEHub) *Server {
 	if cfg.TokenTTL <= 0 {
 		cfg.TokenTTL = 24 * time.Hour
@@ -247,7 +247,7 @@ func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
 	}
 	if staticDir == "" {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"service": "AegisASI API",
+			"service": "Dzięcioł API",
 			"version": AppVersion,
 			"docs":    "/api/v1/health",
 		})

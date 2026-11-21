@@ -1,4 +1,4 @@
-// Package agenthub is the server side of remote scanning agents (`aegis agent`).
+// Package agenthub is the server side of remote scanning agents (`dzieciol agent`).
 //
 // Model (same as runZero Explorers, Nessus linked scanners, Rapid7 engines in
 // engine-to-console mode, Qualys appliances): the agent sits inside a network segment, opens

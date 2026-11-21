@@ -177,7 +177,7 @@ type ScanProfile struct {
 	EnableHTTPFingerprint bool     `json:"enable_http_fingerprint"`
 	UserAgent             string   `json:"user_agent"`
 	Enabled               bool     `json:"enabled"`
-	// AgentID routes the profile's runs to a remote scanning agent (aegis agent) instead of
+	// AgentID routes the profile's runs to a remote scanning agent (dzieciol agent) instead of
 	// the local engine. Empty = scan from this server.
 	AgentID   string    `json:"agent_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`

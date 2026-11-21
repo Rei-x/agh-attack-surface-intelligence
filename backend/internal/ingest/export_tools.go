@@ -63,7 +63,7 @@ func ExportNmapXML(w io.Writer, hosts []domain.Host) error {
 			last = h.LastSeen
 		}
 	}
-	doc := scanner.GenerateNmapXML(HostsToObserved(hosts), "nmap -sT -sV (AegisASI inventory export)", first, last)
+	doc := scanner.GenerateNmapXML(HostsToObserved(hosts), "nmap -sT -sV (Dzięcioł inventory export)", first, last)
 	if doc == "" {
 		return fmt.Errorf("failed to render nmap xml")
 	}
@@ -184,7 +184,7 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 					"module":   "aegis",
 					"ingested": ingested,
 				},
-				"observer": map[string]any{"vendor": "CBI AGH", "product": "AegisASI", "type": "scanner"},
+				"observer": map[string]any{"vendor": "CBI AGH", "product": "Dzięcioł", "type": "scanner"},
 				"host":     host,
 			}
 		}

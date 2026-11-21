@@ -21,7 +21,7 @@ import (
 var errUsage = errors.New("usage")
 
 // parseInterspersed parses flags that may appear before, between or after positional
-// arguments (e.g. `aegis scan 10.0.0.0/24 -p 22,80`), which stdlib flag does not do alone.
+// arguments (e.g. `dzieciol scan 10.0.0.0/24 -p 22,80`), which stdlib flag does not do alone.
 func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 	var positional []string
 	for {
@@ -93,7 +93,7 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 	rt.Dir = dir
 
 	if !rt.Postgres && opts.ReadOnly && !dir.StoreExists() {
-		return nil, fmt.Errorf("no AegisASI data in %s yet - run `aegis scan ...` or `aegis serve` first", dir.Path)
+		return nil, fmt.Errorf("no Dzięcioł data in %s yet - run `dzieciol scan ...` or `dzieciol serve` first", dir.Path)
 	}
 
 	// Exclusive lock for writers on the local file store (PostgreSQL handles concurrency itself).

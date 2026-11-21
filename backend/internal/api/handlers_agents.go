@@ -109,7 +109,7 @@ func (s *Server) handleCreateAgentToken(w http.ResponseWriter, r *http.Request) 
 		"server_url":   server,
 		"install_command": "curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sudo sh -s -- --agent --server " +
 			q(server) + " --token " + q(token) + nameArg,
-		"run_command": "aegis agent --server " + q(server) + " --token " + q(token) + nameArg,
+		"run_command": "dzieciol agent --server " + q(server) + " --token " + q(token) + nameArg,
 	})
 }
 

@@ -61,7 +61,7 @@ func TestAutoPushDefectDojoAfterCompletedRun(t *testing.T) {
 	_ = store.SaveDefectDojoConfig(ctx, &domain.DefectDojoConfig{URL: dd.URL, APIToken: "t", AutoPushNmap: true})
 	runner.autoPushDefectDojo(ctx, run.ID)
 	// Raw Nmap XML first, then the actionable "Dzięcioł changes" Generic Findings test.
-	if len(calls) != 2 || calls[0]["scan_type"] != "Nmap Scan" || calls[0]["test_title"] != "AegisASI Nmap: Kampus nocny" || calls[0]["version"] != "Run #7" ||
+	if len(calls) != 2 || calls[0]["scan_type"] != "Nmap Scan" || calls[0]["test_title"] != "Dzięcioł Nmap: Kampus nocny" || calls[0]["version"] != "Run #7" ||
 		calls[1]["scan_type"] != "Generic Findings Import" || calls[1]["test_title"] != "Dzięcioł changes: Kampus nocny" {
 		t.Fatalf("unexpected DefectDojo calls: %+v", calls)
 	}

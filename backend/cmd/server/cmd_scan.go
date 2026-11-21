@@ -23,11 +23,11 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
 )
 
-const scanUsage = `Usage: aegis scan <targets...> [flags]
-       aegis scan -f targets.txt [flags]
+const scanUsage = `Usage: dzieciol scan <targets...> [flags]
+       dzieciol scan -f targets.txt [flags]
 
 Targets: IPs, CIDRs (10.0.0.0/24), ranges (10.0.0.1-10.0.0.50) or hostnames.
-Results are stored in the local encrypted store and visible in 'aegis serve'.
+Results are stored in the local encrypted store and visible in 'dzieciol serve'.
 Stored target exclusions (configured in the web UI) are honoured unless --ignore-exclusions.`
 
 const defaultCLIPorts = "21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,6379,8000,8080,8443,9000,9200"
@@ -49,7 +49,7 @@ func cmdScan(args []string) error {
 	noHTTP := fs.Bool("no-http", false, "skip HTTP/TLS fingerprinting")
 	jsonOut := fs.Bool("json", false, "print the JSON report to stdout instead of tables")
 	outFile := fs.String("o", "", "also write the JSON report to this file")
-	dataDir := fs.String("data-dir", "", "data directory (default ~/.aegis)")
+	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol)")
 	verbose := fs.Bool("verbose", false, "show internal log output")
 	targets, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -87,7 +87,7 @@ func cmdScan(args []string) error {
 	if err != nil {
 		var le *localdata.ErrLocked
 		if errors.As(err, &le) {
-			return fmt.Errorf("%w\n  The local store is single-writer. Either stop `aegis serve` and re-run this command,\n"+
+			return fmt.Errorf("%w\n  The local store is single-writer. Either stop `dzieciol serve` and re-run this command,\n"+
 				"  or start the scan from the web UI (Skaner) / API: POST /api/v1/scans", err)
 		}
 		return err
@@ -272,7 +272,7 @@ func cmdScan(args []string) error {
 	return nil
 }
 
-// cliProfileFlags are the `aegis scan` flags that map onto ScanProfile fields.
+// cliProfileFlags are the `dzieciol scan` flags that map onto ScanProfile fields.
 type cliProfileFlags struct {
 	Ports       string
 	Rate        int
@@ -298,7 +298,7 @@ func buildCLIProfile(stored *domain.ScanProfile, f cliProfileFlags, set map[stri
 			GracePeriodHours:      24,
 			RetryUnstableCount:    2,
 			EnableHTTPFingerprint: !f.NoHTTP,
-			UserAgent:             "AegisASI-CBI-AGH/" + appVersion(),
+			UserAgent:             "Dzieciol-CBI-AGH/" + appVersion(),
 			Enabled:               true,
 		}
 	}
@@ -795,11 +795,11 @@ func printScanReport(w io.Writer, rep *scanReport) {
 		limit := 15
 		for i, ev := range rep.ChangeList {
 			if i >= limit {
-				fmt.Fprintf(w, "  ... %d more (aegis diff, or the Changes view in the UI)\n", len(rep.ChangeList)-limit)
+				fmt.Fprintf(w, "  ... %d more (dzieciol diff, or the Changes view in the UI)\n", len(rep.ChangeList)-limit)
 				break
 			}
 			fmt.Fprintf(w, "  %s %-20s %s\n", changeSymbol(ev.EventType), ev.EventType, truncate(ev.Summary, 100))
 		}
 	}
-	fmt.Fprintf(w, "\nResults saved. View them with `aegis serve`, compare with `aegis diff`, export with `aegis export`.\n")
+	fmt.Fprintf(w, "\nResults saved. View them with `dzieciol serve`, compare with `dzieciol diff`, export with `dzieciol export`.\n")
 }

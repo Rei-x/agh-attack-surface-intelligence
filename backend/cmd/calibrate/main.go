@@ -1,4 +1,4 @@
-// Command calibrate measures how well AegisASI's technology confidence is
+// Command calibrate measures how well Dzięcioł's technology confidence is
 // calibrated against the scale lab ground truth (lab/scale, GET /truth).
 //
 // Collect (must run where the lab's 10.66.0.0/18 is routable, e.g. a container

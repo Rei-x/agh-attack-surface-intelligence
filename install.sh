@@ -1,19 +1,23 @@
 #!/bin/sh
-# AegisASI installer - downloads the single `aegis` binary from GitHub Releases.
+# Dzięcioł installer - downloads the single `dzieciol` binary from GitHub Releases.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sh
 #
 # Environment:
-#   AEGIS_VERSION      release tag to install (default: latest), e.g. v1.2.0
-#   AEGIS_INSTALL_DIR  target directory (default: /usr/local/bin as root, else ~/.local/bin)
-#   AEGIS_DOWNLOAD_BASE  alternative base URL holding aegis-<os>-<arch> + checksums.txt (mirror)
+#   DZIECIOL_VERSION        release tag to install (default: latest), e.g. v1.2.0
+#   DZIECIOL_INSTALL_DIR    target directory (default: /usr/local/bin as root, else ~/.local/bin)
+#   DZIECIOL_DOWNLOAD_BASE  alternative base URL holding dzieciol-<os>-<arch> + checksums.txt (mirror)
+# The old AEGIS_VERSION / AEGIS_INSTALL_DIR / AEGIS_DOWNLOAD_BASE names still work.
+#
+# Upgrading from the old `aegis` binary: if one is found in the target directory it is
+# replaced by a symlink to `dzieciol`, so existing scripts and aegis-agent units keep working.
 #
 # The script verifies the SHA-256 checksum from checksums.txt and never uses sudo.
 #
 # Remote scanning agent (Linux + systemd, run as root): install the binary and the
-# aegis-agent service in one go. Arguments after --agent go to `aegis agent install`:
+# dzieciol-agent service in one go. Arguments after --agent go to `dzieciol agent install`:
 #
-#   curl -fsSL .../install.sh | sudo sh -s -- --agent --server https://aegis.example.edu \
+#   curl -fsSL .../install.sh | sudo sh -s -- --agent --server https://dzieciol.example.edu \
 #        --token aet_... [--name wydzial-x] [--allow-cidr 10.20.0.0/16]
 set -eu
 
@@ -24,10 +28,12 @@ if [ "${1:-}" = "--agent" ]; then
 fi
 
 REPO="Rei-x/agh-attack-surface-intelligence"
-VERSION="${AEGIS_VERSION:-latest}"
+VERSION="${DZIECIOL_VERSION:-${AEGIS_VERSION:-latest}}"
+INSTALL_DIR="${DZIECIOL_INSTALL_DIR:-${AEGIS_INSTALL_DIR:-}}"
+DOWNLOAD_BASE="${DZIECIOL_DOWNLOAD_BASE:-${AEGIS_DOWNLOAD_BASE:-}}"
 
-say() { printf '%s\n' "aegis-install: $*"; }
-die() { printf '%s\n' "aegis-install: error: $*" >&2; exit 1; }
+say() { printf '%s\n' "dzieciol-install: $*"; }
+die() { printf '%s\n' "dzieciol-install: error: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
 
 # --- detect platform ---------------------------------------------------------
@@ -49,10 +55,10 @@ if [ "$os" = windows ] && [ "$arch" != amd64 ]; then
 fi
 ext=""
 [ "$os" = windows ] && ext=".exe"
-asset="aegis-${os}-${arch}${ext}"
+asset="dzieciol-${os}-${arch}${ext}"
 
-if [ -n "${AEGIS_DOWNLOAD_BASE:-}" ]; then
-  base="${AEGIS_DOWNLOAD_BASE%/}"
+if [ -n "$DOWNLOAD_BASE" ]; then
+  base="${DOWNLOAD_BASE%/}"
 elif [ "$VERSION" = latest ]; then
   base="https://github.com/$REPO/releases/latest/download"
 else
@@ -78,18 +84,18 @@ need awk
 need uname
 
 # --- install dir --------------------------------------------------------------
-if [ -n "${AEGIS_INSTALL_DIR:-}" ]; then
-  dir="$AEGIS_INSTALL_DIR"
+if [ -n "$INSTALL_DIR" ]; then
+  dir="$INSTALL_DIR"
 elif [ "$(id -u 2>/dev/null || echo 1)" = 0 ]; then
   dir="/usr/local/bin"
 else
   dir="${HOME}/.local/bin"
 fi
-mkdir -p "$dir" || die "cannot create $dir (set AEGIS_INSTALL_DIR)"
-[ -w "$dir" ] || die "$dir is not writable (set AEGIS_INSTALL_DIR, e.g. AEGIS_INSTALL_DIR=\$HOME/.local/bin)"
+mkdir -p "$dir" || die "cannot create $dir (set DZIECIOL_INSTALL_DIR)"
+[ -w "$dir" ] || die "$dir is not writable (set DZIECIOL_INSTALL_DIR, e.g. DZIECIOL_INSTALL_DIR=\$HOME/.local/bin)"
 
 # --- download & verify --------------------------------------------------------
-tmp=$(mktemp -d 2>/dev/null || mktemp -d -t aegis)
+tmp=$(mktemp -d 2>/dev/null || mktemp -d -t dzieciol)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 say "downloading $asset ($VERSION) from $base"
@@ -102,14 +108,18 @@ actual=$(sha256 "$tmp/$asset")
 [ "$expected" = "$actual" ] || die "checksum mismatch for $asset (expected $expected, got $actual)"
 say "checksum OK ($actual)"
 
-target="$dir/aegis$ext"
+target="$dir/dzieciol$ext"
 chmod 0755 "$tmp/$asset"
 mv -f "$tmp/$asset" "$target"
 say "installed $target"
+# Upgrade from the pre-rename `aegis` binary: point the old name at the new one.
+if [ "$os" != windows ] && [ -e "$dir/aegis" ]; then
+  ln -sf "dzieciol" "$dir/aegis" && say "$dir/aegis now points to dzieciol (old name kept for compatibility)"
+fi
 "$target" version || true
 
 if [ "$AGENT" = 1 ]; then
-  [ "$os" = linux ] || die "--agent installs a systemd service (Linux); elsewhere run: aegis agent --server ... --token ..."
+  [ "$os" = linux ] || die "--agent installs a systemd service (Linux); elsewhere run: dzieciol agent --server ... --token ..."
   [ "$(id -u)" = 0 ] || die "--agent must run as root (pipe into: sudo sh -s -- --agent ...)"
   command -v nmap >/dev/null 2>&1 || say "note: nmap not found - the agent uses its built-in TCP connect scanner (apt install nmap for richer fingerprints)"
   exec "$target" agent install "$@"
@@ -121,7 +131,7 @@ case ":$PATH:" in
 esac
 
 if ! command -v nmap >/dev/null 2>&1; then
-  say "optional: install nmap for richer service fingerprints (aegis works without it):"
+  say "optional: install nmap for richer service fingerprints (dzieciol works without it):"
   case "$os" in
     darwin) say "  brew install nmap" ;;
     linux) say "  sudo apt install nmap   # or: sudo dnf install nmap" ;;
@@ -129,4 +139,4 @@ if ! command -v nmap >/dev/null 2>&1; then
   esac
 fi
 
-say "done. Start with:  aegis serve    (then open http://localhost:8080)"
+say "done. Start with:  dzieciol serve    (then open http://localhost:8080)"

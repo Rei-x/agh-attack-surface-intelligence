@@ -1,5 +1,9 @@
-// Package localdata manages the single-binary data directory (default ~/.aegis):
-// the master key file, the encrypted store file and an exclusive instance lock.
+// Package localdata manages the single-binary data directory (default ~/.dzieciol, or
+// ~/.aegis when that pre-rename directory already exists): the master key file, the
+// encrypted store file and an exclusive instance lock.
+//
+// The file names below predate the Dzięcioł rename and stay as they are, so existing
+// data directories keep working unchanged.
 package localdata
 
 import (
@@ -21,7 +25,8 @@ const (
 	LockFileName      = "aegis.lock"
 )
 
-// DefaultDir resolves the data directory: explicit flag > ASI_DATA_DIR > ~/.aegis.
+// DefaultDir resolves the data directory: explicit flag > ASI_DATA_DIR > ~/.dzieciol
+// (or ~/.aegis if only that one exists, i.e. an installation from before the rename).
 func DefaultDir(flagValue string) (string, error) {
 	dir := strings.TrimSpace(flagValue)
 	if dir == "" {
@@ -32,7 +37,7 @@ func DefaultDir(flagValue string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("cannot determine home directory (use --data-dir): %w", err)
 		}
-		dir = filepath.Join(home, ".aegis")
+		dir = PreferExisting(filepath.Join(home, ".dzieciol"), filepath.Join(home, ".aegis"))
 	}
 	if strings.HasPrefix(dir, "~"+string(os.PathSeparator)) || dir == "~" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -141,7 +146,19 @@ type Lock struct {
 	path string
 }
 
-// ErrLocked is returned when another aegis process holds the data directory.
+// PreferExisting returns dir, unless dir does not exist yet and legacy (the pre-rename
+// location) does: then legacy, so upgraded installations keep their data.
+func PreferExisting(dir, legacy string) string {
+	if _, err := os.Stat(dir); err == nil {
+		return dir
+	}
+	if fi, err := os.Stat(legacy); err == nil && fi.IsDir() {
+		return legacy
+	}
+	return dir
+}
+
+// ErrLocked is returned when another dzieciol process holds the data directory.
 type ErrLocked struct {
 	Path   string
 	Holder *LockInfo
@@ -149,14 +166,14 @@ type ErrLocked struct {
 
 func (e *ErrLocked) Error() string {
 	if e.Holder != nil {
-		msg := fmt.Sprintf("data directory is in use by `aegis %s` (pid %d, since %s)",
+		msg := fmt.Sprintf("data directory is in use by `dzieciol %s` (pid %d, since %s)",
 			e.Holder.Command, e.Holder.PID, e.Holder.StartedAt.Local().Format("2006-01-02 15:04:05"))
 		if e.Holder.URL != "" {
 			msg += " at " + e.Holder.URL
 		}
 		return msg
 	}
-	return "data directory is in use by another aegis process (" + e.Path + ")"
+	return "data directory is in use by another dzieciol process (" + e.Path + ")"
 }
 
 // Acquire takes the exclusive lock (non-blocking) and records info in the lock file.

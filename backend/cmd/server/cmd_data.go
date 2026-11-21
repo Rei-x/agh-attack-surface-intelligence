@@ -26,14 +26,14 @@ const scanTypeImportNmap = domain.ScanTypeImportNmap
 func lockedHint(err error) error {
 	var le *localdata.ErrLocked
 	if errors.As(err, &le) {
-		return fmt.Errorf("%w\n  stop `aegis serve` first, or upload the file in the web UI (Skaner) / API: POST /api/v1/ingest/import", err)
+		return fmt.Errorf("%w\n  stop `dzieciol serve` first, or upload the file in the web UI (Skaner) / API: POST /api/v1/ingest/import", err)
 	}
 	return err
 }
 
 func warnIfServerRunning(rt *appRuntime) {
 	if rt.ServerBusy != nil {
-		msg := "note: aegis serve is running on this data dir; showing data from its last autosave (a few seconds old at most)"
+		msg := "note: dzieciol serve is running on this data dir; showing data from its last autosave (a few seconds old at most)"
 		if rt.ServerBusy.URL != "" {
 			msg += " - live view: " + rt.ServerBusy.URL
 		}
@@ -45,18 +45,18 @@ func warnIfServerRunning(rt *appRuntime) {
 // import
 // ---------------------------------------------------------------------------
 
-const importUsage = `Usage: aegis import <file> [flags]
+const importUsage = `Usage: dzieciol import <file> [flags]
 
 Imports scan results into the store through the same pipeline as live scans
 (diffing, lifecycle tracking, fingerprinting, encryption at rest).
-Formats: csv, json (AegisASI / generic host lists), nmap XML (-oX) and OWASP
+Formats: csv, json (Dzięcioł / generic host lists), nmap XML (-oX) and OWASP
 secureCodeBox findings.json (scb; auto-detected for .json). Use - for stdin.`
 
 func cmdImport(args []string) error {
 	fs := newFlagSet("import", importUsage)
 	format := fs.String("format", "", "csv | json | nmap | scb (default: from extension/content)")
 	name := fs.String("name", "", "scan run name")
-	dataDir := fs.String("data-dir", "", "data directory (default ~/.aegis)")
+	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol)")
 	verbose := fs.Bool("verbose", false, "show internal log output")
 	files, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -171,7 +171,7 @@ func detectImportFormat(path string, data []byte) string {
 // export
 // ---------------------------------------------------------------------------
 
-const exportUsage = `Usage: aegis export [flags]
+const exportUsage = `Usage: dzieciol export [flags]
 
 Exports the current inventory (decrypted) as JSON, CSV, nmap XML, a URL list
 (httpx/nuclei/gowitness), ECS NDJSON (ELK/Splunk) or OWASP secureCodeBox
@@ -184,7 +184,7 @@ func cmdExport(args []string) error {
 	scanID := fs.String("scan", "", "export the inventory snapshot taken at this scan run")
 	state := fs.String("state", "", "filter by lifecycle state (NEW, ACTIVE, MISSING, ...)")
 	tag := fs.String("tag", "", "filter by tag")
-	dataDir := fs.String("data-dir", "", "data directory (default ~/.aegis)")
+	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol)")
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return err
 	}
@@ -278,10 +278,10 @@ func hasTag(tags []string, t string) bool {
 // ---------------------------------------------------------------------------
 
 func cmdRuns(args []string) error {
-	fs := newFlagSet("runs", "Usage: aegis runs [flags]\n\nLists recent scan runs (newest first).")
+	fs := newFlagSet("runs", "Usage: dzieciol runs [flags]\n\nLists recent scan runs (newest first).")
 	limit := fs.Int("n", 20, "number of runs to show")
 	jsonOut := fs.Bool("json", false, "JSON output")
-	dataDir := fs.String("data-dir", "", "data directory (default ~/.aegis)")
+	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol)")
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return err
 	}
@@ -341,7 +341,7 @@ func resolveRunID(ctx context.Context, store db.Store, ref string) (string, erro
 	case 1:
 		return match[0], nil
 	case 0:
-		return "", fmt.Errorf("scan run %q not found (see `aegis runs`)", ref)
+		return "", fmt.Errorf("scan run %q not found (see `dzieciol runs`)", ref)
 	}
 	return "", fmt.Errorf("scan run prefix %q is ambiguous", ref)
 }
@@ -350,16 +350,16 @@ func resolveRunID(ctx context.Context, store db.Store, ref string) (string, erro
 // diff
 // ---------------------------------------------------------------------------
 
-const diffUsage = `Usage: aegis diff [runA runB] [flags]
+const diffUsage = `Usage: dzieciol diff [runA runB] [flags]
 
 Compares the inventory snapshots of two scan runs. Without arguments compares the two most
 recent completed runs; with one argument compares that run with the completed run before it.
-Run IDs may be abbreviated to a unique prefix (see 'aegis runs').`
+Run IDs may be abbreviated to a unique prefix (see 'dzieciol runs').`
 
 func cmdDiff(args []string) error {
 	fs := newFlagSet("diff", diffUsage)
 	jsonOut := fs.Bool("json", false, "JSON output")
-	dataDir := fs.String("data-dir", "", "data directory (default ~/.aegis)")
+	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol)")
 	refs, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
@@ -416,7 +416,7 @@ func cmdDiff(args []string) error {
 		}
 	default:
 		if len(completed) < 2 {
-			return fmt.Errorf("need at least two completed scan runs to diff (have %d); run `aegis scan` again later", len(completed))
+			return fmt.Errorf("need at least two completed scan runs to diff (have %d); run `dzieciol scan` again later", len(completed))
 		}
 		toID, fromID = completed[0].ID, completed[1].ID
 	}

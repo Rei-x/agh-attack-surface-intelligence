@@ -268,27 +268,27 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	switch format {
 	case "csv":
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s.csv"`, stamp))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dzieciol-%s.csv"`, stamp))
 		_ = ingest.ExportCSV(w, hosts)
 	case "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s.json"`, stamp))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dzieciol-%s.json"`, stamp))
 		_ = ingest.ExportJSON(w, hosts)
 	case "nmap", "xml":
 		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-nmap.xml"`, stamp))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dzieciol-%s-nmap.xml"`, stamp))
 		_ = ingest.ExportNmapXML(w, hosts)
 	case "urls":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-urls.txt"`, stamp))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dzieciol-%s-urls.txt"`, stamp))
 		_ = ingest.ExportURLs(w, hosts)
 	case "ecs", "ndjson":
 		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-ecs.ndjson"`, stamp))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dzieciol-%s-ecs.ndjson"`, stamp))
 		_ = ingest.ExportECS(w, hosts)
 	case "scb", "securecodebox":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-scb-findings.json"`, stamp))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dzieciol-%s-scb-findings.json"`, stamp))
 		_ = ingest.ExportSCB(w, hosts)
 	default:
 		writeErr(w, http.StatusBadRequest, "format must be json, csv, nmap, urls, ecs or scb")

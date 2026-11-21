@@ -26,7 +26,7 @@ import (
 //     nmap "FTP"/"SMB" script findings, ...) marks that service and tags it
 //     "scb:<category>", so the analyst sees what the SCB scanner flagged.
 //
-// AegisASI's inventory is keyed by IP, so a finding is used only when an IP address can
+// Dzięcioł's inventory is keyed by IP, so a finding is used only when an IP address can
 // be read from attributes.ip_addresses / ip_address or from the location. Names are never
 // resolved during import.
 
@@ -138,7 +138,7 @@ func ParseSCBFindings(r io.Reader) ([]domain.ObservedHost, error) {
 		}
 		if f.Category == "Open Port" {
 			if st := strings.ToLower(scbString(attrs["state"])); st != "" && st != "open" {
-				continue // SCB lists filtered ports as "Open Port"; AegisASI keeps only open ones
+				continue // SCB lists filtered ports as "Open Port"; Dzięcioł keeps only open ones
 			}
 		}
 		h := getHost(ip)

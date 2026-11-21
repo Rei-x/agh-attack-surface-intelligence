@@ -1,6 +1,6 @@
 name: release
 
-# Builds the single `aegis` binary (UI embedded) for all platforms and publishes a
+# Builds the single `dzieciol` binary (UI embedded) for all platforms and publishes a
 # GitHub Release with checksums when a version tag is pushed, e.g. `git tag v1.2.0 && git push --tags`.
 on:
   push:
@@ -41,8 +41,8 @@ jobs:
 
       - name: Smoke test linux/amd64 binary
         run: |
-          ./dist/aegis-linux-amd64 version
-          ./dist/aegis-linux-amd64 serve --data-dir "$RUNNER_TEMP/aegis" --listen 127.0.0.1:18080 &
+          ./dist/dzieciol-linux-amd64 version
+          ./dist/dzieciol-linux-amd64 serve --data-dir "$RUNNER_TEMP/dzieciol" --listen 127.0.0.1:18080 &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/api/v1/health && break; sleep 1; done
           curl -fsS http://127.0.0.1:18080/ | grep -qi '<div id="root"'
           kill %1
@@ -52,7 +52,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/aegis-*
+            dist/dzieciol-*
             dist/checksums.txt
             install.sh
           generate_release_notes: true

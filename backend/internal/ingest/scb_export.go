@@ -16,7 +16,7 @@ import (
 // OWASP secureCodeBox interoperability: the unified findings.json format
 // (https://www.securecodebox.io/docs/api/finding). Hosts and open ports use the exact
 // shape of the SCB nmap parser ("Host" / "Open Port" categories), so SCB cascading rules,
-// hooks and DefectDojo's secureCodeBox workflow understand an AegisASI export, and the
+// hooks and DefectDojo's secureCodeBox workflow understand a Dzięcioł export, and the
 // importer in scb_import.go reads findings produced by an existing SCB installation.
 
 // SCBFinding is one entry of a secureCodeBox findings.json array.

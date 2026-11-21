@@ -44,7 +44,7 @@ func statusOf(err error) int {
 	return 0
 }
 
-// client talks to the AegisASI server over HTTPS (outbound only).
+// client talks to the Dzięcioł server over HTTPS (outbound only).
 type client struct {
 	base       *url.URL
 	http       *http.Client

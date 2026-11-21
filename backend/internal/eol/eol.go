@@ -1,7 +1,7 @@
 // Package eol flags end-of-life software versions, fully offline.
 //
 // The data is a small curated table (eol_data.json, embedded in the binary) of release
-// branches and their end-of-life dates for the products AegisASI identifies, copied from
+// branches and their end-of-life dates for the products Dzięcioł identifies, copied from
 // endoflife.date with the source URL and the date it was curated. Nothing is fetched at
 // scan time. A version is matched to its branch by the longest dot-boundary prefix
 // ("1.14.2" -> "1.14", never "1.1"), and the branch is end-of-life when its EOL date is

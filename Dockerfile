@@ -1,7 +1,7 @@
 # =============================================================================
-# AegisASI — Multi-Stage Production Dockerfile
+# Dzięcioł — Multi-Stage Production Dockerfile
 # Stage 1: Frontend build (Node 22 + pnpm -> frontend/dist)
-# Stage 2: Backend build (Go 1.24 -> /app/aegis, same single binary as releases,
+# Stage 2: Backend build (Go 1.24 -> /app/dzieciol, same single binary as releases,
 #          with the UI embedded via go:embed)
 # Stage 3: Minimal Alpine runtime (ONLY nmap, ca-certificates, tzdata)
 # =============================================================================
@@ -35,7 +35,7 @@ COPY --from=frontend-builder /src/frontend/dist/ ./internal/webui/ui/
 ARG VERSION=docker
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
       -ldflags="-s -w -X main.version=${VERSION} -X main.commit=docker" \
-      -o /app/aegis ./cmd/server
+      -o /app/dzieciol ./cmd/server
 
 
 # --- Stage 3: Minimal Production Runtime -------------------------------------
@@ -48,11 +48,12 @@ RUN apk add --no-cache nmap nmap-scripts ca-certificates tzdata
 
 WORKDIR /app
 
-COPY --from=backend-builder /app/aegis /app/aegis
+COPY --from=backend-builder /app/dzieciol /app/dzieciol
 # Kept for compatibility with deployments that set ASI_STATIC_DIR=/app/static;
 # without it the UI embedded in the binary is served.
 COPY --from=frontend-builder /src/frontend/dist /app/static
-RUN ln -s /app/aegis /app/aegis-asi && mkdir -p /data && chmod 700 /data
+# Old names kept as symlinks so existing `docker exec ... /app/aegis ...` scripts keep working.
+RUN ln -s /app/dzieciol /app/aegis && ln -s /app/dzieciol /app/aegis-asi && mkdir -p /data && chmod 700 /data
 
 # DATABASE_URL set   -> PostgreSQL store (docker-compose.yml)
 # DATABASE_URL unset -> AES-256-GCM encrypted file store in $ASI_DATA_DIR (mount a volume on /data)
@@ -66,5 +67,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
     CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/api/v1/health || exit 1
 
-ENTRYPOINT ["/app/aegis"]
+ENTRYPOINT ["/app/dzieciol"]
 CMD ["serve"]

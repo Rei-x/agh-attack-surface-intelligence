@@ -21,9 +21,9 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/webui"
 )
 
-const serveUsage = `Usage: aegis serve [flags]
+const serveUsage = `Usage: dzieciol serve [flags]
 
-Starts the AegisASI SOC dashboard (embedded web UI) and REST API.
+Starts the Dzięcioł SOC dashboard (embedded web UI) and REST API.
 Without DATABASE_URL, data is kept in an AES-256-GCM encrypted file in the data directory.
 
 Environment (all optional): ASI_LISTEN_ADDR, PORT, DATABASE_URL, ASI_MASTER_KEY,
@@ -36,7 +36,7 @@ func cmdServe(args []string) error {
 	}
 	fs := newFlagSet("serve", serveUsage)
 	listen := fs.String("listen", defaultListen, "listen address (use 127.0.0.1:8080 to restrict to this machine)")
-	dataDir := fs.String("data-dir", "", "data directory (default ~/.aegis, env ASI_DATA_DIR)")
+	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol, env ASI_DATA_DIR)")
 	staticDir := fs.String("static-dir", os.Getenv("ASI_STATIC_DIR"), "serve the UI from this directory instead of the embedded build")
 	seedDemo := fs.Bool("seed-demo", seedDemoDefault(), "create demo accounts (admin/operator/analyst/viewer)")
 	if _, err := parseInterspersed(fs, args); err != nil {
@@ -59,7 +59,7 @@ func cmdServe(args []string) error {
 	if err != nil {
 		var le *localdata.ErrLocked
 		if errors.As(err, &le) {
-			return fmt.Errorf("%w\n  another aegis process is using this data directory; stop it first or pass a different --data-dir", err)
+			return fmt.Errorf("%w\n  another dzieciol process is using this data directory; stop it first or pass a different --data-dir", err)
 		}
 		return err
 	}
@@ -71,7 +71,7 @@ func cmdServe(args []string) error {
 	hub := api.NewSSEHub()
 	pipeline := rt.newPipeline(hub)
 	runner := NewLiveScanRunner(store, pipeline, hub)
-	// Remote scanning agents (aegis agent): runs of agent-bound profiles are queued for the
+	// Remote scanning agents (dzieciol agent): runs of agent-bound profiles are queued for the
 	// agent and ingested through the same pipeline when it uploads results.
 	agents := agenthub.New(store, pipeline, hub.Publish, agenthub.Options{
 		OfflineAfter:   envDuration("ASI_AGENT_OFFLINE_AFTER", 90*time.Second),
@@ -127,7 +127,7 @@ func cmdServe(args []string) error {
 	}()
 
 	printServeBanner(rt, url, uiSource, *seedDemo)
-	log.Printf("[INFO] AegisASI v%s listening on %s (seed_demo=%v, ui=%s)", api.AppVersion, ln.Addr(), *seedDemo, uiSource)
+	log.Printf("[INFO] Dzięcioł v%s listening on %s (seed_demo=%v, ui=%s)", api.AppVersion, ln.Addr(), *seedDemo, uiSource)
 	if *seedDemo {
 		log.Printf("[WARN] DEMO MODE: demo accounts with publicly known passwords are enabled (set ASI_SEED_DEMO=false outside a lab demo)")
 	}
@@ -137,7 +137,7 @@ func cmdServe(args []string) error {
 	case err := <-errCh:
 		return fmt.Errorf("http server: %w", err)
 	}
-	log.Printf("[INFO] Shutting down AegisASI server...")
+	log.Printf("[INFO] Shutting down Dzięcioł server...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
@@ -168,7 +168,9 @@ func displayURL(addr net.Addr, listen string) string {
 
 func printServeBanner(rt *appRuntime, url, uiSource string, seedDemo bool) {
 	w := os.Stderr
-	fmt.Fprintf(w, "\n  AegisASI %s - Attack Surface Intelligence\n\n", appVersion())
+	fmt.Fprintln(w)
+	printWoodpecker(w, "Dzięcioł "+appVersion(), "Attack Surface Intelligence - CBI AGH")
+	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  Open:     %s\n", url)
 	fmt.Fprintf(w, "  UI:       %s\n", uiSource)
 	fmt.Fprintf(w, "  Store:    %s\n", rt.storeDescription())

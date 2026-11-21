@@ -1,5 +1,5 @@
-// Package agent is the remote scanning agent (`aegis agent`): a lightweight daemon placed
-// inside a network segment that connects OUT to the central AegisASI server over HTTPS,
+// Package agent is the remote scanning agent (`dzieciol agent`): a lightweight daemon placed
+// inside a network segment that connects OUT to the central Dzięcioł server over HTTPS,
 // pulls scan jobs, runs the regular scanner engine locally and uploads the results. It
 // never listens on a port. See internal/agenthub for the server side and the protocol.
 package agent
@@ -179,7 +179,7 @@ func New(cfg Config) (*Agent, error) {
 			http:       hc,
 			credential: st.Credential,
 			instance:   st.InstanceID,
-			userAgent:  "aegis-agent/" + cfg.Version,
+			userAgent:  "dzieciol-agent/" + cfg.Version,
 		},
 	}
 	a.st.ServerURL = base.String()

@@ -2,7 +2,7 @@ package domain
 
 import "time"
 
-// Remote scanning agents (aegis agent): a lightweight scanner inside another network segment
+// Remote scanning agents (dzieciol agent): a lightweight scanner inside another network segment
 // that connects OUT to this server, pulls scan jobs and uploads results (internal/agenthub).
 const (
 	AgentStatusOnline   = "online"

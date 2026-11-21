@@ -1,5 +1,5 @@
 // Command jarm computes the JARM TLS server fingerprint of one endpoint using
-// AegisASI's Go implementation (internal/fingerprint/jarm.go). Output format
+// Dzięcioł's Go implementation (internal/fingerprint/jarm.go). Output format
 // mirrors `python3 jarm.py -v` so results can be diffed against the reference.
 //
 //	go run ./cmd/jarm -p 443 192.0.2.10

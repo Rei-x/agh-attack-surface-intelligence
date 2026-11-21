@@ -114,7 +114,7 @@ func (c *Client) setHeaders(req *http.Request, token string) {
 		req.Header.Set("Authorization", "Token "+strings.TrimSpace(token))
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "AegisASI-CBI-AGH/1.0")
+	req.Header.Set("User-Agent", "Dzieciol-CBI-AGH/1.0")
 }
 
 // TestConnection verifies API v2 reachability and token validity via /api/v2/users/ or /api/v2/engagements/.
@@ -175,11 +175,11 @@ func (c *Client) TestConnection(ctx context.Context, cfg *domain.DefectDojoConfi
 // Default DefectDojo context used when the operator has not pinned a product/engagement.
 // DefectDojo's auto_create_context creates them on first import.
 const (
-	DefaultProductType = "AegisASI"
+	DefaultProductType = "Dzięcioł"
 	DefaultProduct     = "AGH Attack Surface"
-	DefaultEngagement  = "AegisASI continuous discovery"
-	ObservationsTest   = "AegisASI observations"
-	NmapTestPrefix     = "AegisASI Nmap"
+	DefaultEngagement  = "Dzięcioł continuous discovery"
+	ObservationsTest   = "Dzięcioł observations"
+	NmapTestPrefix     = "Dzięcioł Nmap"
 )
 
 // importContext identifies where a (re)import lands in DefectDojo.
@@ -336,7 +336,7 @@ func NmapTestTitle(profileName string) string {
 
 // ImportNmapXML reimports raw Nmap XML (scan_type "Nmap Scan") into the test named testTitle.
 // close_old_findings is enabled: services missing from this run are mitigated in DefectDojo,
-// which mirrors AegisASI's own new/disappeared diff. runLabel is stored as the test version.
+// which mirrors Dzięcioł's own new/disappeared diff. runLabel is stored as the test version.
 func (c *Client) ImportNmapXML(ctx context.Context, cfg *domain.DefectDojoConfig, engagementID int, testTitle, runLabel, xmlData string) (*ImportResult, error) {
 	if cfg == nil || strings.TrimSpace(cfg.URL) == "" {
 		return nil, fmt.Errorf("defectdojo URL is not configured")
@@ -351,7 +351,7 @@ func (c *Client) ImportNmapXML(ctx context.Context, cfg *domain.DefectDojoConfig
 	if testTitle == "" {
 		testTitle = NmapTestPrefix
 	}
-	res, err := c.reimport(ctx, cfg, ic, "Nmap Scan", testTitle, runLabel, "aegis-asi-nmap.xml", []byte(xmlData), true)
+	res, err := c.reimport(ctx, cfg, ic, "Nmap Scan", testTitle, runLabel, "dzieciol-nmap.xml", []byte(xmlData), true)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +394,7 @@ type genericEndpoint struct {
 }
 
 // PushFindings exports selected observations as informational evidence through DefectDojo's
-// "Generic Findings Import" into the "AegisASI observations" test. Re-pushing the same
+// "Generic Findings Import" into the "Dzięcioł observations" test. Re-pushing the same
 // observation updates it (dedup by unique_id_from_tool) instead of creating a duplicate, and
 // close_old_findings is off so a partial selection never closes earlier exports.
 func (c *Client) PushFindings(ctx context.Context, cfg *domain.DefectDojoConfig, engagementID int, findings []FindingInput) ([]FindingResult, error) {
@@ -428,7 +428,7 @@ func (c *Client) PushFindings(ctx context.Context, cfg *domain.DefectDojoConfig,
 			Mitigation:       f.Mitigation,
 			Impact:           f.Impact,
 			References:       f.References,
-			Tags:             append([]string{"aegis-asi", "cbi-agh"}, f.Tags...),
+			Tags:             append([]string{"dzieciol", "aegis-asi", "cbi-agh"}, f.Tags...),
 		}
 		if f.HostIP != "" {
 			g.ComponentName = f.HostIP
@@ -447,7 +447,7 @@ func (c *Client) PushFindings(ctx context.Context, cfg *domain.DefectDojoConfig,
 		return nil, err
 	}
 
-	res, err := c.reimport(ctx, cfg, ic, "Generic Findings Import", ObservationsTest, "", "aegis-asi-observations.json", raw, false)
+	res, err := c.reimport(ctx, cfg, ic, "Generic Findings Import", ObservationsTest, "", "dzieciol-observations.json", raw, false)
 	if err != nil {
 		for i := range results {
 			results[i].Status = "failed"
@@ -487,7 +487,7 @@ func (c *Client) PushFindings(ctx context.Context, cfg *domain.DefectDojoConfig,
 // BuildServiceEvidenceDescription formats an audit-ready Markdown evidence receipt for DefectDojo.
 func BuildServiceEvidenceDescription(host *domain.Host, svc *domain.Service) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "## AegisASI Attack Surface Evidence Receipt\n\n")
+	fmt.Fprintf(&b, "## Dzięcioł Attack Surface Evidence Receipt\n\n")
 	fmt.Fprintf(&b, "- **Host:** `%s`", svc.HostIP)
 	if host != nil && host.Hostname != "" {
 		fmt.Fprintf(&b, " (%s)", host.Hostname)

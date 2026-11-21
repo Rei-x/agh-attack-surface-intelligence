@@ -28,7 +28,7 @@ func TestDefectDojoNamingOverridesLikeSCBAnnotations(t *testing.T) {
 	if f["product_type_name"] != "CBI AGH" || f["product_name"] != "Sieć kampusowa" || f["engagement_name"] != "Discovery 2026" {
 		t.Fatalf("names not overridden: %+v", f)
 	}
-	if f["deduplication_on_engagement"] != "true" || f["minimum_severity"] != "Low" || f["test_title"] != "AegisASI Nmap: Noc" {
+	if f["deduplication_on_engagement"] != "true" || f["minimum_severity"] != "Low" || f["test_title"] != "Dzięcioł Nmap: Noc" {
 		t.Fatalf("SCB-equivalent knobs missing: %+v", f)
 	}
 }

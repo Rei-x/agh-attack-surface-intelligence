@@ -3,6 +3,7 @@ package localdata
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -58,4 +59,24 @@ func TestLockIsExclusive(t *testing.T) {
 		t.Fatalf("re-acquire after release: %v", err)
 	}
 	l2.Release()
+}
+
+func TestPreferExistingKeepsPreRenameDir(t *testing.T) {
+	root := t.TempDir()
+	dz, legacy := filepath.Join(root, ".dzieciol"), filepath.Join(root, ".aegis")
+	if got := PreferExisting(dz, legacy); got != dz {
+		t.Fatalf("fresh install: got %s, want %s", got, dz)
+	}
+	if err := os.Mkdir(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := PreferExisting(dz, legacy); got != legacy {
+		t.Fatalf("upgrade: got %s, want the existing %s", got, legacy)
+	}
+	if err := os.Mkdir(dz, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := PreferExisting(dz, legacy); got != dz {
+		t.Fatalf("both exist: got %s, want %s", got, dz)
+	}
 }

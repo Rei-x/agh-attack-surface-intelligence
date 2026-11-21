@@ -166,14 +166,14 @@ func TestAgentResultsIdenticalToLocalScan(t *testing.T) {
 	}
 }
 
-// The unit written by `aegis agent install` and the shipped deploy/aegis-agent.service match.
+// The unit written by `dzieciol agent install` and the shipped deploy/dzieciol-agent.service match.
 func TestSystemdUnitMatchesDeployFile(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "deploy", "aegis-agent.service"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "deploy", "dzieciol-agent.service"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(raw) != systemdUnit {
-		t.Fatal("deploy/aegis-agent.service differs from systemdUnit in cmd_agent.go")
+		t.Fatal("deploy/dzieciol-agent.service differs from systemdUnit in cmd_agent.go")
 	}
 }
 

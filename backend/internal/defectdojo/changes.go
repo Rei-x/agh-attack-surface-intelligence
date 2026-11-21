@@ -251,7 +251,7 @@ func serviceDescription(h *domain.Host, s *domain.Service, kind, evidence string
 
 // writeHostLines renders the ownership block shared by all findings.
 func writeHostLines(b *strings.Builder, h *domain.Host) {
-	b.WriteString("Wykryte pasywnie przez Dzięcioł (AegisASI), cykliczny skan discovery.\n\n")
+	b.WriteString("Wykryte pasywnie przez Dzięcioł, cykliczny skan discovery.\n\n")
 	fmt.Fprintf(b, "- **Host:** `%s`", h.IP)
 	if h.Hostname != "" {
 		fmt.Fprintf(b, " (%s)", h.Hostname)

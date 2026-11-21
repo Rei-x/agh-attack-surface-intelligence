@@ -1,8 +1,8 @@
-# AegisASI - single binary build
+# Dzięcioł - single binary build
 #
 #   make ui        build the React UI and copy it into backend/internal/webui/ui (go:embed)
-#   make build     ui + bin/aegis for this machine
-#   make build-go  bin/aegis without rebuilding the UI (uses whatever is embedded)
+#   make build     ui + bin/dzieciol for this machine
+#   make build-go  bin/dzieciol without rebuilding the UI (uses whatever is embedded)
 #   make release   ui + cross-compiled binaries for all platforms + checksums in dist/
 #   make test      go build + go test
 
@@ -40,15 +40,15 @@ build: ui build-go
 
 build-go:
 	@mkdir -p $(BIN_DIR)
-	cd $(BACKEND) && go build -trimpath -ldflags "$(LDFLAGS)" -o ../$(BIN_DIR)/aegis $(MAIN_PKG)
-	@ls -lh $(BIN_DIR)/aegis
-	@./$(BIN_DIR)/aegis version
+	cd $(BACKEND) && go build -trimpath -ldflags "$(LDFLAGS)" -o ../$(BIN_DIR)/dzieciol $(MAIN_PKG)
+	@ls -lh $(BIN_DIR)/dzieciol
+	@./$(BIN_DIR)/dzieciol version
 
 release: ui
 	@rm -rf $(DIST_DIR) && mkdir -p $(DIST_DIR)
 	@set -e; for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; ext=""; [ "$$os" = "windows" ] && ext=".exe"; \
-		out="$(DIST_DIR)/aegis-$$os-$$arch$$ext"; \
+		out="$(DIST_DIR)/dzieciol-$$os-$$arch$$ext"; \
 		echo "building $$out"; \
 		(cd $(BACKEND) && GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o ../$$out $(MAIN_PKG)); \
 	done
@@ -57,8 +57,8 @@ release: ui
 
 checksums:
 	@cd $(DIST_DIR) && rm -f checksums.txt && \
-		if command -v sha256sum >/dev/null 2>&1; then sha256sum aegis-* > checksums.txt; \
-		else shasum -a 256 aegis-* > checksums.txt; fi && cat checksums.txt
+		if command -v sha256sum >/dev/null 2>&1; then sha256sum dzieciol-* > checksums.txt; \
+		else shasum -a 256 dzieciol-* > checksums.txt; fi && cat checksums.txt
 
 test:
 	cd $(BACKEND) && go build ./... && go test ./...

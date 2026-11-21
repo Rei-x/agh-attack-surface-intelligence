@@ -91,7 +91,7 @@ func OpenFileStore(path string, vault *crypto.Vault, opts FileStoreOptions) (*Fi
 		}
 	case errors.Is(err, os.ErrNotExist):
 		if opts.ReadOnly {
-			return nil, fmt.Errorf("no AegisASI data found at %s (run `aegis serve` or `aegis scan` first)", path)
+			return nil, fmt.Errorf("no Dzięcioł data found at %s (run `dzieciol serve` or `dzieciol scan` first)", path)
 		}
 		fs.isNew = true
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -135,7 +135,7 @@ func (f *FileStore) BackendName() string { return "file-encrypted" }
 
 func (f *FileStore) load(raw []byte) error {
 	if len(raw) < len(fileStoreMagic) || !bytes.Equal(raw[:len(fileStoreMagic)], fileStoreMagic) {
-		return fmt.Errorf("%s is not an AegisASI store file (bad magic)", f.path)
+		return fmt.Errorf("%s is not a Dzięcioł store file (bad magic)", f.path)
 	}
 	plain, err := f.vault.OpenBlob(raw[len(fileStoreMagic):], fileStoreAAD)
 	if err != nil {

@@ -3,7 +3,7 @@
   "data_version": "2026-11-21",
   "as_of": "2026-11-21",
   "notes": [
-    "Curated, offline end-of-life table for the products Dzięcioł (AegisASI) identifies. It is embedded in the binary and never fetched at scan time.",
+    "Curated, offline end-of-life table for the products Dzięcioł identifies. It is embedded in the binary and never fetched at scan time.",
     "Branch EOL dates are copied verbatim from the endoflife.date API (https://endoflife.date/api/<product>.json) as fetched on as_of; each product cites its page. eol \"\" = branch still supported on as_of.",
     "Microsoft IIS has no lifecycle of its own: it ships with Windows Server, so each IIS version carries the extended-support end of the Windows Server release that ships it (endoflife.date/windows-server, Microsoft Lifecycle). IIS 10.0 spans Windows Server 2016-2025 and is never flagged.",
     "OpenSSH is left out of the EOL table on purpose: the project supports only its latest release and publishes no per-branch end-of-life dates. It appears only in known_vulns.",

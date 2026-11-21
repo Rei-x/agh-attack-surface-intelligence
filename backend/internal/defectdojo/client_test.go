@@ -130,7 +130,7 @@ func TestDefectDojoClientUsesReimportWithResolvedContext(t *testing.T) {
 	if form["product_type_name"] != "Uczelnia" || form["product_name"] != "AGH Kampus" || form["engagement_name"] != "CBI ASI 2026" {
 		t.Fatalf("pinned engagement 7 was not resolved to names: %+v", form)
 	}
-	if form["test_title"] != "AegisASI Nmap: Kampus nocny" || !strings.Contains(fd.files[0], "172.28.0.10") {
+	if form["test_title"] != "Dzięcioł Nmap: Kampus nocny" || !strings.Contains(fd.files[0], "172.28.0.10") {
 		t.Fatalf("unexpected test title/file: %+v", form)
 	}
 	if imp.TestID != 40 || !strings.HasSuffix(imp.ExternalURL, "/test/40") {

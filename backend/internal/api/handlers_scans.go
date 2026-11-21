@@ -461,7 +461,7 @@ func applyProfileDefaults(p *domain.ScanProfile) {
 		p.GracePeriodHours = 24
 	}
 	if p.UserAgent == "" {
-		p.UserAgent = "AegisASI-CBI-AGH/1.0"
+		p.UserAgent = "Dzieciol-CBI-AGH/1.0"
 	}
 }
 

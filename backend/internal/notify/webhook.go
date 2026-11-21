@@ -135,7 +135,7 @@ func SelectEvents(cfg *domain.WebhookConfig, changes []domain.ChangeEvent) []dom
 func BuildPayload(run *domain.ScanRun, events []domain.ChangeEvent, title string) map[string]any {
 	var b strings.Builder
 	if title == "" {
-		title = fmt.Sprintf("AegisASI: %d alert(s)", len(events))
+		title = fmt.Sprintf("Dzięcioł: %d alert(s)", len(events))
 		if run != nil && run.Name != "" {
 			title += fmt.Sprintf(" after scan %q", run.Name)
 		}
@@ -174,7 +174,7 @@ func BuildPayload(run *domain.ScanRun, events []domain.ChangeEvent, title string
 	payload := map[string]any{
 		"text":     text,
 		"content":  content,
-		"username": "AegisASI",
+		"username": "Dzięcioł",
 		"source":   "aegis-asi",
 		"events":   structured,
 	}
@@ -306,9 +306,9 @@ func (n *Notifier) SendTest(ctx context.Context, rawURL string) error {
 		EventType: "TEST",
 		Severity:  "info",
 		HostIP:    "192.0.2.1",
-		Summary:   "Test notification from AegisASI - the webhook works.",
+		Summary:   "Test notification from Dzięcioł - the webhook works.",
 		CreatedAt: now,
-	}}, "AegisASI: test webhook")
+	}}, "Dzięcioł: test webhook")
 	err := n.Send(ctx, rawURL, payload)
 	n.recordResult(err)
 	return err
@@ -325,7 +325,7 @@ func (n *Notifier) Send(ctx context.Context, rawURL string, payload any) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "AegisASI-Webhook/1.0")
+	req.Header.Set("User-Agent", "Dzieciol-Webhook/1.0")
 	client := n.client
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}

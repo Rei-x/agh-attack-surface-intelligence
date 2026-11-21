@@ -24,7 +24,7 @@ func enrollViaAPI(t *testing.T, h http.Handler, adminTok, name string) agenthub.
 		RunCommand     string `json:"run_command"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	if !strings.HasPrefix(created.Token, "aet_") || !strings.Contains(created.InstallCommand, created.Token) || !strings.Contains(created.RunCommand, "aegis agent --server") {
+	if !strings.HasPrefix(created.Token, "aet_") || !strings.Contains(created.InstallCommand, created.Token) || !strings.Contains(created.RunCommand, "dzieciol agent --server") {
 		t.Fatalf("token response: %s", rec.Body)
 	}
 	rec = doJSON(h, http.MethodPost, "/api/v1/agent/enroll", "", map[string]any{"token": created.Token, "version": "test"})

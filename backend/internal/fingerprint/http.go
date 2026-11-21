@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	DefaultUserAgent    = "AegisASI-Discovery/1.0 (+CBI-AGH; safe-readonly)"
+	DefaultUserAgent    = "Dzieciol-Discovery/1.0 (+CBI-AGH; safe-readonly)"
 	DefaultTimeout      = 8 * time.Second
 	DefaultMaxRedirects = 5
 	DefaultMaxBodyBytes = 256 * 1024 // 256 KB
@@ -507,7 +507,7 @@ func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client,
 	var baseline pathResponse
 	catchAll := false
 	if len(opts.SafePaths) > 0 && ctx.Err() == nil {
-		if b, _, _, ok := fetch(fmt.Sprintf("/aegis-%x-notfound", time.Now().UnixNano())); ok {
+		if b, _, _, ok := fetch(fmt.Sprintf("/dzieciol-%x-notfound", time.Now().UnixNano())); ok {
 			baseline = b
 			catchAll = isInterestingPathStatus(b.status)
 		}
