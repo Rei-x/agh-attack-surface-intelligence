@@ -289,16 +289,16 @@ func (s *Server) handleCryptoStatus(w http.ResponseWriter, r *http.Request) {
 	var samples []map[string]any
 	if proof != nil {
 		sampleObj = map[string]any{
-			"table":            proof.Table,
-			"record_id":        proof.RecordID,
-			"column":           proof.Column,
-			"aad":              proof.AAD,
-			"raw_ciphertext":   proof.RawCiphertext,
-			"ciphertext":       proof.RawCiphertext,
-			"decrypted_value":  proof.DecryptedSample,
-			"plaintext":        proof.DecryptedSample,
-			"blind_index_col":  proof.BlindIndexCol,
-			"blind_index":      proof.BlindIndexValue,
+			"table":           proof.Table,
+			"record_id":       proof.RecordID,
+			"column":          proof.Column,
+			"aad":             proof.AAD,
+			"raw_ciphertext":  proof.RawCiphertext,
+			"ciphertext":      proof.RawCiphertext,
+			"decrypted_value": proof.DecryptedSample,
+			"plaintext":       proof.DecryptedSample,
+			"blind_index_col": proof.BlindIndexCol,
+			"blind_index":     proof.BlindIndexValue,
 		}
 		samples = []map[string]any{sampleObj}
 	}
@@ -346,11 +346,11 @@ func (s *Server) handleCryptoRotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":               "rotated",
-		"active_key_version":   newKID,
-		"key_version":          newKID,
-		"reencrypted_fields":   reencrypted,
-		"rotated_at":           time.Now().UTC(),
+		"status":             "rotated",
+		"active_key_version": newKID,
+		"key_version":        newKID,
+		"reencrypted_fields": reencrypted,
+		"rotated_at":         time.Now().UTC(),
 	})
 }
 

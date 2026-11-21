@@ -18,13 +18,13 @@ type ThrottleEvent struct {
 
 // GovernorStats exposes current rate limiting and backoff telemetry.
 type GovernorStats struct {
-	CurrentRate     float64 `json:"current_rate"`
-	InitialRate     float64 `json:"initial_rate"`
-	ThrottleCount   int     `json:"throttle_count"`
-	TimeoutCount    int     `json:"timeout_count"`
-	HTTP429Count    int     `json:"http_429_count"`
-	RSTCount        int     `json:"rst_count"`
-	IsThrottled     bool    `json:"is_throttled"`
+	CurrentRate   float64 `json:"current_rate"`
+	InitialRate   float64 `json:"initial_rate"`
+	ThrottleCount int     `json:"throttle_count"`
+	TimeoutCount  int     `json:"timeout_count"`
+	HTTP429Count  int     `json:"http_429_count"`
+	RSTCount      int     `json:"rst_count"`
+	IsThrottled   bool    `json:"is_throttled"`
 }
 
 // GovernorConfig configures the global/per-host token buckets and Target Noise Governor.
@@ -92,22 +92,22 @@ func (b *tokenBucket) take(now time.Time) (bool, time.Duration) {
 // Governor enforces global and per-host token-bucket rate limits and dynamically backs off
 // on timeout, HTTP 429, or TCP RST bursts (Target Noise Governor).
 type Governor struct {
-	mu               sync.Mutex
-	cfg              GovernorConfig
-	global           *tokenBucket
-	perHost          map[string]*tokenBucket
-	initialRate      float64
-	errorTimestamps  []time.Time
-	errorHosts       []string
-	errorReasons     []string
-	distress         float64
-	lastBackoff      time.Time
-	successStreak    int
-	throttleCount    int
-	timeoutCount     int
-	http429Count     int
-	rstCount         int
-	nowFn            func() time.Time
+	mu              sync.Mutex
+	cfg             GovernorConfig
+	global          *tokenBucket
+	perHost         map[string]*tokenBucket
+	initialRate     float64
+	errorTimestamps []time.Time
+	errorHosts      []string
+	errorReasons    []string
+	distress        float64
+	lastBackoff     time.Time
+	successStreak   int
+	throttleCount   int
+	timeoutCount    int
+	http429Count    int
+	rstCount        int
+	nowFn           func() time.Time
 }
 
 // NewGovernor constructs a thread-safe rate limiter with Target Noise Governor protection.

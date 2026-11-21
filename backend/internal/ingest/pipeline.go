@@ -31,11 +31,11 @@ type IngestRequest struct {
 
 // IngestResult summarizes what the unified pipeline persisted and detected.
 type IngestResult struct {
-	ScanRun         *domain.ScanRun      `json:"scan_run"`
-	HostsProcessed  int                  `json:"hosts_processed"`
-	ServicesUpserted int                 `json:"services_upserted"`
-	ChangesDetected int                  `json:"changes_detected"`
-	Changes         []domain.ChangeEvent `json:"changes,omitempty"`
+	ScanRun          *domain.ScanRun      `json:"scan_run"`
+	HostsProcessed   int                  `json:"hosts_processed"`
+	ServicesUpserted int                  `json:"services_upserted"`
+	ChangesDetected  int                  `json:"changes_detected"`
+	Changes          []domain.ChangeEvent `json:"changes,omitempty"`
 }
 
 // Pipeline processes observations from every source through one consistent workflow:

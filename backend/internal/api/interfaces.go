@@ -256,7 +256,7 @@ func estimateWindowDurationSec(startHHMM, endHHMM string) int64 {
 	if e > s {
 		return int64(e-s) * 60
 	}
-	return int64((24*60 - s) + e) * 60
+	return int64((24*60-s)+e) * 60
 }
 
 func parseHHMM(s string) (int, error) {
