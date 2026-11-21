@@ -241,6 +241,7 @@ export interface ScanRun {
   started_at: string;
   finished_at?: string;
   chunks?: ScanChunk[];
+  telemetry?: ScanTelemetry;
 }
 
 export interface RedirectHop {
@@ -532,6 +533,7 @@ export interface DefectDojoConfig {
   engagement_id: number;
   verify_tls: boolean;
   auto_push_nmap: boolean;
+  auto_push_findings?: boolean;
 }
 
 export interface DefectDojoExport {
@@ -810,4 +812,92 @@ export interface WebhookConfig {
   last_status?: string;
   last_error?: string;
   last_sent_at?: string;
+}
+
+/** One member host of a clustered service / technology graph node. */
+export interface GraphHostRef {
+  host_id: string;
+  ip: string;
+  hostname?: string;
+  title?: string;
+  score: number;
+  service_id?: string;
+  port?: number;
+  owner?: string;
+}
+
+export interface ThrottleEntry {
+  at: string;
+  host?: string;
+  /** timeout_burst, http_429, rst_burst; "_host" suffix = only that host was slowed down */
+  reason: string;
+  old_rate: number;
+  new_rate: number;
+  errors?: number;
+}
+
+export interface WindowEntry {
+  at: string;
+  kind: 'paused' | 'resumed' | string;
+  next_open?: string;
+}
+
+/** Persisted rate-control history of a scan run. */
+export interface ScanTelemetry {
+  configured_pps?: number;
+  configured_http_rps?: number;
+  nmap_peak_pps?: number;
+  http_rate_rps?: number;
+  http_initial_rps?: number;
+  throttle_count: number;
+  timeouts: number;
+  http_429: number;
+  rst: number;
+  throttles?: ThrottleEntry[];
+  window_events?: WindowEntry[];
+  updated_at?: string;
+}
+
+export interface DefectDojoFindingRef {
+  service_id?: string;
+  host_id?: string;
+  kind: string;
+  title: string;
+  severity?: string;
+  finding_id?: number;
+  url?: string;
+  test_id?: number;
+  /** active, false_positive, risk_accepted, mitigated */
+  state: string;
+  pushed_at: string;
+}
+
+export interface DefectDojoSyncState {
+  last_sync_at?: string;
+  last_status?: string;
+  last_error?: string;
+  last_run_id?: string;
+  test_id?: number;
+  test_url?: string;
+  product_id?: number;
+  product_url?: string;
+  findings: number;
+  triage_synced: number;
+  nmap_test_url?: string;
+  nmap_pushed_at?: string;
+}
+
+export interface DefectDojoStatus {
+  configured: boolean;
+  url: string;
+  auto_push_nmap: boolean;
+  auto_push_findings: boolean;
+  sync: DefectDojoSyncState;
+  last_export?: DefectDojoExport;
+}
+
+export interface DefectDojoServiceStatus {
+  services: Record<string, DefectDojoFindingRef[]>;
+  hosts: Record<string, DefectDojoFindingRef[]>;
+  last_sync_at?: string;
 }

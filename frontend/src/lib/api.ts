@@ -32,6 +32,8 @@ import type {
   HostTimelineEntry,
   TagRule,
   WebhookConfig,
+  DefectDojoStatus,
+  DefectDojoServiceStatus,
 } from '../types/api';
 
 /** Body of the "triage" override: accepted_risk / false_positive need a reason. */
@@ -629,4 +631,13 @@ export const api = {
     const res = await request<unknown>(`/api/v1/admin/audit${buildQuery(params || {})}`);
     return unwrapList<AuditLog>(res, ['logs', 'audit', 'items', 'data']);
   },
+
+  // DefectDojo automatic sync: header chip, per-service status, push now.
+  defectDojoStatus: () => request<DefectDojoStatus>('/api/v1/integrations/defectdojo/status'),
+  defectDojoServiceStatus: (hostId?: string) =>
+    request<DefectDojoServiceStatus>(
+      `/api/v1/integrations/defectdojo/services${buildQuery({ host_id: hostId })}`
+    ),
+  syncDefectDojoNow: () =>
+    request<Record<string, unknown>>('/api/v1/integrations/defectdojo/sync', { method: 'POST' }),
 };
