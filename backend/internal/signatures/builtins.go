@@ -196,6 +196,8 @@ func BuiltinSignatures() []domain.Signature {
 			Matchers: []domain.SignatureMatcher{
 				{Type: "cookie", Key: "csrftoken", Pattern: "csrftoken"},
 				{Type: "html_body", Pattern: `csrfmiddlewaretoken|__admin_media_prefix__`, Regex: true},
+				// Django's own pages: default "install worked" page, admin login, DEBUG 404 page
+				{Type: "html_body", Pattern: `(?i)<title>The install worked successfully! Congratulations!</title>|Django site admin|Using the URLconf defined in`, Regex: true},
 			},
 		},
 		{
@@ -356,6 +358,8 @@ func BuiltinSignatures() []domain.Signature {
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)\bGrafana\b`, Regex: true},
 				{Type: "html_body", Pattern: `(?i)grafanaBootData|Grafana v([0-9]+\.[0-9]+(?:\.[0-9]+)?)`, Regex: true, VersionGroup: 1},
+				// login page: window.grafanaBootData = {... "buildInfo":{...,"version":"10.2.3"}
+				{Type: "html_body", Pattern: `"buildInfo":\{[^}]*?"version":"([0-9]+\.[0-9]+\.[0-9]+)"`, Regex: true, VersionGroup: 1},
 				{Type: "cookie", Key: "grafana_session", Pattern: "grafana_session"},
 				{Type: "favicon_mmh3", Pattern: "1943789861"},
 			},
@@ -488,7 +492,8 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"monitoring", "metrics", "prometheus"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)Prometheus Time Series Collection`, Regex: true},
-				{Type: "safe_path", Key: "/metrics", Pattern: "/metrics", StatusCodes: []int{200}},
+				// No bare /metrics matcher: Grafana, exporters and most Go/Java services expose
+				// the Prometheus text format there without being Prometheus.
 			},
 		},
 		{
@@ -504,6 +509,24 @@ func BuiltinSignatures() []domain.Signature {
 				{Type: "header", Key: "kbn-name", Pattern: `.+`, Regex: true},
 				{Type: "header", Key: "kbn-version", Pattern: `([0-9]+\.[0-9]+(?:\.[0-9]+)?)`, Regex: true, VersionGroup: 1},
 				{Type: "title", Pattern: `(?i)^Kibana$|^Elastic$`, Regex: true},
+				// <kbn-injected-metadata data="{&quot;version&quot;:&quot;8.11.3&quot;,...
+				{Type: "html_body", Pattern: `kbn-injected-metadata data="\{&quot;version&quot;:&quot;([0-9]+\.[0-9]+\.[0-9]+)`, Regex: true, VersionGroup: 1},
+			},
+		},
+		{
+			ID:               "builtin-tool-elasticsearch",
+			Name:             "Elasticsearch",
+			Description:      "Detects the Elasticsearch REST API (root JSON banner or X-Elastic-Product header).",
+			Category:         "server",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.90,
+			InterestingPts:   20,
+			Tags:             []string{"database", "search", "elastic"},
+			Matchers: []domain.SignatureMatcher{
+				// sent by Elasticsearch >= 7.14 on every response, including 401s
+				{Type: "header", Key: "X-Elastic-Product", Pattern: `(?i)^Elasticsearch$`, Regex: true},
+				// GET / : {"name":..., "version":{"number":"7.17.9",...}, "tagline":"You Know, for Search"}
+				{Type: "html_body", Pattern: `(?s)"number"\s*:\s*"([0-9]+\.[0-9]+\.[0-9]+)".*You Know, for Search`, Regex: true, VersionGroup: 1},
 			},
 		},
 		{

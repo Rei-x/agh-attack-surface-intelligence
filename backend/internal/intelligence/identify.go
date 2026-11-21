@@ -354,6 +354,11 @@ func IdentifyProduct(svc domain.ObservedService) ProductIdentity {
 			id.Version, id.VersionSource = hv, hsrc
 		}
 	}
+	// MariaDB advertises "5.5.5-10.6.16-MariaDB-..." (the 5.5.5- prefix keeps old MySQL
+	// clients happy); nmap reports that string verbatim.
+	if strings.EqualFold(id.Product, "MariaDB") && strings.HasPrefix(id.Version, "5.5.5-") {
+		id.Version = strings.TrimPrefix(id.Version, "5.5.5-")
+	}
 	if id.VersionSource == "" && id.Version != "" {
 		id.VersionSource = id.Source
 	}

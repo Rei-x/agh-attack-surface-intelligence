@@ -149,6 +149,9 @@ func TestStagingEvidenceRealDevSetups(t *testing.T) {
 				Snippet: `{"app":{"name":"usos-sync","version":"2.3.1","profile":"prod"}}`}}}), false},
 		{"Node /health env staging", httpSvc(3000, &domain.HTTPFingerprint{StatusCode: 200, Title: "Panel",
 			SafePathHits: []domain.SafePathHit{{Path: "/health", StatusCode: 200, Snippet: `{"status":"ok","env":"staging","uptime":4013}`}}}), true},
+		{"CentOS stock Apache test page", httpSvc(80, &domain.HTTPFingerprint{StatusCode: 403, ServerHeader: "Apache/2.4.6 (CentOS) OpenSSL/1.0.2k-fips PHP/7.4.33",
+			Title: "Apache HTTP Server Test Page powered by CentOS"}), false},
+		{"TEST app", httpSvc(80, &domain.HTTPFingerprint{StatusCode: 200, Title: "TEST - Elektroniczny Dziennik"}), true},
 		{"gunicorn production", httpSvc(8000, &domain.HTTPFingerprint{StatusCode: 200, ServerHeader: "gunicorn", Title: "Portal"}), false},
 	}
 	for _, c := range cases {

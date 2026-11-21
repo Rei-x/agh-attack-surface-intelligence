@@ -237,8 +237,11 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 		}
 	}
 
-	// 2. Service product / banner from Nmap or TCP probe.
-	if strings.TrimSpace(svc.Product) != "" {
+	// 2. Service product / banner from Nmap or TCP probe. A generic nmap answer
+	// ("Golang net/http server" is a guess from how the stack answers malformed probes)
+	// is dropped once the HTTP layer identified the server or the application itself.
+	httpIdentified := len(buckets) > 0 || (svc.HTTP != nil && IdentifyProduct(svc).Source != SourceNmap)
+	if strings.TrimSpace(svc.Product) != "" && !(genericNmapProducts[strings.ToLower(strings.TrimSpace(svc.Product))] && httpIdentified) {
 		detail := fmt.Sprintf("product=%s", svc.Product)
 		if svc.Version != "" {
 			detail += " version=" + svc.Version
@@ -340,7 +343,7 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *signatures.Engine, temporalScansSeen int) []signatures.MatchResult {
 	var matches []signatures.MatchResult
 	if sigEngine != nil {
-		matches = sigEngine.Evaluate(obs)
+		matches = dropDefaultTestPageStaging(sigEngine.Evaluate(obs), obs)
 	}
 
 	svc.Technologies = DetectTechnologies(obs, matches, temporalScansSeen)
@@ -415,7 +418,40 @@ func canonicalTech(raw, category string) (string, string) {
 		return "", category
 	}
 	sl := strings.ToLower(s)
+	// nmap product names of daemons whose technology has a plainer name.
+	switch {
+	case strings.HasPrefix(sl, "mikrotik routeros") || strings.HasPrefix(sl, "mikrotik router"):
+		return "MikroTik RouterOS", "iot"
+	case strings.HasPrefix(sl, "hikvision"):
+		return "Hikvision IP Camera / NVR", "iot"
+	case sl == "debut embedded httpd": // Brother printers' embedded web server
+		return "Brother Printer Web Interface", "iot"
+	case sl == "hp http server" || sl == "hp-chaisoe" || strings.HasPrefix(sl, "hp jetdirect"):
+		return "HP Printer / Embedded Web Server", "iot"
+	case strings.HasPrefix(sl, "dovecot"):
+		return "Dovecot", "server"
+	}
 	switch sl {
+	case "microsoft iis httpd":
+		return "Microsoft IIS", "server"
+	case "apache tomcat/coyote jsp engine":
+		return "Apache Tomcat", "server"
+	case "postgresql db", "postgresql":
+		return "PostgreSQL", "server"
+	case "exim smtpd":
+		return "Exim", "server"
+	case "postfix smtpd":
+		return "Postfix", "server"
+	case "redis key-value store", "redis":
+		return "Redis", "server"
+	case "mysql":
+		return "MySQL", "server"
+	case "mariadb":
+		return "MariaDB", "server"
+	case "jetty":
+		return "Jetty", "server"
+	case "elasticsearch rest api":
+		return "Elasticsearch", "server"
 	case "nginx":
 		return "Nginx", "server"
 	case "apache", "apache httpd", "apache http server":

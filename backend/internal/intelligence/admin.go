@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/signatures"
 )
 
 // Admin panel and staging/dev environment classification.
@@ -174,4 +175,25 @@ func StagingEvidence(obs domain.ObservedService) string {
 		}
 	}
 	return ""
+}
+
+// Stock web-server welcome pages call themselves "Test Page" ("Apache HTTP Server Test Page
+// powered by CentOS", "Test Page for the Nginx HTTP Server on Fedora"); that is a default
+// install, not a test environment.
+var reDefaultTestPage = regexp.MustCompile(`(?i)\btest page\b`)
+
+// dropDefaultTestPageStaging removes a staging match whose only evidence is the title of a
+// stock "Test Page".
+func dropDefaultTestPageStaging(matches []signatures.MatchResult, obs domain.ObservedService) []signatures.MatchResult {
+	if obs.HTTP == nil || !reDefaultTestPage.MatchString(obs.HTTP.Title) {
+		return matches
+	}
+	out := matches[:0]
+	for _, m := range matches {
+		if m.Matched && m.Signature.Category == "staging" && len(m.Evidence) == 1 && strings.HasPrefix(m.Evidence[0].Detail, "title") {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
