@@ -1,0 +1,39 @@
+# Binaries & build outputs
+bin/
+dist/
+*.exe
+*.out
+aegis-asi
+server
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+.pnpm-store/
+
+# Go
+*.test
+coverage.out
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+master.key
+
+# Local data / DB / Logs
+data/
+pgdata/
+*.db
+*.sqlite
+*.log
+tmp/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
