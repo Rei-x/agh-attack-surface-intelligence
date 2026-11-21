@@ -152,9 +152,6 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 			host["name"] = h.Hostname
 			host["hostname"] = h.Hostname
 		}
-		if len(h.Domains) > 0 {
-			host["domain"] = strings.Join(h.Domains, ",")
-		}
 		if h.OSGuess != "" {
 			host["os"] = map[string]any{"full": h.OSGuess}
 		}
