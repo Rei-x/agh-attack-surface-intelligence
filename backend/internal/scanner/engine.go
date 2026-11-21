@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"hash/fnv"
 	"strings"
 	"sync"
 	"time"
@@ -120,7 +121,19 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 		}
 	}
 
-	chunks := BuildChunks(scanRunID, resolution.IPs, chunkSize)
+	// Chunks sample the whole scope (ZMap-style cyclic-group permutation, see PermuteTargets),
+	// so concurrent workers spread their probes over every subnet instead of each hammering
+	// one contiguous block. The permutation is seeded by the run ID and the ledger stores
+	// each chunk's targets, so resume/rescan sees exactly the same chunks.
+	// Scopes of up to 4 /24s stay in order: there is no subnet load to spread, and contiguous
+	// chunks keep nmap command lines compact (10.0.0.1-50).
+	ordered := resolution.IPs
+	if len(ordered) > PermuteMinTargets {
+		h := fnv.New64a()
+		_, _ = h.Write([]byte(scanRunID))
+		ordered = PermuteTargets(ordered, h.Sum64())
+	}
+	chunks := BuildChunks(scanRunID, ordered, chunkSize)
 	run := &domain.ScanRun{
 		ID:          scanRunID,
 		ProfileID:   profile.ID,
@@ -142,7 +155,7 @@ func (e *Engine) fingerprintStage(
 	activeIPs []string,
 	svcMap map[string][]domain.ObservedService,
 	profile domain.ScanProfile,
-	concurrency int,
+	fpSem chan struct{},
 	gov *Governor,
 	ipToDomains map[string][]string,
 	st *stageStats,
@@ -185,12 +198,11 @@ func (e *Engine) fingerprintStage(
 	}
 	st.httpServices.Add(int64(len(jobs)))
 
-	workers := concurrency
+	// fpSem is shared by every chunk in flight, so HTTP concurrency is bounded scan-wide
+	// (not per chunk); the request rate itself is bounded by the Governor.
+	workers := cap(fpSem)
 	if workers > len(jobs) {
 		workers = len(jobs)
-	}
-	if workers > 32 {
-		workers = 32
 	}
 	if workers < 1 {
 		workers = 1
@@ -232,7 +244,13 @@ func (e *Engine) fingerprintStage(
 				}
 				opts.Now = e.cfg.Now
 
+				select {
+				case fpSem <- struct{}{}:
+				case <-ctx.Done():
+					return
+				}
 				fp, err := e.cfg.Fingerprinter.Probe(ctx, job.ip, job.port, job.domain, &opts)
+				<-fpSem
 				if err == nil && fp != nil {
 					gov.RecordSuccess(job.ip)
 					mu.Lock()

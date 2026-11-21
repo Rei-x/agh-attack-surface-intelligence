@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
@@ -33,6 +34,8 @@ type NmapRunner struct {
 	Concurrency       int
 	// Options tunes nmap flags; nil means DefaultNmapOptions().
 	Options *NmapOptions
+	// priv caches whether raw-socket scans work (see Privileged).
+	priv int32
 }
 
 // NewNmapRunner returns a runner configured with safe timeouts and ASI_NMAP_* option overrides.
@@ -236,22 +239,16 @@ func (r *NmapRunner) ScanServicesDetailed(ctx context.Context, activeIPs []strin
 }
 
 func (r *NmapRunner) scanWithNmap(ctx context.Context, activeIPs []string, ports []int, maxRatePPS int) (map[string][]domain.ObservedService, string, string, error) {
-	args := r.options().BuildServiceArgs(activeIPs, ports, maxRatePPS)
-	cmdLine := FormatCommand(r.NmapBinary, args)
-	if err := ValidateSafeNmapArgs(args); err != nil {
-		return nil, "", cmdLine, err
+	priv := r.Privileged()
+	xmlBytes, cmdLine, stderr, err := r.runNmap(ctx, r.options().BuildServiceArgsPriv(activeIPs, ports, maxRatePPS, priv))
+	if err != nil && ctx.Err() == nil && priv && isRawSocketDenied(stderr) {
+		atomic.StoreInt32(&r.priv, privNo)
+		xmlBytes, cmdLine, stderr, err = r.runNmap(ctx, r.options().BuildServiceArgsPriv(activeIPs, ports, maxRatePPS, false))
+	}
+	if err != nil {
+		return nil, "", cmdLine, fmt.Errorf("nmap -sV failed: %w (%s)", err, strings.TrimSpace(stderr))
 	}
 
-	cmd := exec.CommandContext(ctx, r.NmapBinary, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return nil, "", cmdLine, fmt.Errorf("nmap -sT -sV failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
-	}
-
-	xmlBytes := stdout.Bytes()
 	hosts, err := ParseNmapXML(xmlBytes)
 	if err != nil {
 		return nil, string(xmlBytes), cmdLine, err

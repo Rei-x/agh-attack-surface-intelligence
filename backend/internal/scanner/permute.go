@@ -5,6 +5,9 @@ import (
 	"math/rand/v2"
 )
 
+// PermuteMinTargets is the scope size above which chunks are built from a permuted order.
+const PermuteMinTargets = 1024
+
 // PermuteTargets returns ips in a pseudo-random order produced by iterating a multiplicative
 // cyclic group modulo a prime, exactly like ZMap (Durumeric, Wustrow, Halderman, "ZMap: Fast
 // Internet-wide Scanning and its Security Applications", USENIX Security 2013, §3.1):
