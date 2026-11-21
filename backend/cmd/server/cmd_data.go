@@ -76,6 +76,10 @@ func cmdImport(args []string) error {
 	if err != nil {
 		return err
 	}
+	if int64(len(data)) > ingest.MaxImportBytes {
+		return ingest.ErrImportTooLarge
+	}
+	data = ingest.StripNUL(ingest.DecodeText(data))
 	f := strings.ToLower(strings.TrimSpace(*format))
 	if f == "" {
 		f = detectImportFormat(path, data)
@@ -97,8 +101,15 @@ func cmdImport(args []string) error {
 	default:
 		return fmt.Errorf("unsupported format %q (use csv, json or nmap)", f)
 	}
+	skipped := 0
+	if err == nil {
+		obs, skipped, err = ingest.SanitizeObservations(obs)
+	}
 	if err != nil {
 		return fmt.Errorf("parse %s as %s: %w", path, f, err)
+	}
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "warning: skipped %d invalid record(s) (bad IP, port or protocol)\n", skipped)
 	}
 
 	rt, err := openRuntime(context.Background(), runtimeOptions{DataDir: *dataDir, Command: "import", Seed: true, SeedDemo: seedDemoDefault()})

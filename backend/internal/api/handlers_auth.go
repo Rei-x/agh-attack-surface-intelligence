@@ -40,6 +40,15 @@ func (s *Server) handleDemoAccounts(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// passwordCheckSlots bounds concurrent Argon2id verifications (64 MiB each).
+var passwordCheckSlots = make(chan struct{}, 4)
+
+// dummyPasswordHash is verified for unknown usernames to equalize login timing.
+var dummyPasswordHash = func() string {
+	h, _ := crypto.HashPassword("aegis-timing-equalizer")
+	return h
+}()
+
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
@@ -49,8 +58,33 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
+	if len(req.Username) > 256 || len(req.Password) > 1024 {
+		writeErr(w, http.StatusBadRequest, "nazwa użytkownika lub hasło jest za długie / username or password too long")
+		return
+	}
+	keys := loginKeys(r, req.Username)
+	if wait := s.logins.blocked(keys); wait > 0 {
+		writeTooManyLogins(w, wait)
+		return
+	}
+	// Argon2id costs 64 MiB per verification: bound concurrent checks so a login flood
+	// cannot exhaust memory.
+	select {
+	case passwordCheckSlots <- struct{}{}:
+		defer func() { <-passwordCheckSlots }()
+	case <-r.Context().Done():
+		return
+	}
 	user, err := s.store.GetUserByUsername(r.Context(), strings.TrimSpace(req.Username))
-	if err != nil || !user.Active || !crypto.VerifyPassword(req.Password, user.PasswordHash) {
+	ok := false
+	if err == nil && user != nil {
+		ok = crypto.VerifyPassword(req.Password, user.PasswordHash) && user.Active
+	} else {
+		// Same work for unknown users, so response timing does not reveal valid usernames.
+		crypto.VerifyPassword(req.Password, dummyPasswordHash)
+	}
+	if !ok {
+		s.logins.fail(keys)
 		_ = s.store.AddAuditLog(r.Context(), &domain.AuditLog{
 			Username:  req.Username,
 			Action:    "POST /api/v1/auth/login",
@@ -63,6 +97,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logins.succeed(keys)
 	token, err := auth.SignToken(s.cfg.JWTSecret, user, s.cfg.TokenTTL)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "failed to sign jwt")

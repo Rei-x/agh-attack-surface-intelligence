@@ -13,6 +13,9 @@ import (
 
 type ctxKey struct{}
 
+// SSEPath is the only endpoint that accepts the token as a ?token= query parameter.
+const SSEPath = "/api/v1/events/stream"
+
 // UserLoader resolves a user by ID with current role permissions from persistence.
 type UserLoader interface {
 	GetUser(ctx context.Context, id string) (*domain.User, error)
@@ -124,8 +127,12 @@ func extractToken(r *http.Request) string {
 	if len(authz) > 7 && strings.EqualFold(authz[:7], "Bearer ") {
 		return strings.TrimSpace(authz[7:])
 	}
-	if q := strings.TrimSpace(r.URL.Query().Get("token")); q != "" {
-		return q
+	// EventSource cannot send headers, so the SSE stream (only) accepts ?token=. Elsewhere a
+	// token in the URL would leak into proxy logs, browser history and Referer headers.
+	if r.URL.Path == SSEPath {
+		if q := strings.TrimSpace(r.URL.Query().Get("token")); q != "" {
+			return q
+		}
 	}
 	return ""
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
 )
 
 // --- Targets & Exclusions ---
@@ -32,8 +33,24 @@ func (s *Server) handleCreateTarget(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "target value is required")
 		return
 	}
+	kind, err := scanner.ValidateTargetEntry(t.Value, scanner.DefaultMaxExpandedIPs)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	t.Value = strings.TrimSpace(t.Value)
 	if t.Kind == "" {
-		t.Kind = inferTargetKind(t.Value)
+		t.Kind = kind
+		if kind == "ipv6" { // UI knows ip / cidr / range / domain
+			t.Kind = "ip"
+			if strings.Contains(t.Value, "/") {
+				t.Kind = "cidr"
+			}
+		}
+	}
+	if len(t.Label) > maxNameLen {
+		writeErr(w, http.StatusBadRequest, "etykieta za długa / label too long")
+		return
 	}
 	t.Enabled = true
 	t.CreatedBy = currentUsername(r)
@@ -101,6 +118,16 @@ func (s *Server) handleCreateExclusion(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "exclusion value is required")
 		return
 	}
+	// No size cap for exclusions (excluding a whole /8 is legitimate), but a typo must not be
+	// silently ignored: an unparsable exclusion would leave hosts in scope.
+	if _, err := scanner.ValidateTargetEntry(ex.Value, 0); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(ex.Reason) > maxNotesLen {
+		writeErr(w, http.StatusBadRequest, "uzasadnienie za długie / reason too long")
+		return
+	}
 	ex.CreatedBy = currentUsername(r)
 	if err := s.store.CreateExclusion(r.Context(), &ex); err != nil {
 		writeStoreErr(w, err)
@@ -138,6 +165,10 @@ func (s *Server) handleCreateProfile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "profile name is required")
 		return
 	}
+	if err := validateScanParams(&p); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	applyProfileDefaults(&p)
 	if err := validateProfileSchedule(&p); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -157,6 +188,10 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.ID = r.PathValue("id")
+	if err := validateScanParams(&p); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	applyProfileDefaults(&p)
 	if err := validateProfileSchedule(&p); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -245,7 +280,21 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		EnableHTTPFingerprint: true,
 		Enabled:               true,
 	}
+	if err := validateScanParams(profile); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(req.Notes) > maxNotesLen {
+		writeErr(w, http.StatusBadRequest, "notatki za długie / notes too long")
+		return
+	}
 	applyProfileDefaults(profile)
+	if req.WindowEnabled {
+		if err := validateProfileSchedule(profile); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	// Persist ad-hoc profile when windowing or save_profile is enabled so Pause/Resume works seamlessly.
 	if req.SaveProfile || req.WindowEnabled {
 		_ = s.store.CreateProfile(r.Context(), profile)
@@ -370,21 +419,6 @@ func (s *Server) handleScanDiff(w http.ResponseWriter, r *http.Request) {
 	toChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{ScanRunID: toID, Limit: 500})
 	diff := ComputeScanDiff(fromID, toID, fromHosts, toHosts, toChanges)
 	writeJSON(w, http.StatusOK, diff)
-}
-
-func inferTargetKind(v string) string {
-	if strings.Contains(v, "/") {
-		return "cidr"
-	}
-	if strings.Contains(v, "-") {
-		return "range"
-	}
-	for _, ch := range v {
-		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
-			return "domain"
-		}
-	}
-	return "ip"
 }
 
 func applyProfileDefaults(p *domain.ScanProfile) {

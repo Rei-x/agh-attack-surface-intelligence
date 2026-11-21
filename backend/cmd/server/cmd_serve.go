@@ -78,6 +78,9 @@ func cmdServe(args []string) error {
 		TokenTTL:  24 * time.Hour,
 		SeedDemo:  *seedDemo,
 		StaticDir: strings.TrimSpace(*staticDir),
+		// Comma-separated extra origins allowed to call the API cross-origin (default: none,
+		// the bundled UI is same-origin).
+		AllowedOrigin: os.Getenv("ASI_CORS_ORIGINS"),
 	}
 	uiSource := "embedded"
 	if cfg.StaticDir != "" {
@@ -95,9 +98,14 @@ func cmdServe(args []string) error {
 	if rt.Lock != nil {
 		_ = rt.Lock.Update(localdata.LockInfo{PID: os.Getpid(), Command: "serve", URL: url, StartedAt: time.Now()})
 	}
+	// Timeouts against slow-client (slowloris) exhaustion. No WriteTimeout: the SSE stream and
+	// large exports are long-lived responses by design.
 	httpServer := &http.Server{
 		Handler:           srv.Handler(),
-		ReadHeaderTimeout: 15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       5 * time.Minute, // a 64 MB import over a slow VPN
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    64 << 10,
 	}
 	errCh := make(chan error, 1)
 	go func() {
