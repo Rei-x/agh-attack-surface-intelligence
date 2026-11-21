@@ -182,6 +182,9 @@ type ScanProfile struct {
 	AgentID   string    `json:"agent_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// CaptureScreenshots takes a picture of every web service with a headless Chromium when
+	// one is available on the scanning host. nil means on (the default).
+	CaptureScreenshots *bool `json:"capture_screenshots,omitempty"`
 }
 
 // ScanChunk is one slice of a scan run's targets, executed and checkpointed independently.
@@ -459,6 +462,9 @@ type ObservedService struct {
 	HTTP        *HTTPFingerprint `json:"http,omitempty"`
 	Tags        []string         `json:"tags,omitempty"`
 	Notes       string           `json:"notes,omitempty"`
+	// Screenshot of the landing page (active scans only). Moved to the screenshot store at
+	// ingest and never persisted with the observation.
+	Screenshot *Screenshot `json:"screenshot,omitempty"`
 }
 
 // ObservedHost is a raw host observation (with its services) before diff/merge.

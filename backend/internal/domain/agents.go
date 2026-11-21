@@ -18,6 +18,8 @@ type AgentCapabilities struct {
 	OS          string `json:"os,omitempty"`
 	Arch        string `json:"arch,omitempty"`
 	Hostname    string `json:"hostname,omitempty"`
+	// Screenshots: a headless Chromium was found, so web services are captured as pictures.
+	Screenshots bool `json:"screenshots,omitempty"`
 	// AllowCIDRs is the agent's LOCAL allowlist (--allow-cidr): it refuses any target outside
 	// it, whatever the server asks. Empty = no local restriction.
 	AllowCIDRs []string `json:"allow_cidrs,omitempty"`
