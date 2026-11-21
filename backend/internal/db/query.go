@@ -262,11 +262,25 @@ func (q *AssetQuery) MatchHost(h *domain.Host) bool {
 		}
 	}
 	for _, word := range q.Text {
-		if !hostMatchesQuery(h, word) {
+		if !hostMatchesQuery(h, word) && !hostHasPortText(h, word) {
 			return false
 		}
 	}
 	return true
+}
+
+// hostHasPortText lets a bare number in free text match an open port ("rdp 3389").
+func hostHasPortText(h *domain.Host, word string) bool {
+	p, err := strconv.Atoi(word)
+	if err != nil {
+		return false
+	}
+	for i := range h.Services {
+		if h.Services[i].Port == p {
+			return true
+		}
+	}
+	return false
 }
 
 // MatchService evaluates the query against a single service. Host-only terms that the
@@ -301,7 +315,7 @@ func (q *AssetQuery) MatchService(s *domain.Service) bool {
 		}
 	}
 	for _, word := range q.Text {
-		if !serviceMatchesQuery(s, word) {
+		if !serviceMatchesQuery(s, word) && strconv.Itoa(s.Port) != word {
 			return false
 		}
 	}
