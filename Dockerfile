@@ -11,7 +11,8 @@ FROM node:24-alpine AS frontend-builder
 
 WORKDIR /src/frontend
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
+# npm instead of corepack: corepack prepare fails to reach the registry inside some BuildKit setups
+RUN npm install -g pnpm@10.12.1
 
 COPY frontend/package.json frontend/pnpm-lock.yaml* ./
 RUN if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
