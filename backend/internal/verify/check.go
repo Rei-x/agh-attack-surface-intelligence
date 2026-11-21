@@ -128,6 +128,8 @@ type HTTPRequest struct {
 	Matchers          []Matcher         `yaml:"matchers"`
 	Extractors        []Extractor       `yaml:"extractors"`
 	MaxSize           int               `yaml:"max-size"`
+	// Schemes (Dzięcioł extension): also try these schemes on the same port.
+	Schemes []string `yaml:"schemes"`
 	// BasicAuth (Dzięcioł extension, default-credential checks only): "user:password".
 	BasicAuth string `yaml:"basic-auth"`
 }

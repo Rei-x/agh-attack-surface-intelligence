@@ -13,6 +13,7 @@ match:
   any-http: true
 http:
   - method: GET
+    schemes: [http, https]
     path:
       - "{{BaseURL}}/api/overview"
       - "{{BaseURL}}/api/rawdata"

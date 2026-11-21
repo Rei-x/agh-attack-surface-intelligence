@@ -339,6 +339,32 @@ func baseURL(t *Target) (string, string) {
 	return scheme + "://" + hostPort, hostPort
 }
 
+// requestURLs expands the paths; with `schemes` each path is tried over every listed scheme,
+// the service's own first (Traefik answers its API over plain HTTP and its default TLS
+// router on the same port).
+func requestURLs(r *HTTPRequest, t *Target) []string {
+	var out []string
+	base, _ := baseURL(t)
+	own := base[:strings.Index(base, "://")]
+	schemes := []string{own}
+	for _, sc := range r.Schemes {
+		if sc = strings.ToLower(sc); sc != own && (sc == "http" || sc == "https") {
+			schemes = append(schemes, sc)
+		}
+	}
+	for _, p := range r.Path {
+		u := expand(p, t)
+		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			u = base + "/" + strings.TrimPrefix(u, "/")
+		}
+		rest := u[strings.Index(u, "://"):]
+		for _, sc := range schemes {
+			out = append(out, sc+rest)
+		}
+	}
+	return out
+}
+
 func expand(tpl string, t *Target) string {
 	base, hostPort := baseURL(t)
 	r := strings.NewReplacer(
@@ -373,12 +399,7 @@ func (e *Engine) runHTTP(ctx context.Context, c *Check, t *Target, opt Options) 
 	}
 	var lastErr error
 	for _, r := range c.HTTP {
-		for _, p := range r.Path {
-			u := expand(p, t)
-			if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-				base, _ := baseURL(t)
-				u = base + "/" + strings.TrimPrefix(u, "/")
-			}
+		for _, u := range requestURLs(&r, t) {
 			if err := e.wait(ctx, t.HostIP); err != nil {
 				return false, "", "", err
 			}
