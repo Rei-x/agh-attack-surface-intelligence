@@ -84,7 +84,7 @@ export function TriageBadge({ triage }: { triage?: TriageInfo | null }) {
   if (!triage || !TRIAGE_LABEL[triage.status]) return null;
   const title = [
     triage.reason,
-    `${triage.by || '—'} · ${formatDateTime(triage.at)}`,
+    `${triage.by || 'unknown'} · ${formatDateTime(triage.at)}`,
     triage.expires_at ? `Expires: ${formatDateTime(triage.expires_at)}` : 'No expiry',
   ].join('\n');
   if (triage.expired) {

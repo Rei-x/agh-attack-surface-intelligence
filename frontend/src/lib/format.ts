@@ -1,5 +1,5 @@
 export function formatDateTime(value?: string | null): string {
-  if (!value) return '—';
+  if (!value) return 'n/a';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return new Intl.DateTimeFormat('en-GB', {
@@ -13,7 +13,7 @@ export function formatDateTime(value?: string | null): string {
 }
 
 export function formatShortTime(value?: string | null): string {
-  if (!value) return '—';
+  if (!value) return 'n/a';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return new Intl.DateTimeFormat('en-GB', {
@@ -26,14 +26,14 @@ export function formatShortTime(value?: string | null): string {
 
 /** HH:MM:SS wall-clock time, for live mono feeds. */
 export function formatClock(value?: string | null): string {
-  if (!value) return '—';
+  if (!value) return 'n/a';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleTimeString('en-GB', { hour12: false });
 }
 
 export function formatRelativeTime(value?: string | null): string {
-  if (!value) return '—';
+  if (!value) return 'n/a';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
@@ -48,7 +48,7 @@ export function formatRelativeTime(value?: string | null): string {
 }
 
 export function formatDurationSeconds(seconds?: number | null): string {
-  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '—';
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return 'n/a';
   const s = Math.round(seconds);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -65,7 +65,7 @@ export function formatNumber(n?: number | null): string {
 }
 
 /**
- * Semantic tones. Quiet, theme-aware tints — accents reserved for real risk/status.
+ * Semantic tones. Quiet, theme-aware tints; accents reserved for real risk/status.
  * Use with <Pill className={TONE.x}> from components/common.
  */
 export const TONE = {
@@ -128,7 +128,7 @@ export function scanStatusMeta(status?: string): {
     case 'FAILED':
       return { label: 'FAILED', badge: TONE.danger };
     default:
-      return { label: status || '—', badge: TONE.neutral };
+      return { label: status || 'n/a', badge: TONE.neutral };
   }
 }
 
@@ -179,13 +179,13 @@ const ENV_LABELS: Record<string, string> = {
 };
 
 export function envLabel(env?: string | null): string {
-  if (!env) return '—';
+  if (!env) return '';
   return ENV_LABELS[env.toLowerCase()] || env;
 }
 
-/** Translate EOL labels produced by the backend in Polish ("nginx 1.14 – gałąź EOL od 2019-04"). */
+/** Translate EOL labels produced by the backend in Polish ("nginx 1.14 [dash] gałąź EOL od 2019-04"). */
 export function eolLabel(label: string): string {
-  return label.replace(/\s*[–-]\s*gałąź EOL od\s*/i, ' · EOL since ');
+  return label.replace(/\s*[\u2013-]\s*gałąź EOL od\s*/i, ' · EOL since ');
 }
 
 /**

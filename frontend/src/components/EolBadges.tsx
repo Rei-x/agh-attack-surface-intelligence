@@ -34,7 +34,7 @@ export function EolEvidence({ service }: { service: EolService }) {
         {outdated.map((o) => (
           <li key={`${o.product}-${o.branch}`} className="border-l-2 border-orange-500/60 pl-2">
             <span className="font-medium text-foreground">{eolLabel(o.label)}</span>
-            <span className="text-muted-foreground"> — {outdatedDetail(o)} </span>
+            <span className="text-muted-foreground">: {outdatedDetail(o)} </span>
             <a href={o.source} target="_blank" rel="noopener noreferrer" className="underline">
               source
             </a>
@@ -45,7 +45,7 @@ export function EolEvidence({ service }: { service: EolService }) {
             <span className="font-medium text-foreground">
               {h.id}: {h.name}
             </span>
-            <span className="text-muted-foreground"> — {vulnDetail(h)} </span>
+            <span className="text-muted-foreground">: {vulnDetail(h)} </span>
             {h.references[0] && (
               <a href={h.references[0]} target="_blank" rel="noopener noreferrer" className="underline">
                 reference

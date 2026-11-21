@@ -629,7 +629,7 @@ export function AssetsPage() {
               <span className="font-mono text-xs text-muted-foreground tabular-nums">
                 {totalHosts === 0
                   ? '0 hosts'
-                  : `${formatNumber((page - 1) * pageSize + 1)}–${formatNumber(
+                  : `${formatNumber((page - 1) * pageSize + 1)}-${formatNumber(
                       Math.min(page * pageSize, totalHosts)
                     )} of ${plural(totalHosts, 'host')}`}
               </span>
@@ -686,7 +686,7 @@ export function AssetsPage() {
               options={CLUSTER_OPTIONS}
             />
             <span className="text-xs text-muted-foreground">
-              Services that share a favicon, technology stack, page title or TLS issuer — likely the same
+              Services that share a favicon, technology stack, page title or TLS issuer, likely the same
               deployment.
             </span>
           </div>
@@ -875,7 +875,7 @@ function HostRow({
               <div className="truncate text-xs text-foreground">{idLabel || id.os}</div>
               <div className="truncate text-[11px] text-muted-foreground">
                 {[id.kind, idLabel && id.os && !id.os.startsWith(id.product || '¤') ? id.os : null].filter(Boolean).join(' · ') ||
-                  '—'}
+                  ''}
               </div>
             </div>
           </div>

@@ -56,12 +56,12 @@ export function HostTimeline({ hostId }: { hostId: string }) {
         <Input
           value={port}
           onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ''))}
-          placeholder="Port, np. 3389"
+          placeholder="Port, e.g. 3389"
           className="w-36 font-mono"
         />
         {firstSeen && (
           <span className="text-xs text-muted-foreground">
-            Port {port} pierwszy raz widziany:{' '}
+            Port {port} first seen:{' '}
             <span className="font-mono text-foreground">{formatDateTime(firstSeen.at)}</span>
           </span>
         )}
@@ -70,7 +70,7 @@ export function HostTimeline({ hostId }: { hostId: string }) {
       {entries === null ? (
         <PeckLoader />
       ) : entries.length === 0 ? (
-        <Empty>Brak zdarzeń</Empty>
+        <Empty>No events</Empty>
       ) : (
         <ol className="relative border-l border-border pl-4">
           {entries.map((e, idx) => (
@@ -106,7 +106,7 @@ export function HostTimeline({ hostId }: { hostId: string }) {
                 {formatDateTime(e.at)}
                 {e.kind === 'observation' &&
                   e.until &&
-                  ` → ${formatDateTime(e.until)} · ${e.count}× w skanach`}
+                  ` → ${formatDateTime(e.until)} · in ${e.count} scans`}
               </div>
             </li>
           ))}

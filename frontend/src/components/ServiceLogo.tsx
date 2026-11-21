@@ -127,7 +127,7 @@ interface Rule {
 }
 
 /**
- * Tier 1 — applications, appliances and devices: what the analyst has to act on ("you run
+ * Tier 1: applications, appliances and devices: what the analyst has to act on ("you run
  * phpMyAdmin"). Matched across ALL candidate strings before any web server / framework, so
  * WordPress on Apache shows WordPress and iDRAC built with Angular shows Dell.
  */
@@ -204,13 +204,13 @@ const APP_RULES: Rule[] = [
   { keys: ['linux telnetd', 'linux'], si: siLinux },
 ];
 
-/** Tier 1b — device categories when no vendor is known (a BMC signature without a brand). */
+/** Tier 1b: device categories when no vendor is known (a BMC signature without a brand). */
 const DEVICE_RULES: Rule[] = [
   { keys: ['server bmc', 'bmc', 'ipmi'], Icon: RiServerLine, label: 'Server BMC', color: '#0EA5E9' },
   { keys: ['camera', 'webcam'], Icon: RiWebcamLine, label: 'Camera', color: '#06B6D4' },
 ];
 
-/** Tier 2 — frameworks / runtimes (more telling than the web server in front of them). */
+/** Tier 2: frameworks / runtimes (more telling than the web server in front of them). */
 const FRAMEWORK_RULES: Rule[] = [
   { keys: ['spring boot', 'spring-boot', 'springboot', 'whitelabel error'], si: siSpringboot },
   { keys: ['spring'], si: siSpring },
@@ -230,7 +230,7 @@ const FRAMEWORK_RULES: Rule[] = [
   { keys: ['php', 'phpsessid'], si: siPhp },
 ];
 
-/** Tier 3 — generic web servers / proxies. */
+/** Tier 3: generic web servers / proxies. */
 const SERVER_RULES: Rule[] = [
   { keys: ['tomcat', 'coyote'], si: siApachetomcat },
   { keys: ['jetty'], si: siEclipsejetty },

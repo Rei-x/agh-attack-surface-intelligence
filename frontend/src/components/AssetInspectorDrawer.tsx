@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   RiAlertLine,
   RiArrowDownSLine,
   RiArrowRightSLine,
+  RiExternalLinkLine,
   RiHistoryLine,
   RiLockLine,
   RiLockUnlockLine,
+  RiMailLine,
   RiSaveLine,
   RiSendPlaneLine,
 } from '@remixicon/react';
@@ -16,17 +19,24 @@ import { TriageBadge } from '@/components/AssetQueryHelp';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PERMISSIONS } from '@/lib/permissions';
+import { useDefectDojoStatus } from '@/lib/defectdojo';
+import { hostIdentity, identityLabel } from '@/lib/identity';
 import {
+  assetsLink,
+  envLabel,
   formatDateTime,
   formatRelativeTime,
   lifecycleMeta,
+  queryTerm,
   scoreBarColor,
   scoreColor,
+  translateFactor,
 } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Empty, Notice, Pill, SectionTitle, SimpleSelect } from '@/components/common';
-import { ServiceLogoFor } from '@/components/ServiceLogo';
-import { EolBadges, EolEvidence } from '@/components/EolBadges';
+import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
+import { CategoryBadges, serviceFlags } from '@/components/CategoryBadge';
+import { EolEvidence } from '@/components/EolBadges';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,7 +45,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { Host, Service, ServiceObservation, TimeSlotStat } from '@/types/api';
+import type { Host, Service, ServiceObservation, TagRule, TimeSlotStat } from '@/types/api';
 import { PeckLoader } from '@/components/Woodpecker';
 
 interface Props {
@@ -48,16 +58,42 @@ const DEFAULT_SLOTS = ['00-06', '06-12', '12-18', '18-24'];
 
 const ENV_NONE = '__none__';
 const ENV_OPTIONS = [
-  { value: ENV_NONE, label: 'Nieokreślone' },
-  { value: 'prod', label: 'prod' },
-  { value: 'staging', label: 'staging' },
-  { value: 'dev', label: 'dev' },
-  { value: 'test', label: 'test' },
+  { value: ENV_NONE, label: 'Not set' },
+  { value: 'prod', label: 'Production' },
+  { value: 'staging', label: 'Staging' },
+  { value: 'dev', label: 'Development' },
+  { value: 'test', label: 'Test' },
 ];
 
 const LIFECYCLE_OPTIONS = ['NEW', 'ACTIVE', 'INTERMITTENT', 'MISSING', 'INACTIVE', 'REACTIVATED'].map(
-  (s) => ({ value: s, label: s })
+  (s) => ({ value: s, label: lifecycleMeta(s).label })
 );
+
+/** IPv4 CIDR membership (owner rules are IPv4 ranges). */
+function inCidr(ip: string, cidr: string): boolean {
+  const [net, bitsStr] = cidr.split('/');
+  const toNum = (s: string) => s.split('.').reduce((a, o) => (a << 8) + (Number(o) & 255), 0) >>> 0;
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip) || !/^\d+\.\d+\.\d+\.\d+$/.test(net || '')) return false;
+  const bits = bitsStr === undefined ? 32 : Number(bitsStr);
+  if (!(bits >= 0 && bits <= 32)) return false;
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  return (toNum(ip) & mask) === (toNum(net) & mask);
+}
+
+const EMAIL_RE = /[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}/i;
+
+/** Clickable tag / technology chip that lists every host with it. */
+function QueryChip({ q, children, title }: { q: string; children: React.ReactNode; title?: string }) {
+  return (
+    <Link
+      to={assetsLink(q)}
+      title={title || `Show all hosts: ${q}`}
+      className="inline-flex h-5 items-center border border-border px-1.5 font-mono text-[11px] text-foreground transition-colors hover:border-foreground/40 hover:underline"
+    >
+      {children}
+    </Link>
+  );
+}
 
 type TabId = 'services' | 'overview' | 'heatmap' | 'summary' | 'timeline';
 
@@ -90,7 +126,7 @@ function LockToggle({
     return (
       <span
         className="inline-flex size-7 items-center justify-center text-muted-foreground/50"
-        title="Wartość ze skanera"
+        title="Value from the scanner"
       >
         <RiLockUnlockLine className="size-3.5" />
       </span>
@@ -100,7 +136,7 @@ function LockToggle({
     return (
       <span
         className="inline-flex size-7 items-center justify-center text-violet-600 dark:text-violet-400"
-        title="Zablokowane"
+        title="Locked by an analyst"
       >
         <RiLockLine className="size-3.5" />
       </span>
@@ -116,14 +152,14 @@ function LockToggle({
             size="icon-xs"
             disabled={disabled}
             onClick={onUnlock}
-            aria-label="Odblokuj"
+            aria-label="Unlock"
             className="text-violet-600 hover:text-foreground dark:text-violet-400"
           />
         }
       >
         <RiLockLine />
       </TooltipTrigger>
-      <TooltipContent>Odblokuj</TooltipContent>
+      <TooltipContent>Unlock (scanner value wins again)</TooltipContent>
     </Tooltip>
   );
 }
@@ -148,11 +184,68 @@ function OverrideRow({
         {children}
         {scanner && (
           <div className="mt-1 font-mono text-[11px] text-amber-700 dark:text-amber-400">
-            Skaner: {scanner}
+            Scanner saw: {scanner}
           </div>
         )}
       </div>
       <div className="pt-1.5">{lock}</div>
+    </div>
+  );
+}
+
+/** "What is it and whom do I tell": device identity, OS, owner (+ contact), environment. */
+function HostIdentityLine({ host, rules }: { host: Host; rules: TagRule[] | null }) {
+  const id = hostIdentity(host);
+  const label = identityLabel(id);
+  const rule = (rules || []).find((r) => r.enabled && r.owner && inCidr(host.ip, r.cidr));
+  const owner = host.owner || rule?.owner || '';
+  const email = EMAIL_RE.exec(`${owner} ${rule?.description || ''}`)?.[0];
+  const subject = `[CBI AGH] ${host.ip}${label ? ` (${label})` : ''} needs attention`;
+  return (
+    <div className="grid grid-cols-1 gap-3 border border-border bg-muted/30 p-3 sm:grid-cols-2">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <ServiceLogo names={id.logoNames.length ? id.logoNames : ['host']} kind="host" size="lg" />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground" title={id.evidence ? `From ${id.evidence}` : undefined}>
+            {label || id.os || 'Unidentified device'}
+          </div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {[id.kind, id.os && id.os !== label ? `OS: ${id.os}` : null].filter(Boolean).join(' · ') ||
+              'No product banner or page title identified it yet'}
+          </div>
+        </div>
+      </div>
+      <div className="min-w-0 text-xs">
+        <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Owner</div>
+        {owner ? (
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <Link
+              to={assetsLink(queryTerm('owner', owner))}
+              className="truncate font-medium text-foreground hover:underline"
+              title={`All hosts owned by ${owner}`}
+            >
+              {owner}
+            </Link>
+            {email && (
+              <a
+                href={`mailto:${email}?subject=${encodeURIComponent(subject)}`}
+                className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                title={`Email ${email}`}
+              >
+                <RiMailLine className="size-3.5" />
+                {email === owner ? 'Email' : email}
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className="mt-0.5 text-muted-foreground">Not assigned (add a CIDR owner rule or set it in Overrides)</div>
+        )}
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          {[host.environment ? envLabel(host.environment) : null, rule?.description, rule ? `rule ${rule.cidr}` : null]
+            .filter(Boolean)
+            .join(' · ')}
+        </div>
+      </div>
     </div>
   );
 }
@@ -195,9 +288,20 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
 
   const canWrite = can(PERMISSIONS.ASSETS_WRITE);
   const canPushDD = can(PERMISSIONS.DEFECTDOJO_PUSH);
+  const dd = useDefectDojoStatus(canPushDD && !!hostId);
+  const [ownerRules, setOwnerRules] = useState<TagRule[] | null>(null);
 
-  const loadHost = async (id: string) => {
-    setLoading(true);
+  useEffect(() => {
+    if (!hostId || ownerRules) return;
+    api
+      .listTagRules()
+      .then(setOwnerRules)
+      .catch(() => setOwnerRules([]));
+  }, [hostId, ownerRules]);
+
+  /** silent: refresh in place (after a save) without swapping the drawer for the loader. */
+  const loadHost = async (id: string, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const h = await api.getHost(id);
       setHost(h);
@@ -211,7 +315,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
         setExpandedServiceId(h.services[0].id);
       }
     } catch (err) {
-      toast.error('Błąd ładowania hosta', (err as Error).message);
+      toast.error('Could not load host', (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -253,16 +357,16 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       if (notes !== (host.notes || '')) payload.notes = notes;
 
       if (Object.keys(payload).length === 0) {
-        toast.info('Brak zmian');
+        toast.info('No changes');
         return;
       }
 
       const updated = await api.patchHostOverrides(host.id, payload);
       setHost(updated);
-      toast.success('Zapisano overrides');
+      toast.success('Overrides saved');
       onUpdated?.();
     } catch (err) {
-      toast.error('Błąd zapisu', (err as Error).message);
+      toast.error('Save failed', (err as Error).message);
     } finally {
       setSavingHost(false);
     }
@@ -280,10 +384,10 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       setLifecycleState(updated.lifecycle_state || 'ACTIVE');
       setTagsInput((updated.tags || []).join(', '));
       setNotes(updated.notes || '');
-      toast.success('Odblokowano', field);
+      toast.success('Unlocked', field);
       onUpdated?.();
     } catch (err) {
-      toast.error('Błąd odblokowania', (err as Error).message);
+      toast.error('Unlock failed', (err as Error).message);
     } finally {
       setSavingHost(false);
     }
@@ -319,12 +423,12 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       if (svcForm.notes !== (svc.notes || '')) payload.notes = svcForm.notes;
 
       await api.patchServiceOverrides(svc.id, payload);
-      toast.success('Zapisano overrides usługi');
+      toast.success('Service overrides saved');
       setEditingServiceId(null);
-      if (host) await loadHost(host.id);
+      if (host) await loadHost(host.id, true);
       onUpdated?.();
     } catch (err) {
-      toast.error('Błąd zapisu', (err as Error).message);
+      toast.error('Save failed', (err as Error).message);
     } finally {
       setSavingSvc(false);
     }
@@ -334,8 +438,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
   // to the TriageEditor so it can show the server's validation message inline.
   const handleSaveServiceTriage = async (svcId: string, patch: TriagePatch | null) => {
     await api.patchServiceOverrides(svcId, { triage: patch });
-    toast.success('Zapisano decyzję');
-    if (host) await loadHost(host.id);
+    if (host) await loadHost(host.id, true);
     onUpdated?.();
   };
 
@@ -343,18 +446,17 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
     if (!host) return;
     const updated = await api.patchHostOverrides(host.id, { triage: patch });
     setHost((prev) => (prev ? { ...prev, ...updated, recent_changes: prev.recent_changes } : updated));
-    toast.success('Zapisano decyzję');
     onUpdated?.();
   };
 
   const handleUnlockServiceField = async (svcId: string, field: string) => {
     try {
       await api.patchServiceOverrides(svcId, { unlock_fields: [field] });
-      toast.success('Odblokowano', field);
-      if (host) await loadHost(host.id);
+      toast.success('Unlocked', field);
+      if (host) await loadHost(host.id, true);
       onUpdated?.();
     } catch (err) {
-      toast.error('Błąd odblokowania', (err as Error).message);
+      toast.error('Unlock failed', (err as Error).message);
     }
   };
 
@@ -364,7 +466,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       const list = await api.getServiceObservations(svcId);
       setObsByService((prev) => ({ ...prev, [svcId]: list }));
     } catch (err) {
-      toast.error('Błąd pobierania historii', (err as Error).message);
+      toast.error('Could not load history', (err as Error).message);
     }
   };
 
@@ -375,9 +477,9 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
         service_ids: [svc.id],
         severity: svc.interestingness >= 75 ? 'High' : svc.interestingness >= 50 ? 'Medium' : 'Low',
       });
-      toast.success('Wysłano do DefectDojo', `${host?.ip}:${svc.port}`);
+      toast.success('Sent to DefectDojo', `${host?.ip}:${svc.port}`);
     } catch (err) {
-      toast.error('Błąd DefectDojo', (err as Error).message);
+      toast.error('DefectDojo push failed', (err as Error).message);
     } finally {
       setPushingDD(null);
     }
@@ -410,39 +512,58 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
         {/* Header */}
         <SheetHeader className="gap-3 border-b border-border p-6 pr-16">
           {!ready || !host ? (
-            <SheetTitle className="text-sm text-muted-foreground">Ładowanie…</SheetTitle>
+            <SheetTitle className="text-sm text-muted-foreground">Loading…</SheetTitle>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <SheetTitle className="font-mono text-lg tracking-normal normal-case">
                   {host.ip}
                 </SheetTitle>
-                <Pill className={lc.badge} dot>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase">
+                  <span className={cn('size-2', lc.dot)} aria-hidden />
                   {lc.label}
-                </Pill>
-                <Pill className={cn('font-mono tabular-nums', scoreColor(host.interestingness))}>
-                  Score {host.interestingness}
-                </Pill>
+                </span>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex" />}>
+                    <Pill className={cn('cursor-help font-mono tabular-nums', scoreColor(host.interestingness))}>
+                      Score {host.interestingness}
+                    </Pill>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm flex-col items-start gap-0.5 text-left">
+                    <span className="font-semibold">Why {host.interestingness}</span>
+                    {(host.interesting_factors || []).length === 0 ? (
+                      <span className="opacity-80">No risk factors</span>
+                    ) : (
+                      [...host.interesting_factors!]
+                        .sort((a, b) => b.points - a.points)
+                        .slice(0, 6)
+                        .map((f, i) => (
+                          <span key={i} className="opacity-80">
+                            +{f.points} {translateFactor(f.reason)}
+                          </span>
+                        ))
+                    )}
+                  </TooltipContent>
+                </Tooltip>
                 {(host.locked_fields?.length || 0) > 0 && (
-                  <Pill tone="violet">
+                  <Pill tone="violet" title={`Analyst overrides: ${host.locked_fields!.join(', ')}`}>
                     <RiLockLine className="size-3" />
                     {host.locked_fields!.length}
                   </Pill>
                 )}
                 <TriageBadge triage={host.triage} />
               </div>
+              <HostIdentityLine host={host} rules={ownerRules} />
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {host.hostname && <span className="font-mono text-foreground">{host.hostname}</span>}
                 <span>
-                  Stabilność <span className="font-mono text-foreground">{host.stability_score}%</span>
-                </span>
-                <span>
-                  Skany{' '}
+                  Seen in{' '}
                   <span className="font-mono text-foreground">
                     {host.total_scans_seen}/{host.total_scans_checked}
-                  </span>
+                  </span>{' '}
+                  scans
                 </span>
-                <span>{formatRelativeTime(host.last_seen)}</span>
+                <span>Last seen {formatRelativeTime(host.last_seen)}</span>
               </div>
             </>
           )}
@@ -459,14 +580,14 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
             <div className="border-b border-border px-6">
               <TabsList variant="line" className="-mb-px">
                 <TabsTrigger value="services">
-                  Usługi{' '}
+                  Services{' '}
                   <span className="font-mono text-muted-foreground tabular-nums">
                     {host.services?.length || 0}
                   </span>
                 </TabsTrigger>
-                <TabsTrigger value="summary">Przegląd</TabsTrigger>
-                <TabsTrigger value="timeline">Oś czasu</TabsTrigger>
-                <TabsTrigger value="heatmap">Heatmapa</TabsTrigger>
+                <TabsTrigger value="summary">Overview</TabsTrigger>
+                <TabsTrigger value="timeline">Timeline</TabsTrigger>
+                <TabsTrigger value="heatmap">Availability</TabsTrigger>
                 <TabsTrigger value="overview">Overrides</TabsTrigger>
               </TabsList>
             </div>
@@ -475,7 +596,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
               {/* ===== SERVICES: Evidence + Confidence ===== */}
               <TabsContent value="services" className="p-6">
                 {(host.services || []).length === 0 ? (
-                  <Empty>Brak usług</Empty>
+                  <Empty>No open services</Empty>
                 ) : (
                   <div className="divide-y divide-border border border-border">
                     {(host.services || []).map((svc) => {
@@ -519,10 +640,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                     {[svc.product, svc.version].filter(Boolean).join(' ')}
                                   </span>
                                 )}
-                                {svc.is_admin_panel && <Pill tone="danger">Admin</Pill>}
-                                {svc.is_staging_env && <Pill tone="warning">Staging/Dev</Pill>}
-                                {svc.is_iot && <Pill tone="violet">IoT</Pill>}
-                                <EolBadges service={svc} />
+                                <CategoryBadges flags={serviceFlags(svc)} size="xs" link />
                                 {(svc.locked_fields?.length || 0) > 0 && (
                                   <RiLockLine className="size-3.5 text-violet-600 dark:text-violet-400" />
                                 )}
@@ -543,44 +661,64 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                           {isOpen && (
                             <div className="space-y-6 border-t border-border bg-muted/20 px-4 py-5">
                               {/* Action bar */}
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <Pill className="font-mono normal-case tracking-normal">
-                                    triage: {svc.triage_status || 'new'}
-                                  </Pill>
-                                  {(svc.tags || []).map((t) => (
-                                    <Pill key={t} className="font-normal normal-case tracking-normal">
-                                      #{t}
-                                    </Pill>
-                                  ))}
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <TriageEditor
+                                      status={svc.triage_status}
+                                      triage={svc.triage}
+                                      workflow
+                                      canWrite={canWrite}
+                                      onSave={(patch) => handleSaveServiceTriage(svc.id, patch)}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    {canWrite && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="xs"
+                                        onClick={() =>
+                                          isEditing ? setEditingServiceId(null) : startEditService(svc)
+                                        }
+                                        title="Correct product, version or title; locked fields survive re-scans"
+                                      >
+                                        <RiLockLine data-icon="inline-start" />
+                                        {isEditing ? 'Cancel' : 'Edit'}
+                                      </Button>
+                                    )}
+                                    {canPushDD && (
+                                      <Tooltip>
+                                        <TooltipTrigger render={<span className="inline-flex" />}>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="xs"
+                                            disabled={!dd.ready || pushingDD === svc.id}
+                                            onClick={() => handlePushServiceToDD(svc)}
+                                          >
+                                            <RiSendPlaneLine data-icon="inline-start" />
+                                            {pushingDD === svc.id ? 'Sending…' : 'DefectDojo'}
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {dd.ready
+                                            ? 'Push now. Findings are also synced to DefectDojo automatically.'
+                                            : dd.reason}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  {canWrite && (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="xs"
-                                      onClick={() =>
-                                        isEditing ? setEditingServiceId(null) : startEditService(svc)
-                                      }
-                                    >
-                                      <RiLockLine data-icon="inline-start" />
-                                      {isEditing ? 'Anuluj' : 'Overrides'}
-                                    </Button>
-                                  )}
-                                  {canPushDD && (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="xs"
-                                      disabled={pushingDD === svc.id}
-                                      onClick={() => handlePushServiceToDD(svc)}
-                                    >
-                                      <RiSendPlaneLine data-icon="inline-start" />
-                                      {pushingDD === svc.id ? 'Wysyłanie…' : 'DefectDojo'}
-                                    </Button>
-                                  )}
-                                </div>
+                                {(svc.tags || []).length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {svc.tags!.map((t) => (
+                                      <QueryChip key={t} q={queryTerm('tag', t)}>
+                                        #{t}
+                                      </QueryChip>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
 
                               <EolEvidence service={svc} />
@@ -589,10 +727,10 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                               {isEditing && canWrite && (
                                 <div className="border border-border bg-card px-4 py-2">
                                   {[
-                                    { key: 'service_name', label: 'Usługa' },
-                                    { key: 'product', label: 'Produkt' },
-                                    { key: 'version', label: 'Wersja' },
-                                    { key: 'http_title', label: 'Tytuł HTTP' },
+                                    { key: 'service_name', label: 'Service' },
+                                    { key: 'product', label: 'Product' },
+                                    { key: 'version', label: 'Version' },
+                                    { key: 'http_title', label: 'HTTP title' },
                                   ].map((f) => {
                                     const locked = (svc.locked_fields || []).includes(f.key);
                                     const saw = svc.scanner_observed?.[f.key];
@@ -625,7 +763,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       </OverrideRow>
                                     );
                                   })}
-                                  <OverrideRow label="Tagi">
+                                  <OverrideRow label="Tags">
                                     <Input
                                       value={svcForm.tags}
                                       onChange={(e) =>
@@ -634,7 +772,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       placeholder="tag1, tag2"
                                     />
                                   </OverrideRow>
-                                  <OverrideRow label="Notatki">
+                                  <OverrideRow label="Notes">
                                     <Textarea
                                       rows={2}
                                       value={svcForm.notes}
@@ -650,7 +788,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       size="sm"
                                       onClick={() => setEditingServiceId(null)}
                                     >
-                                      Anuluj
+                                      Cancel
                                     </Button>
                                     <Button
                                       type="button"
@@ -659,19 +797,11 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       onClick={() => handleSaveServiceOverrides(svc)}
                                     >
                                       <RiSaveLine data-icon="inline-start" />
-                                      {savingSvc ? 'Zapisywanie…' : 'Zapisz'}
+                                      {savingSvc ? 'Saving…' : 'Save'}
                                     </Button>
                                   </div>
                                 </div>
                               )}
-
-                              <TriageEditor
-                                status={svc.triage_status}
-                                triage={svc.triage}
-                                workflow
-                                canWrite={canWrite}
-                                onSave={(patch) => handleSaveServiceTriage(svc.id, patch)}
-                              />
 
                               {/* Confidence (Noisy-OR) */}
                               {(svc.technologies?.length || 0) > 0 && (
@@ -700,9 +830,14 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                                 ) : (
                                                   <RiArrowRightSLine className="size-3.5 shrink-0 text-muted-foreground" />
                                                 ))}
-                                              <span className="text-xs font-medium text-foreground">
+                                              <Link
+                                                to={assetsLink(queryTerm('tech', tech.name))}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="truncate text-xs font-medium text-foreground hover:underline"
+                                                title={`All hosts running ${tech.name}`}
+                                              >
                                                 {tech.name}
-                                              </span>
+                                              </Link>
                                               {tech.version && (
                                                 <span className="font-mono text-[11px] text-muted-foreground">
                                                   v{tech.version}
@@ -756,7 +891,22 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                   <div className="space-y-4 border border-border bg-card p-4">
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                       <KV label="URL">
-                                        {http.url || `${http.scheme || 'http'}://${host.ip}:${svc.port}`}
+                                        {(() => {
+                                          const url = http.url || `${http.scheme || 'http'}://${host.ip}:${svc.port}`;
+                                          return /^https?:\/\//i.test(url) ? (
+                                            <a
+                                              href={url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1 underline decoration-border underline-offset-2 hover:decoration-foreground"
+                                            >
+                                              {url}
+                                              <RiExternalLinkLine className="size-3 shrink-0" />
+                                            </a>
+                                          ) : (
+                                            url
+                                          );
+                                        })()}
                                       </KV>
                                       <KV label="Status">
                                         {http.status_code}
@@ -804,7 +954,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                     {(http.missing_sec_headers?.length || 0) > 0 && (
                                       <div className="space-y-1.5 border-t border-border pt-3">
                                         <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                                          Brakujące nagłówki
+                                          Missing security headers
                                         </div>
                                         <div className="flex flex-wrap gap-1">
                                           {http.missing_sec_headers!.map((h) => (
@@ -823,7 +973,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                     {http.headers && Object.keys(http.headers).length > 0 && (
                                       <div className="space-y-1.5 border-t border-border pt-3">
                                         <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                                          Nagłówki
+                                          Headers
                                         </div>
                                         <div className="max-h-40 divide-y divide-border overflow-y-auto border border-border font-mono text-[11px]">
                                           {Object.entries(http.headers).map(([k, v]) => (
@@ -845,7 +995,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                           <table className="w-full font-mono text-[11px]">
                                             <thead className="border-b border-border text-[10px] tracking-widest text-muted-foreground uppercase">
                                               <tr>
-                                                <th className="px-2.5 py-1.5 text-left font-semibold">Nazwa</th>
+                                                <th className="px-2.5 py-1.5 text-left font-semibold">Name</th>
                                                 <th className="px-2.5 py-1.5 text-left font-semibold">HttpOnly</th>
                                                 <th className="px-2.5 py-1.5 text-left font-semibold">Secure</th>
                                                 <th className="px-2.5 py-1.5 text-left font-semibold">SameSite</th>
@@ -863,7 +1013,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                                           : 'font-semibold text-rose-600 dark:text-rose-400'
                                                       }
                                                     >
-                                                      {c.http_only ? 'TAK' : 'BRAK'}
+                                                      {c.http_only ? 'yes' : 'missing'}
                                                     </span>
                                                   </td>
                                                   <td className="px-2.5 py-1.5">
@@ -874,11 +1024,11 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                                           : 'font-semibold text-rose-600 dark:text-rose-400'
                                                       }
                                                     >
-                                                      {c.secure ? 'TAK' : 'BRAK'}
+                                                      {c.secure ? 'yes' : 'missing'}
                                                     </span>
                                                   </td>
                                                   <td className="px-2.5 py-1.5 text-muted-foreground">
-                                                    {c.same_site || '—'}
+                                                    {c.same_site || 'n/a'}
                                                   </td>
                                                 </tr>
                                               ))}
@@ -891,7 +1041,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                     {(http.safe_path_hits?.length || 0) > 0 && (
                                       <div className="space-y-1.5 border-t border-border pt-3">
                                         <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                                          Ścieżki (GET/HEAD)
+                                          Paths probed (GET/HEAD)
                                         </div>
                                         <div className="divide-y divide-border border border-border">
                                           {http.safe_path_hits!.map((hit, hi) => (
@@ -923,13 +1073,13 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                         <div className="flex items-center gap-1.5">
                                           {tls.is_self_signed && <Pill tone="warning">Self-signed</Pill>}
                                           {tls.is_expired ? (
-                                            <Pill tone="danger">Wygasły</Pill>
+                                            <Pill tone="orange">Expired</Pill>
                                           ) : (
                                             <Pill
                                               tone={tls.days_to_expiry <= 30 ? 'danger' : 'neutral'}
                                               className="font-mono"
                                             >
-                                              {tls.days_to_expiry} dn.
+                                              {tls.days_to_expiry} days
                                             </Pill>
                                           )}
                                         </div>
@@ -937,17 +1087,17 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <KV label="Subject CN">{tls.subject_cn}</KV>
                                         <KV label="Issuer">{tls.issuer}</KV>
-                                        <KV label="Ważny do">{formatDateTime(tls.not_after)}</KV>
+                                        <KV label="Valid until">{formatDateTime(tls.not_after)}</KV>
                                         <KV label="SHA256">
                                           <span className="block truncate" title={tls.sha256}>
                                             {tls.sha256}
                                           </span>
                                         </KV>
                                         {tls.jarm && (
-                                          <KV label="JARM (stos TLS)">
+                                          <KV label="JARM (TLS stack)">
                                             <span
                                               className="block truncate font-mono"
-                                              title={`${tls.jarm} — ten sam JARM = ta sama biblioteka/konfiguracja TLS`}
+                                              title={`${tls.jarm}: same JARM means the same TLS library and configuration`}
                                             >
                                               {tls.jarm}
                                             </span>
@@ -991,11 +1141,11 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                   onClick={() => handleLoadObservations(svc.id)}
                                 >
                                   <RiHistoryLine data-icon="inline-start" />
-                                  Historia obserwacji
+                                  Observation history
                                 </Button>
                                 {obsList &&
                                   (obsList.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground">Brak historii</p>
+                                    <p className="text-xs text-muted-foreground">No history yet</p>
                                   ) : (
                                     <div className="divide-y divide-border border border-border bg-card">
                                       {obsList.map((o, idx) => (
@@ -1028,22 +1178,37 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
               {/* ===== SUMMARY ===== */}
               <TabsContent value="summary" className="space-y-6 p-6">
                 <div className="grid grid-cols-2 gap-5 border border-border bg-card p-4">
-                  <KV label="Pierwsze wykrycie">{formatDateTime(host.first_seen)}</KV>
-                  <KV label="Ostatnia aktywność">{formatDateTime(host.last_seen)}</KV>
-                  <KV label="OS">{host.os_guess || '—'}</KV>
-                  <KV label="Histereza">
-                    {host.state_transitions} przejść · {host.consecutive_misses} braków
+                  <KV label="First seen">{formatDateTime(host.first_seen)}</KV>
+                  <KV label="Last seen">{formatDateTime(host.last_seen)}</KV>
+                  <KV label="OS">
+                    {(() => {
+                      const id = hostIdentity(host);
+                      return id.os ? (
+                        <span title={id.evidence ? `From ${id.evidence}` : undefined}>
+                          {id.os}
+                          {!host.os_guess && <span className="text-muted-foreground"> (from banners)</span>}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">unknown</span>
+                      );
+                    })()}
+                  </KV>
+                  <KV label="State changes">
+                    {host.state_transitions} transitions, {host.consecutive_misses} consecutive misses
                   </KV>
                   {host.liveness && (
                     <div className="col-span-2">
-                      <KV label="P(host nadal działa) — model Bayesa">
+                      <KV label="Still alive? (Bayesian estimate)">
                         <span title={host.liveness.model}>
                           <span className="font-mono tabular-nums">
                             {Math.round(host.liveness.p_alive * 100)}%
                           </span>{' '}
                           <span className="text-muted-foreground">
-                            (próg INACTIVE {Math.round(host.liveness.threshold * 100)}%) ·{' '}
-                            {host.liveness.reason}
+                            (marked INACTIVE below {Math.round(host.liveness.threshold * 100)}%
+                            {host.liveness.streak_misses > 0
+                              ? `, ${host.liveness.streak_misses} missed scans in the ${host.liveness.slot} window`
+                              : `, answering in the ${host.liveness.slot} window`}
+                            )
                           </span>
                         </span>
                       </KV>
@@ -1053,11 +1218,11 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
 
                 {(host.interesting_factors?.length || 0) > 0 && (
                   <div className="space-y-2">
-                    <SectionTitle>Czynniki score</SectionTitle>
+                    <SectionTitle>Why this score</SectionTitle>
                     <div className="divide-y divide-border border border-border bg-card">
                       {host.interesting_factors!.map((f, idx) => (
                         <div key={idx} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
-                          <span className="text-foreground">{f.reason}</span>
+                          <span className="text-foreground">{translateFactor(f.reason)}</span>
                           <span className="font-mono text-muted-foreground tabular-nums">+{f.points}</span>
                         </div>
                       ))}
@@ -1067,7 +1232,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
 
                 {(host.recent_changes?.length || 0) > 0 && (
                   <div className="space-y-2">
-                    <SectionTitle>Ostatnie zmiany</SectionTitle>
+                    <SectionTitle>Recent changes</SectionTitle>
                     <div className="divide-y divide-border border border-border bg-card">
                       {host.recent_changes!.map((ch) => (
                         <div key={ch.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-xs">
@@ -1079,12 +1244,12 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                               {ch.summary}
                             </div>
                             <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                              {ch.event_type} · slot {ch.time_slot || '—'} · {formatDateTime(ch.created_at)}
+                              {ch.event_type}{ch.time_slot ? ` · slot ${ch.time_slot}` : ''} · {formatDateTime(ch.created_at)}
                             </div>
                           </div>
                           <div className="flex shrink-0 gap-1">
-                            {ch.is_expected_schedule && <Pill>Harmonogram</Pill>}
-                            {ch.is_time_anomaly && <Pill tone="danger">Anomalia</Pill>}
+                            {ch.is_expected_schedule && <Pill title="Matches the host's usual schedule">Scheduled</Pill>}
+                            {ch.is_time_anomaly && <Pill tone="warning" title="Outside the host's usual time window">Off-hours</Pill>}
                           </div>
                         </div>
                       ))}
@@ -1101,7 +1266,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
               {/* ===== HEATMAP ===== */}
               <TabsContent value="heatmap" className="space-y-6 p-6">
                 <div className="space-y-3">
-                  <SectionTitle>Dostępność wg pory dnia</SectionTitle>
+                  <SectionTitle>Availability by time of day</SectionTitle>
                   <div className="grid grid-cols-2 border-t border-l border-border sm:grid-cols-4">
                     {heatmapSlots.map((slot) => {
                       const pct = Math.round((slot.ratio || 0) * 100);
@@ -1121,7 +1286,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                         >
                           <div className="font-mono text-[11px] text-muted-foreground">{slot.slot}</div>
                           <div className="mt-1 font-heading text-2xl font-semibold text-foreground tabular-nums">
-                            {slot.total > 0 ? `${pct}%` : '—'}
+                            {slot.total > 0 ? `${pct}%` : 'n/a'}
                           </div>
                           <div className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">
                             {slot.seen}/{slot.total}
@@ -1134,7 +1299,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
 
                 <div className="flex items-center justify-between gap-4 border border-border bg-card px-4 py-3 text-xs">
                   <span className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                    Stabilność
+                    Stability
                   </span>
                   <div className="flex items-center gap-3">
                     <div className="h-1 w-40 bg-muted">
@@ -1162,7 +1327,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                 <form onSubmit={handleSaveHostOverrides} className="space-y-5">
                   {!canWrite && (
                     <Notice icon={RiLockLine}>
-                      Tylko odczyt · <span className="font-mono">assets:write</span>
+                      Read only · <span className="font-mono">assets:write</span>
                     </Notice>
                   )}
 
@@ -1178,7 +1343,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                         },
                         {
                           field: 'owner',
-                          label: 'Właściciel',
+                          label: 'Owner',
                           value: owner,
                           setValue: setOwner,
                           placeholder: 'WIET / CBI AGH',
@@ -1208,7 +1373,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                     ))}
 
                     <OverrideRow
-                      label="Środowisko"
+                      label="Environment"
                       scanner={scannerSawHost('environment')}
                       lock={
                         <LockToggle
@@ -1232,7 +1397,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                     </OverrideRow>
 
                     <OverrideRow
-                      label="Cykl życia"
+                      label="Lifecycle"
                       scanner={scannerSawHost('lifecycle_state')}
                       lock={
                         <LockToggle
@@ -1252,7 +1417,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                     </OverrideRow>
 
                     <OverrideRow
-                      label="Tagi"
+                      label="Tags"
                       lock={
                         <LockToggle
                           locked={isHostFieldLocked('tags')}
@@ -1266,12 +1431,12 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                         disabled={!canWrite}
                         value={tagsInput}
                         onChange={(e) => setTagsInput(e.target.value)}
-                        placeholder="krytyczny, agh-usos"
+                        placeholder="critical, agh-usos"
                       />
                     </OverrideRow>
 
                     <OverrideRow
-                      label="Notatki"
+                      label="Notes"
                       lock={
                         <LockToggle
                           locked={isHostFieldLocked('notes')}
@@ -1286,7 +1451,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                         disabled={!canWrite}
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder="AES-256-GCM at rest"
+                        placeholder="Context for other analysts (stored encrypted)"
                       />
                     </OverrideRow>
                   </div>
@@ -1295,7 +1460,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                     <div className="flex justify-end">
                       <Button type="submit" disabled={savingHost}>
                         <RiSaveLine data-icon="inline-start" />
-                        {savingHost ? 'Zapisywanie…' : 'Zapisz i zablokuj'}
+                        {savingHost ? 'Saving…' : 'Save and lock'}
                       </Button>
                     </div>
                   )}

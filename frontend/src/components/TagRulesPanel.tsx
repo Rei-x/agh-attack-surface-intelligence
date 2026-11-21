@@ -59,7 +59,7 @@ export function TagRulesPanel() {
       setRows(rules.map(toRow));
       setDirty(false);
     } catch (err) {
-      toast.error('Reguły tagów', (err as Error).message);
+      toast.error('Owner rules', (err as Error).message);
     }
   }, [toast]);
 
@@ -78,9 +78,9 @@ export function TagRulesPanel() {
       const saved = await api.saveTagRules(rows.filter((r) => r.cidr.trim()).map(toRule));
       setRows(saved.map(toRow));
       setDirty(false);
-      toast.success('Zapisano reguły', 'Zastosowane przy kolejnym skanie każdego hosta');
+      toast.success('Rules saved', 'Applied to each host on its next scan');
     } catch (err) {
-      toast.error('Błąd zapisu reguł', (err as Error).message);
+      toast.error('Could not save rules', (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -90,9 +90,9 @@ export function TagRulesPanel() {
     setBusy(true);
     try {
       const res = await api.applyTagRules();
-      toast.success('Zastosowano reguły', `${res.updated} z ${res.checked} hostów zaktualizowano`);
+      toast.success('Rules applied', `${res.updated} of ${res.checked} hosts updated`);
     } catch (err) {
-      toast.error('Błąd', (err as Error).message);
+      toast.error('Error', (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -103,29 +103,29 @@ export function TagRulesPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           <RiPriceTag3Line className="size-4 text-muted-foreground" />
-          Właściciele i tagi wg CIDR · {rows.length}
+          Owners and tags by CIDR · {rows.length}
         </CardTitle>
         {canWrite && (
           <CardAction className="flex items-center gap-2">
             <Button variant="outline" size="xs" disabled={busy || dirty || rows.length === 0} onClick={applyNow}>
-              <RiRefreshLine data-icon="inline-start" /> Zastosuj do istniejących
+              <RiRefreshLine data-icon="inline-start" /> Apply to existing hosts
             </Button>
             <Button size="xs" disabled={busy || !dirty} onClick={save}>
-              <RiSaveLine data-icon="inline-start" /> Zapisz
+              <RiSaveLine data-icon="inline-start" /> Save
             </Button>
           </CardAction>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
         {rows.length === 0 ? (
-          <Empty className="py-6">Brak reguł · np. 10.66.0.0/22 → wydzial-wi, admin@wi.agh.edu.pl</Empty>
+          <Empty className="py-6">No rules yet, e.g. 10.66.0.0/22 → wydzial-wi, admin@wi.agh.edu.pl</Empty>
         ) : (
           <div className="divide-y divide-border border-y border-border">
             <div className="grid grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_6rem_2.5rem_2rem] gap-2 py-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
               <span>CIDR</span>
               <span>Tagi</span>
-              <span>Właściciel</span>
-              <span>Środ.</span>
+              <span>Owner</span>
+              <span>Env.</span>
               <span>Aktywna</span>
               <span />
             </div>
@@ -168,7 +168,7 @@ export function TagRulesPanel() {
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label="Usuń regułę"
+                    aria-label="Remove rule"
                     className="text-muted-foreground hover:text-destructive"
                     onClick={() => {
                       setRows((prev) => prev.filter((_, i) => i !== idx));
@@ -193,7 +193,7 @@ export function TagRulesPanel() {
               setDirty(true);
             }}
           >
-            <RiAddLine data-icon="inline-start" /> Dodaj regułę
+            <RiAddLine data-icon="inline-start" /> Add rule
           </Button>
         )}
       </CardContent>

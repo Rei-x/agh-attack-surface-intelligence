@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { RiArrowRightUpLine, RiNodeTree, RiRefreshLine, RiSendPlaneLine } from '@remixicon/react';
 import { Bar, BarChart, CartesianGrid, Cell, Label, Line, LineChart, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import {
@@ -95,7 +95,19 @@ export function DashboardPage() {
   const [inventory, setInventory] = useState<InventoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [pushingId, setPushingId] = useState<string | null>(null);
-  const [inspectHostId, setInspectHostId] = useState<string | null>(null);
+  // The open host lives in the URL (?host=) so a drawer view can be shared as a link.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const inspectHostId = searchParams.get('host');
+  const setInspectHostId = (id: string | null) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set('host', id);
+        else next.delete('host');
+        return next;
+      },
+      { replace: !id }
+    );
   const [hiddenSeries, setHiddenSeries] = useState<Set<SeriesKey>>(new Set());
 
   const toggleSeries = (key: SeriesKey) =>
