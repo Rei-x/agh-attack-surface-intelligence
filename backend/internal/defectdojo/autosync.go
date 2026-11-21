@@ -92,6 +92,12 @@ func SyncChangeFindings(ctx context.Context, store db.Store, c *Client, cfg *dom
 		}
 		st.FindingsByKey[key] = append(st.FindingsByKey[key], r)
 	}
+	// Findings across every profile's test, not only the one just pushed.
+	total := 0
+	for _, list := range st.FindingsByKey {
+		total += len(list)
+	}
+	st.Findings = total
 	_ = db.SaveDefectDojoSync(ctx, store, st)
 	return res, nil
 }
@@ -145,8 +151,27 @@ func SyncAllProfiles(ctx context.Context, store db.Store, c *Client, cfg *domain
 		return append(out, r), err
 	}
 	var firstErr error
+	covered := map[string]bool{}
 	for _, p := range profiles {
-		r, err := SyncChangeFindings(ctx, store, c, cfg, HostsInScope(ctx, hosts, p.Targets), ChangesTestTitle(p.Name), label, "", exportedBy)
+		scoped := HostsInScope(ctx, hosts, p.Targets)
+		for _, h := range scoped {
+			covered[h.ID] = true
+		}
+		r, err := SyncChangeFindings(ctx, store, c, cfg, scoped, ChangesTestTitle(p.Name), label, "", exportedBy)
+		out = append(out, r)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	// Hosts no profile covers (imports, manual entries) go to the plain "Dzięcioł changes" test.
+	var rest []domain.Host
+	for _, h := range hosts {
+		if !covered[h.ID] {
+			rest = append(rest, h)
+		}
+	}
+	if len(rest) > 0 {
+		r, err := SyncChangeFindings(ctx, store, c, cfg, rest, ChangesTestTitle(""), label, "", exportedBy)
 		out = append(out, r)
 		if err != nil && firstErr == nil {
 			firstErr = err
