@@ -126,9 +126,14 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 	case "csv":
 		runType = domain.ScanTypeImportCSV
 		observations, err = ingest.ParseCSV(bytes.NewReader(data))
-	case "json":
+	case "json", "scb":
+		// secureCodeBox findings.json is auto-detected inside the json format too.
 		runType = domain.ScanTypeImportJSON
-		observations, err = ingest.ParseJSON(bytes.NewReader(data))
+		if format == "scb" || ingest.LooksLikeSCBFindings(data) {
+			observations, err = ingest.ParseSCBFindings(bytes.NewReader(data))
+		} else {
+			observations, err = ingest.ParseJSON(bytes.NewReader(data))
+		}
 	case "passive":
 		runType = domain.ScanTypePassive
 		observations, err = ingest.ParseJSON(bytes.NewReader(data))
@@ -142,7 +147,7 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 			err = fmt.Errorf("nmap xml contains no hosts")
 		}
 	default:
-		writeErr(w, http.StatusBadRequest, "unsupported import format (use csv, json, nmap, or passive)")
+		writeErr(w, http.StatusBadRequest, "unsupported import format (use csv, json, nmap, scb, or passive)")
 		return
 	}
 	if err != nil {
@@ -233,8 +238,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-ecs.ndjson"`, stamp))
 		_ = ingest.ExportECS(w, hosts)
+	case "scb", "securecodebox":
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-scb-findings.json"`, stamp))
+		_ = ingest.ExportSCB(w, hosts)
 	default:
-		writeErr(w, http.StatusBadRequest, "format must be json, csv, nmap, urls or ecs")
+		writeErr(w, http.StatusBadRequest, "format must be json, csv, nmap, urls, ecs or scb")
 	}
 }
 

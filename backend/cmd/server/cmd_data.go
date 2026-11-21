@@ -49,11 +49,12 @@ const importUsage = `Usage: aegis import <file> [flags]
 
 Imports scan results into the store through the same pipeline as live scans
 (diffing, lifecycle tracking, fingerprinting, encryption at rest).
-Formats: csv, json (AegisASI / generic host lists) and nmap XML (-oX). Use - for stdin.`
+Formats: csv, json (AegisASI / generic host lists), nmap XML (-oX) and OWASP
+secureCodeBox findings.json (scb; auto-detected for .json). Use - for stdin.`
 
 func cmdImport(args []string) error {
 	fs := newFlagSet("import", importUsage)
-	format := fs.String("format", "", "csv | json | nmap (default: from extension/content)")
+	format := fs.String("format", "", "csv | json | nmap | scb (default: from extension/content)")
 	name := fs.String("name", "", "scan run name")
 	dataDir := fs.String("data-dir", "", "data directory (default ~/.aegis)")
 	verbose := fs.Bool("verbose", false, "show internal log output")
@@ -88,14 +89,18 @@ func cmdImport(args []string) error {
 	case "csv":
 		runType = domain.ScanTypeImportCSV
 		obs, err = ingest.ParseCSV(bytes.NewReader(data))
-	case "json":
-		obs, err = ingest.ParseJSON(bytes.NewReader(data))
+	case "json", "scb":
+		if f == "scb" || ingest.LooksLikeSCBFindings(data) {
+			obs, err = ingest.ParseSCBFindings(bytes.NewReader(data))
+		} else {
+			obs, err = ingest.ParseJSON(bytes.NewReader(data))
+		}
 	case "nmap", "xml":
 		runType = scanTypeImportNmap
 		rawXML = string(data)
 		obs, err = scanner.ParseNmapXML(data)
 	default:
-		return fmt.Errorf("unsupported format %q (use csv, json or nmap)", f)
+		return fmt.Errorf("unsupported format %q (use csv, json, nmap or scb)", f)
 	}
 	if err != nil {
 		return fmt.Errorf("parse %s as %s: %w", path, f, err)
@@ -157,11 +162,12 @@ func detectImportFormat(path string, data []byte) string {
 const exportUsage = `Usage: aegis export [flags]
 
 Exports the current inventory (decrypted) as JSON, CSV, nmap XML, a URL list
-(httpx/nuclei/gowitness) or ECS NDJSON (ELK/Splunk). Writes to stdout unless -o is given.`
+(httpx/nuclei/gowitness), ECS NDJSON (ELK/Splunk) or OWASP secureCodeBox
+findings.json (scb). Writes to stdout unless -o is given.`
 
 func cmdExport(args []string) error {
 	fs := newFlagSet("export", exportUsage)
-	format := fs.String("format", "json", "json | csv | nmap | urls | ecs")
+	format := fs.String("format", "json", "json | csv | nmap | urls | ecs | scb")
 	out := fs.String("o", "", "output file (default stdout)")
 	scanID := fs.String("scan", "", "export the inventory snapshot taken at this scan run")
 	state := fs.String("state", "", "filter by lifecycle state (NEW, ACTIVE, MISSING, ...)")
@@ -173,9 +179,9 @@ func cmdExport(args []string) error {
 	quietLogs(false)
 	f := strings.ToLower(*format)
 	switch f {
-	case "json", "csv", "nmap", "urls", "ecs":
+	case "json", "csv", "nmap", "urls", "ecs", "scb":
 	default:
-		return fmt.Errorf("--format must be json, csv, nmap, urls or ecs")
+		return fmt.Errorf("--format must be json, csv, nmap, urls, ecs or scb")
 	}
 	ctx := context.Background()
 	rt, err := openRuntime(ctx, runtimeOptions{DataDir: *dataDir, Command: "export", ReadOnly: true})
@@ -232,6 +238,8 @@ func cmdExport(args []string) error {
 		err = ingest.ExportURLs(w, hosts)
 	case "ecs":
 		err = ingest.ExportECS(w, hosts)
+	case "scb":
+		err = ingest.ExportSCB(w, hosts)
 	default:
 		err = ingest.ExportJSON(w, hosts)
 	}
