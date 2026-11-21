@@ -393,6 +393,9 @@ func (s *Server) handleStopScan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteScan(w http.ResponseWriter, r *http.Request) {
+	// Stop a still-running scan first so its worker does not keep scanning (and writing) a
+	// deleted run. Errors (already finished, not found) are irrelevant here.
+	_ = s.runner.StopScan(r.Context(), r.PathValue("id"))
 	if err := s.store.DeleteScanRun(r.Context(), r.PathValue("id")); err != nil {
 		writeStoreErr(w, err)
 		return

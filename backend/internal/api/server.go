@@ -305,7 +305,11 @@ func writeStoreErr(w http.ResponseWriter, err error) {
 		return
 	}
 	if errors.Is(err, db.ErrConflict) {
-		writeErr(w, http.StatusConflict, "already exists")
+		msg := "already exists"
+		if err.Error() != db.ErrConflict.Error() { // a descriptive conflict (e.g. invalid scan state)
+			msg = strings.TrimSuffix(err.Error(), ": "+db.ErrConflict.Error())
+		}
+		writeErr(w, http.StatusConflict, msg)
 		return
 	}
 	writeErr(w, http.StatusInternalServerError, err.Error())

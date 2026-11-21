@@ -195,6 +195,12 @@ type LiveScanRunner struct {
 
 	mu     sync.Mutex
 	active map[string]*activeScanHandle
+	// adhoc keeps the profile of running/paused quick scans that have no saved profile, so a
+	// user pause can be resumed (in this process).
+	adhoc map[string]domain.ScanProfile
+	// resumeMu serializes ResumeScan (user clicks, window watcher) so one run never gets two
+	// concurrent workers.
+	resumeMu sync.Mutex
 
 	// Test seams (nil in production): clock for window checks and engine config override.
 	nowFn        func() time.Time
@@ -237,6 +243,7 @@ func NewLiveScanRunner(store db.Store, pipeline *ingest.Pipeline, hub *api.SSEHu
 		hub:      hub,
 		dojo:     defectdojo.NewClient(),
 		active:   make(map[string]*activeScanHandle),
+		adhoc:    make(map[string]domain.ScanProfile),
 	}
 }
 
@@ -348,6 +355,9 @@ func (r *LiveScanRunner) launchAsync(
 
 	r.mu.Lock()
 	r.active[run.ID] = handle
+	if profile.ID == "" {
+		r.adhoc[run.ID] = profile
+	}
 	r.mu.Unlock()
 
 	runCopy := *run
@@ -359,6 +369,9 @@ func (r *LiveScanRunner) launchAsync(
 			r.mu.Lock()
 			if cur, ok := r.active[runCopy.ID]; ok && cur == handle {
 				delete(r.active, runCopy.ID)
+			}
+			if runCopy.Status != domain.ScanStatusPausedUser && runCopy.Status != domain.ScanStatusPausedWindow {
+				delete(r.adhoc, runCopy.ID)
 			}
 			r.mu.Unlock()
 		}()
@@ -573,7 +586,21 @@ func (r *LiveScanRunner) ingestSegment(ctx context.Context, run *domain.ScanRun,
 	return nil
 }
 
+// scanStateErr reports an invalid pause/resume/stop transition (HTTP 409 with this message).
+func scanStateErr(format string, a ...any) error {
+	return fmt.Errorf("%s: %w", fmt.Sprintf(format, a...), db.ErrConflict)
+}
+
 func (r *LiveScanRunner) PauseScan(ctx context.Context, scanRunID string) error {
+	run, err := r.store.GetScanRun(ctx, scanRunID)
+	if err != nil {
+		return err
+	}
+	switch run.Status {
+	case domain.ScanStatusQueued, domain.ScanStatusCalibrating, domain.ScanStatusRunning, domain.ScanStatusPausedWindow:
+	default:
+		return scanStateErr("nie można wstrzymać skanu w stanie %s / cannot pause a scan that is %s", run.Status, run.Status)
+	}
 	r.mu.Lock()
 	if h, ok := r.active[scanRunID]; ok {
 		h.pauseReq = true
@@ -581,25 +608,48 @@ func (r *LiveScanRunner) PauseScan(ctx context.Context, scanRunID string) error 
 	}
 	r.mu.Unlock()
 
-	run, err := r.store.GetScanRun(ctx, scanRunID)
-	if err != nil {
-		return err
-	}
 	run.Status = domain.ScanStatusPausedUser
 	return r.store.UpdateScanRun(ctx, run)
 }
 
 func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error {
+	r.resumeMu.Lock()
+	defer r.resumeMu.Unlock()
+
 	run, err := r.store.GetScanRun(ctx, scanRunID)
 	if err != nil {
 		return err
 	}
-	if run.ProfileID == "" {
-		return errors.New("scan has no associated profile to resume")
+	if run.Status != domain.ScanStatusPausedUser && run.Status != domain.ScanStatusPausedWindow {
+		return scanStateErr("można wznowić tylko wstrzymany skan (stan: %s) / only a paused scan can be resumed", run.Status)
 	}
-	profile, err := r.store.GetProfile(ctx, run.ProfileID)
-	if err != nil {
+	// A pause cancels the worker, which then writes its final checkpoint: wait for it, or the
+	// old segment and the resumed one would run (and write) concurrently.
+	for deadline := time.Now().Add(15 * time.Second); r.IsScanActive(scanRunID); {
+		if time.Now().After(deadline) {
+			return scanStateErr("skan jest jeszcze wstrzymywany - spróbuj ponownie za chwilę / scan is still pausing, retry shortly")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if run, err = r.store.GetScanRun(ctx, scanRunID); err != nil {
 		return err
+	}
+	if run.Status != domain.ScanStatusPausedUser && run.Status != domain.ScanStatusPausedWindow {
+		return scanStateErr("można wznowić tylko wstrzymany skan (stan: %s) / only a paused scan can be resumed", run.Status)
+	}
+	var profile *domain.ScanProfile
+	if run.ProfileID != "" {
+		if profile, err = r.store.GetProfile(ctx, run.ProfileID); err != nil {
+			return err
+		}
+	} else {
+		r.mu.Lock()
+		p, ok := r.adhoc[scanRunID]
+		r.mu.Unlock()
+		if !ok {
+			return scanStateErr("tego szybkiego skanu (bez zapisanego profilu) nie można wznowić po restarcie serwera - uruchom go ponownie / quick scan without a saved profile cannot be resumed after a restart")
+		}
+		profile = &p
 	}
 	exclusions, _ := r.store.ListExclusions(ctx)
 	chunks, _ := r.store.GetScanChunks(ctx, scanRunID)
@@ -628,17 +678,22 @@ func (r *LiveScanRunner) ResumeScan(ctx context.Context, scanRunID string) error
 }
 
 func (r *LiveScanRunner) StopScan(ctx context.Context, scanRunID string) error {
+	run, err := r.store.GetScanRun(ctx, scanRunID)
+	if err != nil {
+		return err
+	}
+	switch run.Status {
+	case domain.ScanStatusCompleted, domain.ScanStatusFailed, domain.ScanStatusStopped:
+		return scanStateErr("skan jest już zakończony (%s) / scan already finished", run.Status)
+	}
 	r.mu.Lock()
 	if h, ok := r.active[scanRunID]; ok {
 		h.pauseReq = false
 		h.cancel()
 	}
+	delete(r.adhoc, scanRunID)
 	r.mu.Unlock()
 
-	run, err := r.store.GetScanRun(ctx, scanRunID)
-	if err != nil {
-		return err
-	}
 	now := time.Now().UTC()
 	run.Status = domain.ScanStatusStopped
 	run.FinishedAt = &now
