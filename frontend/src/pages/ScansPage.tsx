@@ -18,7 +18,7 @@ import {
   RiTimeLine,
   RiUploadCloud2Line,
 } from '@remixicon/react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type ExportFormat } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
@@ -33,6 +33,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ChunkMatrix } from '@/components/ChunkMatrix';
+import { NmapCommandsPanel } from '@/components/NmapCommandsPanel';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -74,6 +75,56 @@ type ScansTab = 'runs' | 'profiles' | 'scopes' | 'ingest';
 
 const ALL = '__all__';
 
+
+/**
+ * Scan profile presets (SecureCodeBox-style scan types). They only prefill the form;
+ * rate limits stay conservative (shared university network).
+ */
+const PROFILE_PRESETS = [
+  {
+    id: 'discovery',
+    label: 'Szybki discovery',
+    hint: 'Żywe hosty + top porty, bez HTTP',
+    values: {
+      description: 'Szybki discovery: top porty, bez fingerprintu HTTP',
+      allowed_ports: '22,80,443,3389,8080,8443',
+      max_rate_pps: 200,
+      http_rps: 5,
+      concurrency: 16,
+      chunk_target_sec: 30,
+      enable_http_fingerprint: false,
+    },
+  },
+  {
+    id: 'standard',
+    label: 'Standard',
+    hint: 'Porty usług + fingerprint HTTP/TLS',
+    values: {
+      description: 'Standard: typowe usługi sieciowe + fingerprint HTTP/TLS',
+      allowed_ports: '21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,8080,8443',
+      max_rate_pps: 300,
+      http_rps: 10,
+      concurrency: 16,
+      chunk_target_sec: 30,
+      enable_http_fingerprint: true,
+    },
+  },
+  {
+    id: 'web',
+    label: 'Pełny web',
+    hint: 'Porty web + HTTP/TLS + bezpieczne ścieżki',
+    values: {
+      description: 'Pełny web: porty HTTP(S), fingerprint HTTP/TLS i bezpieczne ścieżki z sygnatur',
+      allowed_ports: '80,443,3000,5000,8000,8008,8080,8081,8443,8888,9000,9090,9443',
+      max_rate_pps: 200,
+      http_rps: 10,
+      concurrency: 8,
+      chunk_target_sec: 45,
+      enable_http_fingerprint: true,
+    },
+  },
+] as const;
+
 export function ScansPage() {
   const { can } = useAuth();
   const toast = useToast();
@@ -108,9 +159,9 @@ export function ScansPage() {
     name: '',
     description: '',
     targetsText: '172.28.0.0/24',
-    allowed_ports: '22,80,443,8080,8443',
+    allowed_ports: '21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,8080,8443',
     max_rate_pps: 300,
-    http_rps: 20,
+    http_rps: 10,
     concurrency: 16,
     chunk_target_sec: 30,
     window_enabled: false,
@@ -153,7 +204,7 @@ export function ScansPage() {
 
   // File Import state
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importFormat, setImportFormat] = useState<'csv' | 'json'>('csv');
+  const [importFormat, setImportFormat] = useState<'csv' | 'json' | 'nmap'>('csv');
   const [importScanName, setImportScanName] = useState('');
   const [importPreview, setImportPreview] = useState<string>('');
   const [importing, setImporting] = useState(false);
@@ -445,7 +496,9 @@ export function ScansPage() {
       setImportPreview('');
       return;
     }
-    if (file.name.toLowerCase().endsWith('.json')) setImportFormat('json');
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith('.json')) setImportFormat('json');
+    else if (lower.endsWith('.xml')) setImportFormat('nmap');
     else setImportFormat('csv');
 
     const reader = new FileReader();
@@ -495,13 +548,15 @@ export function ScansPage() {
 
   const launchProfile = profiles.find((p) => p.id === launchProfileId) || profiles[0];
 
-  const runExport = (format: 'csv' | 'json') =>
-    api.exportData({
-      format,
-      scan_id: exportScanId || undefined,
-      state: exportState || undefined,
-      tag: exportTag || undefined,
-    });
+  const runExport = (format: ExportFormat) =>
+    api
+      .exportData({
+        format,
+        scan_id: exportScanId || undefined,
+        state: exportState || undefined,
+        tag: exportTag || undefined,
+      })
+      .catch((err) => toast.error('Błąd eksportu', (err as Error).message));
 
   return (
     <div className="space-y-6">
@@ -772,6 +827,7 @@ export function ScansPage() {
                                     })}
                                   />
                                 )}
+                                <NmapCommandsPanel scan={scanDetail ?? scan} chunks={chunks} />
                               </div>
                             </TableCell>
                           </TableRow>
@@ -874,6 +930,30 @@ export function ScansPage() {
                     <CardTitle className="text-sm">Nowy profil</CardTitle>
                   </CardHeader>
                   <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <Field label="Typ skanu (preset)" className="sm:col-span-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        {PROFILE_PRESETS.map((preset) => {
+                          const active =
+                            profileForm.allowed_ports === preset.values.allowed_ports &&
+                            profileForm.enable_http_fingerprint ===
+                              preset.values.enable_http_fingerprint;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => setProfileForm((p) => ({ ...p, ...preset.values }))}
+                              className={cn(
+                                'border px-3 py-2 text-left transition-colors hover:bg-muted/50',
+                                active ? 'border-primary bg-primary/5' : 'border-border'
+                              )}
+                            >
+                              <div className="text-xs font-semibold">{preset.label}</div>
+                              <div className="text-[11px] text-muted-foreground">{preset.hint}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Field>
                     <Field label="Nazwa" htmlFor="pf-name" className="sm:col-span-2">
                       <Input
                         id="pf-name"
@@ -947,6 +1027,18 @@ export function ScansPage() {
                       />
                       <Label htmlFor="win_en" className="text-xs">
                         Okno czasowe (Auto Pause/Resume)
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                      <Switch
+                        id="http_fp"
+                        checked={profileForm.enable_http_fingerprint}
+                        onCheckedChange={(checked) =>
+                          setProfileForm((p) => ({ ...p, enable_http_fingerprint: checked }))
+                        }
+                      />
+                      <Label htmlFor="http_fp" className="text-xs">
+                        Fingerprint HTTP/TLS + bezpieczne ścieżki
                       </Label>
                     </div>
                     {profileForm.window_enabled && (
@@ -1378,11 +1470,11 @@ export function ScansPage() {
                         >
                           <RiUploadCloud2Line className="size-5 text-muted-foreground" />
                           <span className="text-xs text-muted-foreground">
-                            {importFile ? importFile.name : 'Upuść plik .csv / .json'}
+                            {importFile ? importFile.name : 'Upuść plik .csv / .json / nmap .xml (-oX)'}
                           </span>
                           <input
                             type="file"
-                            accept=".csv,.json,text/csv,application/json"
+                            accept=".csv,.json,.xml,text/csv,application/json,application/xml,text/xml"
                             onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
                             className="text-xs text-muted-foreground file:mr-2 file:border file:border-border file:bg-transparent file:px-3 file:py-1 file:text-[10px] file:font-semibold file:tracking-widest file:text-foreground file:uppercase hover:file:bg-muted"
                           />
@@ -1392,10 +1484,11 @@ export function ScansPage() {
                           <Field label="Format">
                             <SimpleSelect
                               value={importFormat}
-                              onValueChange={(v) => setImportFormat(v as 'csv' | 'json')}
+                              onValueChange={(v) => setImportFormat(v as 'csv' | 'json' | 'nmap')}
                               options={[
                                 { value: 'csv', label: 'CSV' },
                                 { value: 'json', label: 'JSON' },
+                                { value: 'nmap', label: 'nmap XML (-oX)' },
                               ]}
                             />
                           </Field>
@@ -1468,7 +1561,7 @@ export function ScansPage() {
                     />
                   </Field>
                 </CardContent>
-                <CardFooter className="justify-end gap-2">
+                <CardFooter className="flex-wrap justify-end gap-2">
                   {canExport ? (
                     <>
                       <Button variant="outline" size="sm" onClick={() => runExport('csv')}>
@@ -1476,6 +1569,30 @@ export function ScansPage() {
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => runExport('json')}>
                         <RiDownload2Line data-icon="inline-start" /> JSON
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title="nmap XML (-oX): DefectDojo, Metasploit db_import"
+                        onClick={() => runExport('nmap')}
+                      >
+                        <RiDownload2Line data-icon="inline-start" /> nmap XML
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title="Jeden URL na linię: httpx, nuclei, gowitness"
+                        onClick={() => runExport('urls')}
+                      >
+                        <RiDownload2Line data-icon="inline-start" /> URL-e
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title="NDJSON w Elastic Common Schema: ELK / Splunk"
+                        onClick={() => runExport('ecs')}
+                      >
+                        <RiDownload2Line data-icon="inline-start" /> ECS (ELK)
                       </Button>
                     </>
                   ) : (

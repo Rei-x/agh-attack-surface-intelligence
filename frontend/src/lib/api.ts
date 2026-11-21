@@ -154,6 +154,28 @@ function buildQuery(params: Record<string, string | number | boolean | undefined
   return str ? `?${str}` : '';
 }
 
+export type ImportFormat = 'csv' | 'json' | 'nmap' | 'passive';
+/** json/csv = inventory; nmap = nmap XML; urls = httpx/nuclei list; ecs = NDJSON for ELK/Splunk. */
+export type ExportFormat = 'json' | 'csv' | 'nmap' | 'urls' | 'ecs';
+const EXPORT_EXT: Record<ExportFormat, string> = {
+  json: '.json',
+  csv: '.csv',
+  nmap: '-nmap.xml',
+  urls: '-urls.txt',
+  ecs: '-ecs.ndjson',
+};
+
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   // Health & Auth
   health: () => request<HealthResponse>('/api/v1/health', { skipAuth: true }),
@@ -368,7 +390,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  ingestImportFile: (file: File, format: 'csv' | 'json' | 'passive', scanName?: string) => {
+  ingestImportFile: (file: File, format: ImportFormat, scanName?: string) => {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('format', format);
@@ -379,7 +401,7 @@ export const api = {
     });
   },
   exportData: async (params: {
-    format: 'json' | 'csv';
+    format: ExportFormat;
     scan_id?: string;
     state?: string;
     tag?: string;
@@ -387,15 +409,13 @@ export const api = {
     const res = await request<Response>(`/api/v1/export${buildQuery(params)}`, {
       rawResponse: true,
     });
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `aegis-asi-export-${new Date().toISOString().slice(0, 10)}.${params.format}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const ext = EXPORT_EXT[params.format];
+    saveBlob(await res.blob(), `aegis-asi-export-${new Date().toISOString().slice(0, 10)}${ext}`);
+  },
+  /** Merged raw nmap XML (-oX) of one scan run. */
+  downloadScanNmapXml: async (scanId: string) => {
+    const res = await request<Response>(`/api/v1/scans/${scanId}/nmap.xml`, { rawResponse: true });
+    saveBlob(await res.blob(), `aegis-run-${scanId}-nmap.xml`);
   },
 
   // Signatures Studio
