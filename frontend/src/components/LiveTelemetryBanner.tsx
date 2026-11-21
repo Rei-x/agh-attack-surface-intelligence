@@ -13,6 +13,7 @@ import { Pill } from '@/components/common';
 import { LiveDot } from '@/components/LiveIndicator';
 import { PeckSpinner } from '@/components/Woodpecker';
 import type { ScanRun } from '@/types/api';
+import { rateChange, throttleReasonLabel } from '@/lib/scanTelemetry';
 
 interface Props {
   activeScan: ScanRun | null | undefined;
@@ -66,7 +67,7 @@ function Metric({ label, children }: { label: string; children: ReactNode }) {
 
 export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
   const { can } = useAuth();
-  const { activeScan: live, throttled } = useLiveEvents();
+  const { activeScan: live, throttled, lastThrottle } = useLiveEvents();
   const toast = useToast();
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
@@ -76,7 +77,7 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
   const L = liveMatches ? live : null;
 
   const scanId = activeScan?.id || L?.scan_run_id;
-  const name = activeScan?.name || L?.name || '—';
+  const name = activeScan?.name || L?.name || 'scan';
   const status = L?.status || activeScan?.status || 'IDLE';
 
   const pick = (liveVal: number | undefined, serverVal: number | undefined) =>
@@ -109,17 +110,17 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
     try {
       if (action === 'pause') {
         await api.pauseScan(scanId);
-        toast.info('Skan wstrzymany', name);
+        toast.info('Scan paused', name);
       } else if (action === 'resume') {
         await api.resumeScan(scanId);
-        toast.success('Skan wznowiony', name);
+        toast.success('Scan resumed', name);
       } else {
         await api.stopScan(scanId);
         toast.warning('Emergency Stop', name);
       }
       onScanUpdated?.();
     } catch (err) {
-      toast.error('Błąd sterowania skanem', (err as Error).message);
+      toast.error('Scan control failed', (err as Error).message);
     } finally {
       setBusyAction(null);
     }
@@ -132,7 +133,19 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
           {isRunning ? <PeckSpinner className="h-4" /> : <LiveDot live={false} />}
           <Pill className={meta.badge}>{meta.label}</Pill>
           <span className="max-w-48 truncate text-sm font-medium">{name}</span>
-          {throttled && <Pill tone="warning">Governor</Pill>}
+          {throttled && lastThrottle && (!lastThrottle.scan_run_id || lastThrottle.scan_run_id === scanId) ? (
+            <Tooltip>
+              <TooltipTrigger render={<span />}>
+                <Pill tone="warning">
+                  Slowed down{lastThrottle.count > 1 ? ` ×${lastThrottle.count}` : ''}: {rateChange(lastThrottle.old_rate, lastThrottle.new_rate)}
+                </Pill>
+              </TooltipTrigger>
+              <TooltipContent>
+                Automatic backoff: {throttleReasonLabel(lastThrottle.reason)}
+                {lastThrottle.host ? ` (${lastThrottle.host})` : ''}. The full history is kept on the run (Scans, expand the row).
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-4 font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -140,7 +153,7 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
           <Metric label="IP/s">{hostsPerSec.toFixed(1)}</Metric>
           <Metric label="ETA">{formatDurationSeconds(etaSeconds)}</Metric>
           <Metric label="chunks">
-            {completedChunks}/{totalChunks || '—'}
+            {completedChunks}/{totalChunks || '?'}
           </Metric>
           <span className="hidden lg:inline">
             {formatNumber(scannedIPs)}/{formatNumber(totalIPs)}

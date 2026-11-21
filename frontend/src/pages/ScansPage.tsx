@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   RiAddLine,
   RiArrowDownSLine,
@@ -13,7 +14,6 @@ import {
   RiPauseLine,
   RiPlayLine,
   RiSaveLine,
-  RiStackLine,
   RiStopLine,
   RiTimeLine,
   RiUploadCloud2Line,
@@ -25,6 +25,7 @@ import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
 import { PERMISSIONS } from '@/lib/permissions';
 import {
   formatDateTime,
+  formatShortTime,
   formatDurationSeconds,
   formatNumber,
   scanStatusMeta,
@@ -73,12 +74,35 @@ import type {
   TargetExclusion,
 } from '@/types/api';
 import { PeckLoader } from '@/components/Woodpecker';
+import { rateChange, throttleReasonLabel } from '@/lib/scanTelemetry';
 
 type ScansTab = 'runs' | 'profiles' | 'scopes' | 'ingest' | 'agents';
 
 const LOCAL_AGENT = '__local__';
 
 const ALL = '__all__';
+
+const EMPTY_PROFILE_FORM = {
+  name: '',
+  description: '',
+  targetsText: '',
+  allowed_ports: '21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,8080,8443',
+  max_rate_pps: 300,
+  http_rps: 10,
+  concurrency: 16,
+  chunk_target_sec: 30,
+  window_enabled: false,
+  window_start: '22:00',
+  window_end: '06:00',
+  timezone: 'Europe/Warsaw',
+  schedule_cron: '',
+  missing_threshold: 2,
+  grace_period_hours: 24,
+  retry_unstable_count: 2,
+  enable_http_fingerprint: true,
+  agent_id: LOCAL_AGENT,
+};
+type ProfileFormState = typeof EMPTY_PROFILE_FORM;
 
 
 /**
@@ -88,10 +112,10 @@ const ALL = '__all__';
 const PROFILE_PRESETS = [
   {
     id: 'discovery',
-    label: 'Szybki discovery',
-    hint: 'Żywe hosty + top porty, bez HTTP',
+    label: 'Quick discovery',
+    hint: 'Live hosts + top ports, no HTTP',
     values: {
-      description: 'Szybki discovery: top porty, bez fingerprintu HTTP',
+      description: 'Quick discovery: top ports, no HTTP fingerprinting',
       allowed_ports: '22,80,443,3389,8080,8443',
       max_rate_pps: 200,
       http_rps: 5,
@@ -103,9 +127,9 @@ const PROFILE_PRESETS = [
   {
     id: 'standard',
     label: 'Standard',
-    hint: 'Porty usług + fingerprint HTTP/TLS',
+    hint: 'Service ports + HTTP/TLS fingerprint',
     values: {
-      description: 'Standard: typowe usługi sieciowe + fingerprint HTTP/TLS',
+      description: 'Standard: common network services + HTTP/TLS fingerprint',
       allowed_ports: '21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,8080,8443',
       max_rate_pps: 300,
       http_rps: 10,
@@ -116,10 +140,10 @@ const PROFILE_PRESETS = [
   },
   {
     id: 'web',
-    label: 'Pełny web',
-    hint: 'Porty web + HTTP/TLS + bezpieczne ścieżki',
+    label: 'Full web',
+    hint: 'Web ports + HTTP/TLS + safe paths',
     values: {
-      description: 'Pełny web: porty HTTP(S), fingerprint HTTP/TLS i bezpieczne ścieżki z sygnatur',
+      description: 'Full web: HTTP(S) ports, HTTP/TLS fingerprint and safe paths from signatures',
       allowed_ports: '80,443,3000,5000,8000,8008,8080,8081,8443,8888,9000,9090,9443',
       max_rate_pps: 200,
       http_rps: 10,
@@ -160,27 +184,12 @@ export function ScansPage() {
   const [estimate, setEstimate] = useState<TargetEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
 
-  // Profile creator
-  const [profileForm, setProfileForm] = useState({
-    name: '',
-    description: '',
-    targetsText: '172.28.0.0/24',
-    allowed_ports: '21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,8080,8443',
-    max_rate_pps: 300,
-    http_rps: 10,
-    concurrency: 16,
-    chunk_target_sec: 30,
-    window_enabled: false,
-    window_start: '22:00',
-    window_end: '06:00',
-    timezone: 'Europe/Warsaw',
-    schedule_cron: '',
-    missing_threshold: 2,
-    grace_period_hours: 24,
-    retry_unstable_count: 2,
-    enable_http_fingerprint: true,
-    agent_id: LOCAL_AGENT,
-  });
+  // Profile editor (create, or edit when editingProfileId is set)
+  const [profileForm, setProfileForm] = useState<ProfileFormState>(EMPTY_PROFILE_FORM);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const profileFormRef = useRef<HTMLDivElement>(null);
+  // Defaults for a new profile come from the configured scope and an online agent, once.
+  const defaultsApplied = useRef(false);
 
   // Coverage Ledger selected scan & metadata editor
   const [expandedScanId, setExpandedScanId] = useState<string | null>(null);
@@ -191,7 +200,7 @@ export function ScansPage() {
 
   // Manual Ingest Form
   const [manualForm, setManualForm] = useState({
-    scan_name: 'Wpis ręczny analityka',
+    scan_name: 'Analyst manual entry',
     ip: '',
     hostname: '',
     environment: 'prod',
@@ -245,7 +254,7 @@ export function ScansPage() {
         .then((res) => setAgents(res.agents))
         .catch(() => setAgents([]));
     } catch (err) {
-      toast.error('Błąd ładowania', (err as Error).message);
+      toast.error('Could not load scans', (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -269,7 +278,7 @@ export function ScansPage() {
         if (expandedRef.current === openId) setScanDetail(detail);
       }
     } catch {
-      // background refresh — ignore
+      // background refresh: ignore
     }
   });
 
@@ -296,7 +305,7 @@ export function ScansPage() {
       });
       setEstimate(res);
     } catch (err) {
-      toast.error('Błąd estymacji', (err as Error).message);
+      toast.error('Estimate failed', (err as Error).message);
     } finally {
       setEstimating(false);
     }
@@ -309,10 +318,10 @@ export function ScansPage() {
       await api.createTarget({ value: newTarget.trim(), label: newTargetLabel.trim(), enabled: true });
       setNewTarget('');
       setNewTargetLabel('');
-      toast.success('Dodano cel');
+      toast.success('Target added');
       loadAll();
     } catch (err) {
-      toast.error('Błąd dodawania celu', (err as Error).message);
+      toast.error('Could not add target', (err as Error).message);
     }
   };
 
@@ -322,22 +331,68 @@ export function ScansPage() {
     try {
       await api.createExclusion({
         value: newExclusion.trim(),
-        reason: newExclusionReason.trim() || 'Wykluczenie CBI AGH',
+        reason: newExclusionReason.trim() || 'Excluded by CBI AGH',
       });
       setNewExclusion('');
       setNewExclusionReason('');
-      toast.success('Dodano wykluczenie');
+      toast.success('Exclusion added');
       loadAll();
     } catch (err) {
-      toast.error('Błąd dodawania wykluczenia', (err as Error).message);
+      toast.error('Could not add exclusion', (err as Error).message);
     }
   };
 
-  const handleCreateProfile = async (e: React.FormEvent) => {
+  const defaultNewProfile = useCallback((): ProfileFormState => {
+    const scope = targets.filter((t) => t.enabled).map((t) => t.value);
+    const online = agents.find((a) => a.status === 'online' && !a.disabled);
+    return {
+      ...EMPTY_PROFILE_FORM,
+      targetsText: scope.join('\n'),
+      agent_id: online ? online.id : LOCAL_AGENT,
+    };
+  }, [targets, agents]);
+
+  useEffect(() => {
+    if (defaultsApplied.current || loading || editingProfileId) return;
+    if (targets.length === 0 && agents.length === 0) return;
+    defaultsApplied.current = true;
+    setProfileForm((p) => (p.name || p.targetsText ? p : defaultNewProfile()));
+  }, [loading, targets, agents, editingProfileId, defaultNewProfile]);
+
+  const resetProfileForm = () => {
+    setEditingProfileId(null);
+    setProfileForm(defaultNewProfile());
+  };
+
+  const startEditProfile = (p: ScanProfile) => {
+    setEditingProfileId(p.id);
+    setProfileForm({
+      name: p.name,
+      description: p.description || '',
+      targetsText: (p.targets || []).join('\n'),
+      allowed_ports: p.allowed_ports,
+      max_rate_pps: p.max_rate_pps,
+      http_rps: p.http_rps,
+      concurrency: p.concurrency,
+      chunk_target_sec: p.chunk_target_sec,
+      window_enabled: p.window_enabled,
+      window_start: p.window_start || '22:00',
+      window_end: p.window_end || '06:00',
+      timezone: p.timezone || 'Europe/Warsaw',
+      schedule_cron: p.schedule_cron || '',
+      missing_threshold: p.missing_threshold,
+      grace_period_hours: p.grace_period_hours,
+      retry_unstable_count: p.retry_unstable_count,
+      enable_http_fingerprint: p.enable_http_fingerprint,
+      agent_id: p.agent_id || LOCAL_AGENT,
+    });
+    requestAnimationFrame(() => profileFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileForm.name.trim()) return;
-    try {
-      await api.createProfile({
+    const payload = {
         name: profileForm.name.trim(),
         description: profileForm.description.trim(),
         targets: profileForm.targetsText
@@ -360,29 +415,52 @@ export function ScansPage() {
         enable_http_fingerprint: profileForm.enable_http_fingerprint,
         agent_id: profileForm.agent_id === LOCAL_AGENT ? '' : profileForm.agent_id,
         enabled: true,
-      });
-      setProfileForm((p) => ({ ...p, name: '', description: '' }));
-      toast.success('Utworzono profil');
+    };
+    try {
+      if (editingProfileId) {
+        await api.updateProfile(editingProfileId, payload);
+        toast.success('Profile saved', payload.name);
+      } else {
+        await api.createProfile(payload);
+        toast.success('Profile created', payload.name);
+      }
+      setEditingProfileId(null);
+      setProfileForm(defaultNewProfile());
       loadAll();
     } catch (err) {
-      toast.error('Błąd tworzenia profilu', (err as Error).message);
+      toast.error(editingProfileId ? 'Could not save the profile' : 'Could not create the profile', (err as Error).message);
     }
   };
 
   const handleStartProfileScan = async (profile: ScanProfile) => {
     try {
       const run = await api.runProfile(profile.id);
-      toast.success('Uruchomiono skan', run.name);
+      toast.success('Scan started', run.name);
       setActiveTab('runs');
       loadAll();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        toast.error('Profil już ma aktywny przebieg', 'Poczekaj na koniec bieżącego skanu albo go zatrzymaj.');
+        toast.error('This profile already has an active run', 'Wait for it to finish or stop it.');
       } else {
-        toast.error('Błąd uruchomienia skanu', (err as Error).message);
+        toast.error('Could not start the scan', (err as Error).message);
       }
     }
   };
+
+  // Deep link from the dashboard: /scans?scan=<id> opens that run expanded.
+  const [searchParams] = useSearchParams();
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    const id = searchParams.get('scan');
+    if (!id || deepLinked.current || scans.length === 0) return;
+    deepLinked.current = true;
+    setActiveTab('runs');
+    setExpandedScanId(id);
+    api
+      .getScan(id)
+      .then(setScanDetail)
+      .catch(() => undefined);
+  }, [searchParams, scans.length]);
 
   const handleToggleScanDetail = async (scanId: string) => {
     if (expandedScanId === scanId) {
@@ -395,18 +473,18 @@ export function ScansPage() {
       const detail = await api.getScan(scanId);
       setScanDetail(detail);
     } catch (err) {
-      toast.error('Błąd Coverage Ledger', (err as Error).message);
+      toast.error('Could not load the run', (err as Error).message);
     }
   };
 
   const handleSaveScanMeta = async (scanId: string) => {
     try {
       await api.updateScan(scanId, { name: editScanName, notes: editScanNotes });
-      toast.success('Zapisano');
+      toast.success('Saved');
       setEditingScanId(null);
       loadAll();
     } catch (err) {
-      toast.error('Błąd zapisu', (err as Error).message);
+      toast.error('Save failed', (err as Error).message);
     }
   };
 
@@ -416,13 +494,13 @@ export function ScansPage() {
       else if (action === 'resume') await api.resumeScan(scanId);
       else if (action === 'stop') await api.stopScan(scanId);
       else if (action === 'delete') {
-        if (!window.confirm('Usunąć przebieg skanu?')) return;
+        if (!window.confirm('Delete this scan run?')) return;
         await api.deleteScan(scanId);
       }
-      toast.success('Wykonano');
+      toast.success('Done');
       loadAll();
     } catch (err) {
-      toast.error('Błąd akcji', (err as Error).message);
+      toast.error('Action failed', (err as Error).message);
     }
   };
 
@@ -463,7 +541,7 @@ export function ScansPage() {
         .filter(Boolean);
 
       await api.ingestManual({
-        scan_name: manualForm.scan_name || 'Formularz ręczny',
+        scan_name: manualForm.scan_name || 'Manual entry',
         ip: manualForm.ip.trim(),
         hostname: manualForm.hostname.trim(),
         environment: manualForm.environment,
@@ -492,11 +570,11 @@ export function ScansPage() {
         ],
       });
 
-      toast.success('Dodano host', manualForm.ip);
+      toast.success('Host added', manualForm.ip);
       setManualForm((m) => ({ ...m, ip: '', hostname: '', http_title: '', notes: '' }));
       loadAll();
     } catch (err) {
-      toast.error('Błąd wpisu ręcznego', (err as Error).message);
+      toast.error('Manual entry failed', (err as Error).message);
     } finally {
       setSubmittingManual(false);
     }
@@ -531,13 +609,13 @@ export function ScansPage() {
         importFormat,
         importScanName.trim() || `Import ${importFormat.toUpperCase()}: ${importFile.name}`
       );
-      toast.success('Zaimportowano', importFile.name);
+      toast.success('Imported', importFile.name);
       setImportFile(null);
       setImportPreview('');
       setImportScanName('');
       loadAll();
     } catch (err) {
-      toast.error('Błąd importu', (err as Error).message);
+      toast.error('Import failed', (err as Error).message);
     } finally {
       setImporting(false);
     }
@@ -553,21 +631,21 @@ export function ScansPage() {
         state: exportState || undefined,
         tag: exportTag || undefined,
       })
-      .catch((err) => toast.error('Błąd eksportu', (err as Error).message));
+      .catch((err) => toast.error('Export failed', (err as Error).message));
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Skaner"
-        meta={`${scans.length} przebiegów · ${profiles.length} profili`}
+        title="Scans"
+        meta={`${scans.length} runs · ${profiles.length} profiles`}
         actions={
-          canRunScans && profiles.length > 0 ? (
+          activeTab === 'runs' && canRunScans && profiles.length > 0 ? (
             <>
               <SimpleSelect
                 value={launchProfile?.id ?? ''}
                 onValueChange={setLaunchProfileId}
                 options={profiles.map((p) => ({ value: p.id, label: p.name }))}
-                placeholder="Profil"
+                placeholder="Profile"
                 size="sm"
                 className="w-56"
               />
@@ -577,7 +655,7 @@ export function ScansPage() {
                 onClick={() => launchProfile && handleStartProfileScan(launchProfile)}
               >
                 <RiPlayLine data-icon="inline-start" />
-                Uruchom skan
+                Run scan
               </Button>
             </>
           ) : undefined
@@ -586,11 +664,11 @@ export function ScansPage() {
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ScansTab)}>
         <TabsList variant="line">
-          <TabsTrigger value="runs">Skany ({scans.length})</TabsTrigger>
-          <TabsTrigger value="profiles">Profile ({profiles.length})</TabsTrigger>
-          <TabsTrigger value="scopes">Zakresy</TabsTrigger>
-          <TabsTrigger value="ingest">Import / Eksport</TabsTrigger>
-          <TabsTrigger value="agents">Agenci ({agents.length})</TabsTrigger>
+          <TabsTrigger value="runs">Runs ({scans.length})</TabsTrigger>
+          <TabsTrigger value="profiles">Profiles ({profiles.length})</TabsTrigger>
+          <TabsTrigger value="scopes">Scope</TabsTrigger>
+          <TabsTrigger value="ingest">Import / export</TabsTrigger>
+          <TabsTrigger value="agents">Agents ({agents.length})</TabsTrigger>
         </TabsList>
 
         {/* ───────────── RUNS & COVERAGE LEDGER ───────────── */}
@@ -606,14 +684,16 @@ export function ScansPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nazwa</TableHead>
+                    <TableHead>Name</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="w-40">Chunki</TableHead>
-                    <TableHead className="text-right">IP</TableHead>
-                    <TableHead className="text-right">Hosty</TableHead>
-                    <TableHead className="text-right">Usługi</TableHead>
-                    <TableHead className="text-right">Zmiany</TableHead>
-                    <TableHead>Start</TableHead>
+                    <TableHead className="w-28">Chunks</TableHead>
+                    <TableHead className="hidden text-right min-[1400px]:table-cell">IPs</TableHead>
+                    <TableHead className="text-right">Hosts</TableHead>
+                    <TableHead className="text-right">Services</TableHead>
+                    <TableHead className="hidden text-right min-[1400px]:table-cell">Changes</TableHead>
+                    <TableHead className="text-right">Duration</TableHead>
+                    <TableHead className="text-right">Rate</TableHead>
+                    <TableHead>Started</TableHead>
                     <TableHead className="text-right" />
                   </TableRow>
                 </TableHeader>
@@ -641,25 +721,27 @@ export function ScansPage() {
                     return (
                       <React.Fragment key={scan.id}>
                         <TableRow className={cn((isExpanded || isEditing) && 'border-b-0 bg-muted/30')}>
-                          <TableCell className="max-w-[320px]">
+                          <TableCell className="max-w-[300px]">
                             <button
                               type="button"
                               onClick={() => handleToggleScanDetail(scan.id)}
-                              className="flex min-w-0 items-center gap-1.5 text-left"
+                              className="flex w-full min-w-0 items-center gap-1.5 text-left"
                             >
                               {isExpanded ? (
                                 <RiArrowDownSLine className="size-4 shrink-0 text-muted-foreground" />
                               ) : (
                                 <RiArrowRightSLine className="size-4 shrink-0 text-muted-foreground" />
                               )}
-                              <span className="truncate text-sm font-medium">{scan.name}</span>
-                              <Pill tone="neutral">{scan.run_type}</Pill>
+                              <span className="truncate text-sm font-medium" title={scan.name}>
+                                {scan.name}
+                              </span>
                             </button>
-                            {scan.notes && (
-                              <div className="mt-1 truncate pl-5.5 text-xs text-muted-foreground">
-                                {scan.notes}
-                              </div>
-                            )}
+                            <div className="mt-0.5 truncate pl-5.5 text-xs text-muted-foreground" title={scan.notes}>
+                              <span className="font-mono text-[10px] tracking-wider uppercase">
+                                {runTypeLabel(scan.run_type)}
+                              </span>
+                              {scan.notes ? ` · ${scan.notes}` : ''}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Pill className={meta.badge} dot pulse={meta.pulse}>
@@ -674,7 +756,7 @@ export function ScansPage() {
                               <Progress value={pct} />
                             </div>
                           </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
+                          <TableCell className="hidden text-right font-mono text-xs min-[1400px]:table-cell">
                             {scan.scanned_ips}/{scan.total_ips}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs">
@@ -683,29 +765,34 @@ export function ScansPage() {
                           <TableCell className="text-right font-mono text-xs">
                             {scan.services_found}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
+                          <TableCell className="hidden text-right font-mono text-xs min-[1400px]:table-cell">
                             {scan.changes_detected}
                           </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
-                            {formatDateTime(scan.started_at)}
+                          <TableCell className="text-right font-mono text-xs whitespace-nowrap">
+                            {scan.duration_ms >= 1000 ? formatDurationSeconds(scan.duration_ms / 1000) : scan.duration_ms > 0 ? "<1s" : ''}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs whitespace-nowrap">
+                            <div>{scan.hosts_per_sec > 0 ? `${scan.hosts_per_sec < 1 ? scan.hosts_per_sec.toFixed(2) : scan.hosts_per_sec.toFixed(1)} IP/s` : ''}</div>
+                            {(scan.telemetry?.throttle_count ?? 0) > 0 && (
+                              <div
+                                className="text-[10px] text-amber-600 dark:text-amber-400"
+                                title="The noise governor slowed this run down. Expand the row for details."
+                              >
+                                slowed ×{scan.telemetry!.throttle_count}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+                            <span title={formatDateTime(scan.started_at)}>{formatShortTime(scan.started_at)}</span>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center justify-end gap-0.5">
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                aria-label="Coverage Ledger"
-                                title="Coverage Ledger"
-                                onClick={() => handleToggleScanDetail(scan.id)}
-                              >
-                                <RiStackLine />
-                              </Button>
                               {canWriteScans && (
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
-                                  aria-label="Edytuj"
-                                  title="Edytuj"
+                                  aria-label="Edit"
+                                  title="Edit name and notes"
                                   onClick={() => {
                                     setEditingScanId(isEditing ? null : scan.id);
                                     setEditScanName(scan.name);
@@ -752,8 +839,8 @@ export function ScansPage() {
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
-                                  aria-label="Usuń"
-                                  title="Usuń"
+                                  aria-label="Delete"
+                                  title="Delete run"
                                   className="text-muted-foreground hover:text-destructive"
                                   onClick={() => handleScanControl(scan.id, 'delete')}
                                 >
@@ -769,15 +856,15 @@ export function ScansPage() {
                           <TableRow
                             className={cn('bg-muted/30 hover:bg-muted/30', isExpanded && 'border-b-0')}
                           >
-                            <TableCell colSpan={9} className="whitespace-normal">
+                            <TableCell colSpan={11} className="whitespace-normal">
                               <div className="flex flex-col items-end gap-4 px-5.5 pb-2 sm:flex-row">
-                                <Field label="Nazwa" className="w-full sm:flex-1">
+                                <Field label="Name" className="w-full sm:flex-1">
                                   <Input
                                     value={editScanName}
                                     onChange={(e) => setEditScanName(e.target.value)}
                                   />
                                 </Field>
-                                <Field label="Notatki" className="w-full sm:flex-[2]">
+                                <Field label="Notes" className="w-full sm:flex-[2]">
                                   <Input
                                     value={editScanNotes}
                                     onChange={(e) => setEditScanNotes(e.target.value)}
@@ -789,10 +876,10 @@ export function ScansPage() {
                                     size="sm"
                                     onClick={() => setEditingScanId(null)}
                                   >
-                                    Anuluj
+                                    Cancel
                                   </Button>
                                   <Button size="sm" onClick={() => handleSaveScanMeta(scan.id)}>
-                                    <RiSaveLine data-icon="inline-start" /> Zapisz
+                                    <RiSaveLine data-icon="inline-start" /> Save
                                   </Button>
                                 </div>
                               </div>
@@ -803,12 +890,12 @@ export function ScansPage() {
                         {/* Coverage Ledger chunk grid */}
                         {isExpanded && (
                           <TableRow className="bg-muted/30 hover:bg-muted/30">
-                            <TableCell colSpan={9} className="whitespace-normal">
+                            <TableCell colSpan={11} className="whitespace-normal">
                               <div className="space-y-3 px-5.5 pb-2">
                                 <SectionTitle>Coverage Ledger · {chunks.length}</SectionTitle>
 
                                 {chunks.length === 0 ? (
-                                  <Empty className="py-4">Brak chunków</Empty>
+                                  <Empty className="py-4">No chunks</Empty>
                                 ) : (
                                   <ChunkMatrix
                                     chunks={chunks.map((raw) => {
@@ -827,8 +914,13 @@ export function ScansPage() {
                                         : raw;
                                       return ch;
                                     })}
+                                    throttles={(scanDetail?.id === scan.id ? scanDetail.telemetry : scan.telemetry)?.throttles}
                                   />
                                 )}
+                                <RateControlPanel
+                                  scan={scanDetail?.id === scan.id ? scanDetail : scan}
+                                  chunks={chunks}
+                                />
                                 <NmapCommandsPanel scan={scanDetail ?? scan} chunks={chunks} />
                               </div>
                             </TableCell>
@@ -845,206 +937,289 @@ export function ScansPage() {
 
         {/* ───────────── PROFILES ───────────── */}
         <TabsContent value="profiles" className="pt-4">
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            <Card size="sm" className={cn('py-0', canWriteScans ? 'xl:col-span-7' : 'xl:col-span-12')}>
+          <div className="grid grid-cols-1 gap-6 2xl:grid-cols-12">
+            <Card size="sm" className={cn('py-0', canWriteScans ? '2xl:col-span-7' : '2xl:col-span-12')}>
               {loading ? (
                 <PeckLoader />
               ) : profiles.length === 0 ? (
-                <Empty>Brak profili</Empty>
+                <Empty>No profiles yet</Empty>
               ) : (
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Profil</TableHead>
-                      <TableHead>Limity</TableHead>
-                      <TableHead>Harmonogram</TableHead>
-                      <TableHead className="text-right" />
+                      <TableHead className="w-[34%]">Profile</TableHead>
+                      <TableHead className="w-[30%]">Ports and intensity</TableHead>
+                      <TableHead>Schedule</TableHead>
+                      <TableHead className="w-36 text-right" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {profiles.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell className="max-w-[280px] whitespace-normal">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-medium">{p.name}</span>
-                            {p.agent_id && (
-                              <Pill
-                                tone={agents.find((a) => a.id === p.agent_id)?.status === 'online' ? 'violet' : 'warning'}
-                                title="Skanowany przez zdalnego agenta"
-                              >
-                                agent: {agents.find((a) => a.id === p.agent_id)?.name ?? 'usunięty'}
-                              </Pill>
-                            )}
-                            {p.window_enabled && (
-                              <Pill tone="warning">
-                                <RiTimeLine className="size-3" />
-                                {p.window_start}–{p.window_end}
-                              </Pill>
-                            )}
-                          </div>
-                          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                            {(p.targets || []).join(', ') || 'zakres globalny'}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-[11px] text-muted-foreground">
-                          <div>{p.allowed_ports}</div>
-                          <div>
-                            {p.max_rate_pps} PPS · HTTP {p.http_rps} RPS · K={p.missing_threshold} T=
-                            {p.grace_period_hours}h
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-[240px] whitespace-normal font-mono text-[11px] text-muted-foreground">
-                          <ScheduleCell schedule={p.schedule} cron={p.schedule_cron} />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-end gap-1">
-                            {canRunScans && (
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                onClick={() => handleStartProfileScan(p)}
-                              >
-                                <RiPlayLine data-icon="inline-start" />
-                                Uruchom
-                              </Button>
-                            )}
-                            {canDeleteScans && (
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                aria-label="Usuń profil"
-                                title="Usuń profil"
-                                className="text-muted-foreground hover:text-destructive"
-                                onClick={async () => {
-                                  await api.deleteProfile(p.id);
-                                  toast.success('Usunięto profil');
-                                  loadAll();
-                                }}
-                              >
-                                <RiDeleteBinLine />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {profiles.map((p) => {
+                      const agent = agents.find((a) => a.id === p.agent_id);
+                      return (
+                        <TableRow key={p.id} className={cn(editingProfileId === p.id && 'bg-muted/40')}>
+                          <TableCell className="whitespace-normal">
+                            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                              <span className="truncate text-sm font-medium" title={p.name}>
+                                {p.name}
+                              </span>
+                              {p.agent_id && (
+                                <Pill
+                                  tone={agent?.status === 'online' ? 'violet' : 'warning'}
+                                  title="Scanned by a remote agent"
+                                >
+                                  agent: {agent?.name ?? 'deleted'}
+                                </Pill>
+                              )}
+                              {p.window_enabled && (
+                                <Pill tone="neutral" title="Scans only inside this daily time window">
+                                  <RiTimeLine className="size-3" />
+                                  {p.window_start} to {p.window_end}
+                                </Pill>
+                              )}
+                            </div>
+                            <div
+                              className="mt-1 truncate font-mono text-[11px] text-muted-foreground"
+                              title={(p.targets || []).join(', ')}
+                            >
+                              {(p.targets || []).join(', ') || 'global scope'}
+                            </div>
+                          </TableCell>
+                          <TableCell className="whitespace-normal">
+                            <PortChips ports={p.allowed_ports} />
+                            <div className="mt-1 text-[11px] text-muted-foreground">
+                              {formatNumber(p.max_rate_pps)} PPS · HTTP {p.http_rps} req/s per host
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                              missing after {p.missing_threshold} scan{p.missing_threshold === 1 ? '' : 's'} /{' '}
+                              {p.grace_period_hours} h grace
+                            </div>
+                          </TableCell>
+                          <TableCell className="whitespace-normal font-mono text-[11px] text-muted-foreground">
+                            <ScheduleCell schedule={p.schedule} cron={p.schedule_cron} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+                              {canRunScans && (
+                                <Button variant="outline" size="xs" onClick={() => handleStartProfileScan(p)}>
+                                  <RiPlayLine data-icon="inline-start" />
+                                  Run
+                                </Button>
+                              )}
+                              {canWriteScans && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Edit profile"
+                                  title="Edit profile"
+                                  onClick={() => startEditProfile(p)}
+                                >
+                                  <RiEditLine />
+                                </Button>
+                              )}
+                              {canDeleteScans && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Delete profile"
+                                  title="Delete profile"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={async () => {
+                                    if (!window.confirm(`Delete profile "${p.name}"?`)) return;
+                                    await api.deleteProfile(p.id);
+                                    toast.success('Profile deleted');
+                                    if (editingProfileId === p.id) resetProfileForm();
+                                    loadAll();
+                                  }}
+                                >
+                                  <RiDeleteBinLine />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
             </Card>
 
             {canWriteScans && (
-              <Card size="sm" className="xl:col-span-5">
-                <form onSubmit={handleCreateProfile} className="flex flex-col gap-5">
+              <Card size="sm" className="2xl:col-span-5" ref={profileFormRef}>
+                <form onSubmit={handleSaveProfile} className="flex flex-col gap-5">
                   <CardHeader>
-                    <CardTitle className="text-sm">Nowy profil</CardTitle>
+                    <CardTitle className="text-sm">
+                      {editingProfileId ? `Edit profile: ${profileForm.name || 'unnamed'}` : 'New profile'}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    <Field label="Typ skanu (preset)" className="sm:col-span-2">
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                        {PROFILE_PRESETS.map((preset) => {
-                          const active =
-                            profileForm.allowed_ports === preset.values.allowed_ports &&
-                            profileForm.enable_http_fingerprint ===
-                              preset.values.enable_http_fingerprint;
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              onClick={() => setProfileForm((p) => ({ ...p, ...preset.values }))}
-                              className={cn(
-                                'border px-3 py-2 text-left transition-colors hover:bg-muted/50',
-                                active ? 'border-primary bg-primary/5' : 'border-border'
-                              )}
-                            >
-                              <div className="text-xs font-semibold">{preset.label}</div>
-                              <div className="text-[11px] text-muted-foreground">{preset.hint}</div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </Field>
-                    <Field label="Nazwa" htmlFor="pf-name" className="sm:col-span-2">
+                    {!editingProfileId && (
+                      <Field label="Start from a preset" className="sm:col-span-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          {PROFILE_PRESETS.map((preset) => {
+                            const active =
+                              profileForm.allowed_ports === preset.values.allowed_ports &&
+                              profileForm.enable_http_fingerprint === preset.values.enable_http_fingerprint;
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => setProfileForm((p) => ({ ...p, ...preset.values }))}
+                                className={cn(
+                                  'border px-3 py-2 text-left transition-colors hover:bg-muted/50',
+                                  active ? 'border-foreground/60 bg-muted/60' : 'border-border'
+                                )}
+                              >
+                                <div className="text-xs font-semibold">{preset.label}</div>
+                                <div className="text-[11px] text-muted-foreground">{preset.hint}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </Field>
+                    )}
+                    <Field label="Name" htmlFor="pf-name" className="sm:col-span-2">
                       <Input
                         id="pf-name"
                         required
                         value={profileForm.name}
                         onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
-                        placeholder="Skan nocny"
+                        placeholder="Night scan, faculty networks"
                       />
                     </Field>
-                    <Field label="Cele" htmlFor="pf-targets" className="sm:col-span-2">
+                    <Field
+                      label="Targets"
+                      htmlFor="pf-targets"
+                      className="sm:col-span-2"
+                      hint="IPs, CIDRs, ranges (a-b) or domains, one per line or comma separated."
+                    >
                       <Textarea
                         id="pf-targets"
                         rows={2}
+                        required
                         value={profileForm.targetsText}
-                        onChange={(e) =>
-                          setProfileForm((p) => ({ ...p, targetsText: e.target.value }))
-                        }
+                        placeholder="10.66.0.0/22"
+                        onChange={(e) => setProfileForm((p) => ({ ...p, targetsText: e.target.value }))}
                         className="font-mono text-xs"
                       />
                     </Field>
                     <Field
-                      label="Skanuje"
+                      label="Scanner"
                       htmlFor="pf-agent"
                       className="sm:col-span-2"
-                      hint="Zdalny agent skanuje z wnętrza swojej sieci; wyniki trafiają do tego samego potoku."
+                      hint="A remote agent scans from inside its own network; results go through the same pipeline."
                     >
                       <SimpleSelect
                         id="pf-agent"
                         value={profileForm.agent_id}
                         onValueChange={(v) => setProfileForm((p) => ({ ...p, agent_id: v || LOCAL_AGENT }))}
                         options={[
-                          { value: LOCAL_AGENT, label: 'Ten serwer (lokalnie)' },
+                          { value: LOCAL_AGENT, label: 'This server' },
                           ...agents
                             .filter((a) => !a.disabled)
                             .map((a) => ({
                               value: a.id,
-                              label: `Agent: ${a.name}${a.site ? ` (${a.site})` : ''} · ${a.status}`,
+                              label: `Agent ${a.name}${a.site ? ` (${a.site})` : ''} · ${a.status}`,
                             })),
                         ]}
                       />
                     </Field>
-                    <Field label="Porty" htmlFor="pf-ports" className="sm:col-span-2">
+                    <Field label="Ports" htmlFor="pf-ports" className="sm:col-span-2" hint="Comma-separated TCP ports.">
                       <Input
                         id="pf-ports"
                         value={profileForm.allowed_ports}
-                        onChange={(e) =>
-                          setProfileForm((p) => ({ ...p, allowed_ports: e.target.value }))
-                        }
+                        onChange={(e) => setProfileForm((p) => ({ ...p, allowed_ports: e.target.value }))}
                         className="font-mono"
                       />
                     </Field>
-                    <Field label="Max PPS" htmlFor="pf-pps">
+
+                    <div className="sm:col-span-2">
+                      <SectionTitle>Intensity</SectionTitle>
+                    </div>
+                    <Field label="Max packets/s (whole scan)" htmlFor="pf-pps" hint="Split across nmap workers.">
                       <Input
                         id="pf-pps"
                         type="number"
+                        min={1}
                         value={profileForm.max_rate_pps}
-                        onChange={(e) =>
-                          setProfileForm((p) => ({ ...p, max_rate_pps: Number(e.target.value) }))
-                        }
+                        onChange={(e) => setProfileForm((p) => ({ ...p, max_rate_pps: Number(e.target.value) }))}
                         className="font-mono"
                       />
                     </Field>
-                    <Field label="HTTP RPS" htmlFor="pf-rps">
+                    <Field label="HTTP requests/s per host" htmlFor="pf-rps">
                       <Input
                         id="pf-rps"
                         type="number"
+                        min={1}
                         value={profileForm.http_rps}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, http_rps: Number(e.target.value) }))}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="Concurrency (max workers)" htmlFor="pf-conc">
+                      <Input
+                        id="pf-conc"
+                        type="number"
+                        min={1}
+                        value={profileForm.concurrency}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, concurrency: Number(e.target.value) }))}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="Chunk size (target seconds)" htmlFor="pf-chunk" hint="Checkpoint granularity.">
+                      <Input
+                        id="pf-chunk"
+                        type="number"
+                        min={5}
+                        value={profileForm.chunk_target_sec}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, chunk_target_sec: Number(e.target.value) }))}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field
+                      label="Re-probe retries"
+                      htmlFor="pf-retry"
+                      hint="Extra ping sweeps for known hosts that did not answer."
+                    >
+                      <Input
+                        id="pf-retry"
+                        type="number"
+                        min={0}
+                        max={5}
+                        value={profileForm.retry_unstable_count}
                         onChange={(e) =>
-                          setProfileForm((p) => ({ ...p, http_rps: Number(e.target.value) }))
+                          setProfileForm((p) => ({ ...p, retry_unstable_count: Number(e.target.value) }))
                         }
                         className="font-mono"
                       />
                     </Field>
-                    <Field label="Harmonogram (cron, 5 pól)" htmlFor="pf-cron">
+                    <div className="flex items-center gap-3 self-end pb-2">
+                      <Switch
+                        id="http_fp"
+                        checked={profileForm.enable_http_fingerprint}
+                        onCheckedChange={(checked) => setProfileForm((p) => ({ ...p, enable_http_fingerprint: checked }))}
+                      />
+                      <Label htmlFor="http_fp" className="text-xs">
+                        HTTP/TLS fingerprint + safe paths
+                      </Label>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground sm:col-span-2">
+                      Automatic backoff is always on: bursts of timeouts, HTTP 429/503 or TCP resets halve the rate
+                      (only for the affected host when a single host misbehaves) and it recovers after a quiet period.
+                      nmap timing, host timeout and retries are derived from the packet rate. Every slowdown is kept on
+                      the run.
+                    </p>
+
+                    <div className="sm:col-span-2">
+                      <SectionTitle>Schedule</SectionTitle>
+                    </div>
+                    <Field label="Cron (5 fields)" htmlFor="pf-cron" className="sm:col-span-2" hint={describeCron(profileForm.schedule_cron)}>
                       <Input
                         id="pf-cron"
                         value={profileForm.schedule_cron}
-                        placeholder="np. 0 22 * * * (puste = tylko ręcznie)"
-                        onChange={(e) =>
-                          setProfileForm((p) => ({ ...p, schedule_cron: e.target.value }))
-                        }
+                        placeholder="e.g. 0 22 * * * (empty = manual only)"
+                        onChange={(e) => setProfileForm((p) => ({ ...p, schedule_cron: e.target.value }))}
                         className="font-mono"
                       />
                     </Field>
@@ -1052,54 +1227,111 @@ export function ScansPage() {
                       <Switch
                         id="win_en"
                         checked={profileForm.window_enabled}
-                        onCheckedChange={(checked) =>
-                          setProfileForm((p) => ({ ...p, window_enabled: checked }))
-                        }
+                        onCheckedChange={(checked) => setProfileForm((p) => ({ ...p, window_enabled: checked }))}
                       />
                       <Label htmlFor="win_en" className="text-xs">
-                        Okno czasowe (Auto Pause/Resume)
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-3 sm:col-span-2">
-                      <Switch
-                        id="http_fp"
-                        checked={profileForm.enable_http_fingerprint}
-                        onCheckedChange={(checked) =>
-                          setProfileForm((p) => ({ ...p, enable_http_fingerprint: checked }))
-                        }
-                      />
-                      <Label htmlFor="http_fp" className="text-xs">
-                        Fingerprint HTTP/TLS + bezpieczne ścieżki
+                        Daily time window (pause outside, resume inside)
                       </Label>
                     </div>
                     {profileForm.window_enabled && (
                       <>
-                        <Field label="Start (HH:MM)" htmlFor="pf-ws">
+                        <Field label="From (HH:MM)" htmlFor="pf-ws">
                           <Input
                             id="pf-ws"
                             value={profileForm.window_start}
-                            onChange={(e) =>
-                              setProfileForm((p) => ({ ...p, window_start: e.target.value }))
-                            }
+                            onChange={(e) => setProfileForm((p) => ({ ...p, window_start: e.target.value }))}
                             className="font-mono"
                           />
                         </Field>
-                        <Field label="Koniec (HH:MM)" htmlFor="pf-we">
+                        <Field label="To (HH:MM)" htmlFor="pf-we">
                           <Input
                             id="pf-we"
                             value={profileForm.window_end}
-                            onChange={(e) =>
-                              setProfileForm((p) => ({ ...p, window_end: e.target.value }))
-                            }
+                            onChange={(e) => setProfileForm((p) => ({ ...p, window_end: e.target.value }))}
+                            className="font-mono"
+                          />
+                        </Field>
+                        <Field label="Time zone" htmlFor="pf-tz" className="sm:col-span-2">
+                          <Input
+                            id="pf-tz"
+                            value={profileForm.timezone}
+                            onChange={(e) => setProfileForm((p) => ({ ...p, timezone: e.target.value }))}
                             className="font-mono"
                           />
                         </Field>
                       </>
                     )}
+                    <div className="sm:col-span-2">
+                      <WindowBar
+                        enabled={profileForm.window_enabled}
+                        start={profileForm.window_start}
+                        end={profileForm.window_end}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <SectionTitle>Host lifecycle</SectionTitle>
+                    </div>
+                    <Field label="Missing after N scans" htmlFor="pf-miss">
+                      <Input
+                        id="pf-miss"
+                        type="number"
+                        min={1}
+                        value={profileForm.missing_threshold}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, missing_threshold: Number(e.target.value) }))}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="Grace period (hours)" htmlFor="pf-grace">
+                      <Input
+                        id="pf-grace"
+                        type="number"
+                        min={0}
+                        value={profileForm.grace_period_hours}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, grace_period_hours: Number(e.target.value) }))}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <p className="text-[11px] text-muted-foreground sm:col-span-2">
+                      A host is reported gone only after it missed {profileForm.missing_threshold} scan
+                      {profileForm.missing_threshold === 1 ? '' : 's'} in a row and {profileForm.grace_period_hours} h
+                      passed since it last answered.
+                    </p>
+
+                    <div className="sm:col-span-2">
+                      <SectionTitle className="mb-2">Exclusions</SectionTitle>
+                      {exclusions.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          No exclusions. Add never-scan ranges in the Scope tab; they apply to every profile.
+                        </p>
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap gap-1">
+                            {exclusions.map((ex) => (
+                              <span
+                                key={ex.id}
+                                className="border border-border bg-muted px-1 font-mono text-[10px]"
+                                title={ex.reason}
+                              >
+                                {ex.value}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            Never scanned by any profile (manage them in the Scope tab).
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
-                  <CardFooter className="justify-end">
+                  <CardFooter className="justify-end gap-2">
+                    {editingProfileId && (
+                      <Button type="button" variant="ghost" size="sm" onClick={resetProfileForm}>
+                        Cancel
+                      </Button>
+                    )}
                     <Button type="submit" size="sm">
-                      <RiSaveLine data-icon="inline-start" /> Zapisz profil
+                      <RiSaveLine data-icon="inline-start" /> {editingProfileId ? 'Save changes' : 'Create profile'}
                     </Button>
                   </CardFooter>
                 </form>
@@ -1114,7 +1346,7 @@ export function ScansPage() {
             {/* Targets */}
             <Card size="sm">
               <CardHeader>
-                <CardTitle className="text-sm">Cele · {targets.length}</CardTitle>
+                <CardTitle className="text-sm">Targets · {targets.length}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {canWriteScans && (
@@ -1122,24 +1354,24 @@ export function ScansPage() {
                     <Input
                       value={newTarget}
                       onChange={(e) => setNewTarget(e.target.value)}
-                      placeholder="172.28.0.0/24 lub agh.edu.pl"
-                      aria-label="Cel"
+                      placeholder="10.66.0.0/24 or agh.edu.pl"
+                      aria-label="Target"
                       className="flex-1 font-mono"
                     />
                     <Input
                       value={newTargetLabel}
                       onChange={(e) => setNewTargetLabel(e.target.value)}
-                      placeholder="Etykieta"
-                      aria-label="Etykieta"
+                      placeholder="Label"
+                      aria-label="Label"
                       className="w-32"
                     />
-                    <Button type="submit" size="sm">
-                      <RiAddLine data-icon="inline-start" /> Dodaj
+                    <Button type="submit" size="sm" variant="outline">
+                      <RiAddLine data-icon="inline-start" /> Add
                     </Button>
                   </form>
                 )}
                 {targets.length === 0 ? (
-                  <Empty className="py-6">Brak celów</Empty>
+                  <Empty className="py-6">No targets</Empty>
                 ) : (
                   <div className="max-h-64 divide-y divide-border overflow-y-auto border-y border-border">
                     {targets.map((t) => (
@@ -1152,7 +1384,7 @@ export function ScansPage() {
                           <Button
                             variant="ghost"
                             size="icon-xs"
-                            aria-label="Usuń cel"
+                            aria-label="Delete target"
                             className="text-muted-foreground hover:text-destructive"
                             onClick={async () => {
                               await api.deleteTarget(t.id);
@@ -1174,7 +1406,7 @@ export function ScansPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <RiForbidLine className="size-4 text-destructive" />
-                  Wykluczenia · {exclusions.length}
+                  Exclusions · {exclusions.length}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1184,29 +1416,29 @@ export function ScansPage() {
                       value={newExclusion}
                       onChange={(e) => setNewExclusion(e.target.value)}
                       placeholder="10.0.0.1/32"
-                      aria-label="Wykluczenie"
+                      aria-label="Exclusion"
                       className="flex-1 font-mono"
                     />
                     <Input
                       value={newExclusionReason}
                       onChange={(e) => setNewExclusionReason(e.target.value)}
-                      placeholder="Powód"
-                      aria-label="Powód"
+                      placeholder="Reason"
+                      aria-label="Reason"
                       className="w-40"
                     />
-                    <Button type="submit" size="sm" variant="destructive">
-                      <RiForbidLine data-icon="inline-start" /> Wyklucz
+                    <Button type="submit" size="sm" variant="outline">
+                      <RiForbidLine data-icon="inline-start" /> Exclude
                     </Button>
                   </form>
                 )}
                 {exclusions.length === 0 ? (
-                  <Empty className="py-6">Brak wykluczeń</Empty>
+                  <Empty className="py-6">No exclusions</Empty>
                 ) : (
                   <div className="max-h-64 divide-y divide-border overflow-y-auto border-y border-border">
                     {exclusions.map((ex) => (
                       <div key={ex.id} className="flex items-center justify-between gap-2 py-2 text-xs">
                         <div className="flex min-w-0 items-center gap-2">
-                          <Pill tone="danger">{ex.value}</Pill>
+                          <Pill tone="neutral" className="font-mono">{ex.value}</Pill>
                           {ex.reason && (
                             <span className="truncate text-muted-foreground">{ex.reason}</span>
                           )}
@@ -1215,7 +1447,7 @@ export function ScansPage() {
                           <Button
                             variant="ghost"
                             size="icon-xs"
-                            aria-label="Usuń wykluczenie"
+                            aria-label="Delete exclusion"
                             className="text-muted-foreground hover:text-destructive"
                             onClick={async () => {
                               await api.deleteExclusion(ex.id);
@@ -1241,11 +1473,11 @@ export function ScansPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
                 <RiCalculatorLine className="size-4 text-muted-foreground" />
-                Estymator
+                Scan time estimate
               </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-              <Field label="Zakresy" htmlFor="est-targets" className="lg:col-span-4">
+              <Field label="Ranges" htmlFor="est-targets" className="lg:col-span-4">
                 <Textarea
                   id="est-targets"
                   rows={3}
@@ -1254,7 +1486,7 @@ export function ScansPage() {
                   className="font-mono text-xs"
                 />
               </Field>
-              <Field label="Wykluczenia" htmlFor="est-excl" className="lg:col-span-3">
+              <Field label="Exclusions" htmlFor="est-excl" className="lg:col-span-3">
                 <Textarea
                   id="est-excl"
                   rows={3}
@@ -1264,7 +1496,7 @@ export function ScansPage() {
                 />
               </Field>
               <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:col-span-5">
-                <Field label="Porty" htmlFor="est-ports" className="col-span-2 sm:col-span-3">
+                <Field label="Ports" htmlFor="est-ports" className="col-span-2 sm:col-span-3">
                   <Input
                     id="est-ports"
                     value={estPorts}
@@ -1281,7 +1513,7 @@ export function ScansPage() {
                     className="font-mono"
                   />
                 </Field>
-                <Field label="Okno od" htmlFor="est-ws">
+                <Field label="Window from" htmlFor="est-ws">
                   <Input
                     id="est-ws"
                     value={estWindowStart}
@@ -1289,7 +1521,7 @@ export function ScansPage() {
                     className="font-mono"
                   />
                 </Field>
-                <Field label="Okno do" htmlFor="est-we">
+                <Field label="Window to" htmlFor="est-we">
                   <Input
                     id="est-we"
                     value={estWindowEnd}
@@ -1300,31 +1532,31 @@ export function ScansPage() {
               </div>
             </CardContent>
             <CardFooter className="justify-end">
-              <Button size="sm" disabled={estimating} onClick={handleEstimate}>
+              <Button size="sm" variant="outline" disabled={estimating} onClick={handleEstimate}>
                 <RiCalculatorLine data-icon="inline-start" />
-                {estimating ? 'Liczenie…' : 'Oblicz'}
+                {estimating ? 'Estimating…' : 'Estimate'}
               </Button>
             </CardFooter>
           </Card>
 
           {estimate && (
             <StatStrip>
-              <Stat label="Wszystkie IP" value={formatNumber(estimate.total_ips)} />
-              <Stat label="Wykluczone" value={formatNumber(estimate.excluded_ips)} tone="danger" />
-              <Stat label="Efektywne" value={formatNumber(estimate.effective_ips)} />
+              <Stat label="All IPs" value={formatNumber(estimate.total_ips)} />
+              <Stat label="Excluded" value={formatNumber(estimate.excluded_ips)} />
+              <Stat label="To scan" value={formatNumber(estimate.effective_ips)} />
               <Stat
-                label="Chunk / liczba"
+                label="Chunk size / count"
                 value={`${estimate.recommended_chunk_size} / ${estimate.chunk_count}`}
               />
               <Stat label="ETA" value={formatDurationSeconds(estimate.estimated_seconds)} />
               <Stat
-                label="Okno"
+                label="Time window"
                 tone={estimate.fits_in_window ? 'success' : 'warning'}
                 value={
                   <span className="text-sm">
                     {estimate.fits_in_window
-                      ? 'Mieści się'
-                      : `Pause/Resume · ${estimate.estimated_windows || 2} okna`}
+                      ? 'Fits in one window'
+                      : `Pauses and resumes over ${estimate.estimated_windows || 2} windows`}
                   </span>
                 }
               />
@@ -1339,25 +1571,25 @@ export function ScansPage() {
             <Card size="sm" className="xl:col-span-7">
               <form onSubmit={handleManualSubmit} className="flex flex-col gap-5">
                 <CardHeader>
-                  <CardTitle className="text-sm">Wpis ręczny</CardTitle>
+                  <CardTitle className="text-sm">Manual entry</CardTitle>
                 </CardHeader>
                 {!canImport ? (
                   <CardContent>
                     <Notice tone="warning">
-                      Wymagane uprawnienie <Code>import:write</Code>
+                      Requires the <Code>import:write</Code> permission
                     </Notice>
                   </CardContent>
                 ) : (
                   <>
                     <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                      <Field label="Nazwa przebiegu" htmlFor="m-name" className="sm:col-span-2">
+                      <Field label="Run name" htmlFor="m-name" className="sm:col-span-2">
                         <Input
                           id="m-name"
                           value={manualForm.scan_name}
                           onChange={(e) => setManualForm((m) => ({ ...m, scan_name: e.target.value }))}
                         />
                       </Field>
-                      <Field label="Środowisko">
+                      <Field label="Environment">
                         <SimpleSelect
                           value={manualForm.environment}
                           onValueChange={(v) => setManualForm((m) => ({ ...m, environment: v }))}
@@ -1386,7 +1618,7 @@ export function ScansPage() {
                           className="font-mono"
                         />
                       </Field>
-                      <Field label="Tagi" htmlFor="m-tags">
+                      <Field label="Tags" htmlFor="m-tags">
                         <Input
                           id="m-tags"
                           value={manualForm.tags}
@@ -1404,14 +1636,14 @@ export function ScansPage() {
                           className="font-mono"
                         />
                       </Field>
-                      <Field label="Produkt" htmlFor="m-product">
+                      <Field label="Product" htmlFor="m-product">
                         <Input
                           id="m-product"
                           value={manualForm.product}
                           onChange={(e) => setManualForm((m) => ({ ...m, product: e.target.value }))}
                         />
                       </Field>
-                      <Field label="Wersja" htmlFor="m-version">
+                      <Field label="Version" htmlFor="m-version">
                         <Input
                           id="m-version"
                           value={manualForm.version}
@@ -1419,7 +1651,7 @@ export function ScansPage() {
                           className="font-mono"
                         />
                       </Field>
-                      <Field label="Tytuł HTTP" htmlFor="m-title" className="sm:col-span-2">
+                      <Field label="HTTP title" htmlFor="m-title" className="sm:col-span-2">
                         <Input
                           id="m-title"
                           value={manualForm.http_title}
@@ -1427,7 +1659,7 @@ export function ScansPage() {
                           placeholder="Staging Admin Console"
                         />
                       </Field>
-                      <Field label="Kod HTTP" htmlFor="m-code">
+                      <Field label="HTTP status" htmlFor="m-code">
                         <Input
                           id="m-code"
                           type="number"
@@ -1438,7 +1670,7 @@ export function ScansPage() {
                           className="font-mono"
                         />
                       </Field>
-                      <Field label="Nagłówki" htmlFor="m-headers" className="sm:col-span-3">
+                      <Field label="Headers" htmlFor="m-headers" className="sm:col-span-3">
                         <Textarea
                           id="m-headers"
                           rows={2}
@@ -1459,7 +1691,7 @@ export function ScansPage() {
                           className="font-mono"
                         />
                       </Field>
-                      <Field label="Notatki" htmlFor="m-notes" className="sm:col-span-3">
+                      <Field label="Notes" htmlFor="m-notes" className="sm:col-span-3">
                         <Input
                           id="m-notes"
                           value={manualForm.notes}
@@ -1468,9 +1700,9 @@ export function ScansPage() {
                       </Field>
                     </CardContent>
                     <CardFooter className="justify-end">
-                      <Button type="submit" size="sm" disabled={submittingManual}>
+                      <Button type="submit" size="sm" variant="outline" disabled={submittingManual}>
                         <RiCheckLine data-icon="inline-start" />
-                        {submittingManual ? 'Przetwarzanie…' : 'Dodaj'}
+                        {submittingManual ? 'Saving…' : 'Add host'}
                       </Button>
                     </CardFooter>
                   </>
@@ -1483,12 +1715,12 @@ export function ScansPage() {
               <Card size="sm">
                 <form onSubmit={handleImportSubmit} className="flex flex-col gap-5">
                   <CardHeader>
-                    <CardTitle className="text-sm">Import CSV / JSON</CardTitle>
+                    <CardTitle className="text-sm">Import a file</CardTitle>
                   </CardHeader>
                   {!canImport ? (
                     <CardContent>
                       <Notice tone="warning">
-                        Wymagane uprawnienie <Code>import:write</Code>
+                        Requires the <Code>import:write</Code> permission
                       </Notice>
                     </CardContent>
                   ) : (
@@ -1504,7 +1736,7 @@ export function ScansPage() {
                         >
                           <RiUploadCloud2Line className="size-5 text-muted-foreground" />
                           <span className="text-xs text-muted-foreground">
-                            {importFile ? importFile.name : 'Upuść plik .csv / .json / nmap .xml (-oX)'}
+                            {importFile ? importFile.name : 'Drop a .csv / .json / nmap .xml (-oX) file'}
                           </span>
                           <input
                             type="file"
@@ -1527,12 +1759,12 @@ export function ScansPage() {
                               ]}
                             />
                           </Field>
-                          <Field label="Nazwa importu" htmlFor="imp-name">
+                          <Field label="Import name" htmlFor="imp-name">
                             <Input
                               id="imp-name"
                               value={importScanName}
                               onChange={(e) => setImportScanName(e.target.value)}
-                              placeholder="opcjonalnie"
+                              placeholder="optional"
                             />
                           </Field>
                         </div>
@@ -1540,7 +1772,7 @@ export function ScansPage() {
                         {importPreview && (
                           <div className="border border-border bg-muted/40 p-3">
                             <div className="mb-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                              Podgląd · {importFile?.name}
+                              Preview · {importFile?.name}
                             </div>
                             <pre className="max-h-36 overflow-auto font-mono text-[11px] text-foreground">
                               {importPreview}
@@ -1551,7 +1783,7 @@ export function ScansPage() {
                       <CardFooter className="justify-end">
                         <Button type="submit" size="sm" disabled={!importFile || importing}>
                           <RiFileUploadLine data-icon="inline-start" />
-                          {importing ? 'Importowanie…' : 'Importuj'}
+                          {importing ? 'Importing…' : 'Import'}
                         </Button>
                       </CardFooter>
                     </>
@@ -1562,25 +1794,25 @@ export function ScansPage() {
               {/* Export */}
               <Card size="sm">
                 <CardHeader>
-                  <CardTitle className="text-sm">Eksport</CardTitle>
+                  <CardTitle className="text-sm">Export</CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                  <Field label="Skan">
+                  <Field label="Run">
                     <SimpleSelect
                       value={exportScanId || ALL}
                       onValueChange={(v) => setExportScanId(v === ALL ? '' : v)}
                       options={[
-                        { value: ALL, label: 'Wszystkie' },
+                        { value: ALL, label: 'All runs' },
                         ...scans.map((s) => ({ value: s.id, label: s.name })),
                       ]}
                     />
                   </Field>
-                  <Field label="Stan">
+                  <Field label="State">
                     <SimpleSelect
                       value={exportState || ALL}
                       onValueChange={(v) => setExportState(v === ALL ? '' : v)}
                       options={[
-                        { value: ALL, label: 'Wszystkie' },
+                        { value: ALL, label: 'All states' },
                         { value: 'ACTIVE', label: 'ACTIVE' },
                         { value: 'INTERMITTENT', label: 'INTERMITTENT' },
                         { value: 'MISSING', label: 'MISSING' },
@@ -1592,7 +1824,7 @@ export function ScansPage() {
                       id="exp-tag"
                       value={exportTag}
                       onChange={(e) => setExportTag(e.target.value)}
-                      placeholder="dowolny"
+                      placeholder="any"
                     />
                   </Field>
                 </CardContent>
@@ -1616,15 +1848,15 @@ export function ScansPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        title="Jeden URL na linię: httpx, nuclei, gowitness"
+                        title="One URL per line: httpx, nuclei, gowitness"
                         onClick={() => runExport('urls')}
                       >
-                        <RiDownload2Line data-icon="inline-start" /> URL-e
+                        <RiDownload2Line data-icon="inline-start" /> URLs
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        title="NDJSON w Elastic Common Schema: ELK / Splunk"
+                        title="NDJSON in Elastic Common Schema: ELK / Splunk"
                         onClick={() => runExport('ecs')}
                       >
                         <RiDownload2Line data-icon="inline-start" /> ECS (ELK)
@@ -1632,7 +1864,7 @@ export function ScansPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        title="findings.json w formacie OWASP secureCodeBox (Host / Open Port + TLS/SSH)"
+                        title="OWASP secureCodeBox findings.json (Host / Open Port + TLS/SSH)"
                         onClick={() => runExport('scb')}
                       >
                         <RiDownload2Line data-icon="inline-start" /> secureCodeBox
@@ -1640,7 +1872,7 @@ export function ScansPage() {
                     </>
                   ) : (
                     <Notice tone="neutral" className="w-full">
-                      Wymagane uprawnienie <Code>export:read</Code>
+                      Requires the <Code>export:read</Code> permission
                     </Notice>
                   )}
                 </CardFooter>
@@ -1657,45 +1889,236 @@ export function ScansPage() {
   );
 }
 
-/** Recurring schedule summary: cron, next run (window-adjusted), last run, last skip reason. */
+/** Recurring schedule summary: when it runs (in words), next run (window-adjusted), last run. */
 function ScheduleCell({ schedule, cron }: { schedule?: ProfileSchedule; cron?: string }) {
-  if (!cron && !schedule?.cron) return <span>tylko ręcznie</span>;
+  const expr = schedule?.cron || cron || '';
+  if (!expr) return <span>manual only</span>;
   if (schedule?.cron_error) {
-    return <span className="text-rose-500">błędny cron: {schedule.cron_error}</span>;
+    return <span className="text-rose-500">invalid cron: {schedule.cron_error}</span>;
   }
   return (
     <div className="space-y-0.5">
-      <div className="text-foreground">{schedule?.cron || cron}</div>
+      <div className="text-foreground" title={expr}>
+        {describeCron(expr)}
+      </div>
       {schedule?.next_run_at && (
         <div>
-          następny: {formatDateTime(schedule.next_run_at)}
+          next: {formatDateTime(schedule.next_run_at)}
           {schedule.deferred_by_window && (
             <Pill tone="warning" className="ml-1">
-              po otwarciu okna
+              when the window opens
             </Pill>
           )}
           {schedule.pending_catch_up && (
             <Pill tone="violet" className="ml-1">
-              zaległy
+              catch-up
             </Pill>
           )}
         </div>
       )}
       {schedule?.active_run && (
         <div className="text-amber-600 dark:text-amber-300">
-          aktywny: {schedule.active_run.status} — kolejny slot zostanie pominięty
+          running ({schedule.active_run.status}); the next slot will be skipped
         </div>
       )}
       {schedule?.last_run && (
         <div>
-          ostatni: {formatDateTime(schedule.last_run.started_at)} · {schedule.last_run.status}
+          last: {formatDateTime(schedule.last_run.started_at)} · {schedule.last_run.status}
         </div>
       )}
       {schedule?.last_skip_reason && (
         <div className="truncate" title={schedule.last_skip_reason}>
-          pominięto: {schedule.last_skip_reason}
+          skipped: {schedule.last_skip_reason}
         </div>
       )}
+    </div>
+  );
+}
+
+function runTypeLabel(t: string): string {
+  switch (t) {
+    case 'ACTIVE':
+      return 'active scan';
+    case 'MANUAL':
+      return 'manual entry';
+    case 'IMPORT_CSV':
+      return 'CSV import';
+    case 'IMPORT_JSON':
+      return 'JSON import';
+    case 'IMPORT_NMAP':
+      return 'nmap XML import';
+    case 'PASSIVE':
+      return 'passive import';
+    default:
+      return t.toLowerCase().replace(/_/g, ' ');
+  }
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+/** Plain-English summary of common 5-field cron expressions ("every day at 22:00"). */
+export function describeCron(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return expr ? `custom: ${expr}` : 'manual only';
+  const [min, hour, dom, mon, dow] = parts;
+  const isNum = (v: string) => /^\d+$/.test(v);
+  const at = isNum(min) && isNum(hour) ? `${pad2(Number(hour))}:${pad2(Number(min))}` : '';
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return `every ${min.slice(2)} minutes`;
+  }
+  if (isNum(min) && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return `every hour at minute ${Number(min)}`;
+  }
+  if (isNum(min) && hour.startsWith('*/') && dom === '*' && mon === '*' && dow === '*') {
+    return `every ${hour.slice(2)} hours (minute ${Number(min)})`;
+  }
+  if (at && dom === '*' && mon === '*') {
+    if (dow === '*') return `every day at ${at}`;
+    if (dow === '1-5') return `weekdays at ${at}`;
+    if (dow === '0,6' || dow === '6,0') return `weekends at ${at}`;
+    const days = dow.split(',');
+    if (days.every((d) => /^[0-7]$/.test(d))) {
+      return `every ${days.map((d) => WEEKDAYS[Number(d) % 7]).join(', ')} at ${at}`;
+    }
+  }
+  if (at && isNum(dom) && mon === '*' && dow === '*') return `monthly on day ${Number(dom)} at ${at}`;
+  return `custom: ${expr}`;
+}
+
+function parseHHMM(v: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
+
+/** 24-hour bar with the allowed scan window highlighted (handles windows over midnight). */
+function WindowBar({ start, end, enabled }: { start: string; end: string; enabled: boolean }) {
+  const s = parseHHMM(start);
+  const e = parseHHMM(end);
+  const valid = s !== null && e !== null && s !== e;
+  const inWindow = (minute: number) => {
+    if (!enabled) return true;
+    if (!valid) return false;
+    return s! < e! ? minute >= s! && minute < e! : minute >= s! || minute < e!;
+  };
+  const hours = s !== null && e !== null ? ((e - s + 1440) % 1440) / 60 : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex h-3 w-full overflow-hidden border border-border">
+        {Array.from({ length: 24 }, (_, h) => (
+          <div
+            key={h}
+            className={cn('h-full flex-1 border-r border-background last:border-r-0', inWindow(h * 60 + 30) ? 'bg-emerald-500/70' : 'bg-muted')}
+            title={`${pad2(h)}:00`}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between font-mono text-[9px] text-muted-foreground">
+        <span>00</span>
+        <span>06</span>
+        <span>12</span>
+        <span>18</span>
+        <span>24</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {!enabled
+          ? 'No window: the scan may run at any time of day.'
+          : valid
+            ? `Scans only ${start} to ${end} (${hours % 1 === 0 ? hours : hours.toFixed(1)} h a day). A run still going when the window closes pauses and resumes from its checkpoint when it opens again.`
+            : 'Enter start and end as HH:MM.'}
+      </p>
+    </div>
+  );
+}
+
+/** Port list as a few chips plus a "+N more" count, so long lists never push actions off-screen. */
+function PortChips({ ports, max = 6 }: { ports: string; max?: number }) {
+  const list = ports
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (list.length === 0) return <span className="text-muted-foreground">all default ports</span>;
+  return (
+    <div className="flex flex-wrap items-center gap-1" title={list.join(', ')}>
+      {list.slice(0, max).map((p) => (
+        <span key={p} className="border border-border bg-muted px-1 font-mono text-[10px] tabular-nums">
+          {p}
+        </span>
+      ))}
+      {list.length > max && <span className="text-[10px] text-muted-foreground">+{list.length - max} more</span>}
+    </div>
+  );
+}
+
+/** How the run was paced: configured vs effective rates, automatic backoffs, window pauses. */
+function RateControlPanel({ scan, chunks }: { scan: ScanRun; chunks: ScanChunk[] }) {
+  const t = scan.telemetry;
+  const shares = chunks.map((c) => c.max_rate_pps || 0).filter((v) => v > 0);
+  const workers = new Set(chunks.map((c) => c.worker).filter(Boolean)).size;
+  if (!t && shares.length === 0) return null;
+  const events = [
+    ...(t?.throttles || []).map((x) => ({ at: x.at, kind: 'throttle' as const, x })),
+    ...(t?.window_events || []).map((w) => ({ at: w.at, kind: 'window' as const, w })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  return (
+    <div className="space-y-2">
+      <SectionTitle>Rate control</SectionTitle>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-4">
+        <RateFact label="Configured max">{t?.configured_pps ? `${formatNumber(t.configured_pps)} PPS` : 'n/a'}</RateFact>
+        <RateFact label="nmap peak granted">
+          {t?.nmap_peak_pps ? `${formatNumber(t.nmap_peak_pps)} PPS` : shares.length ? `${Math.max(...shares)} PPS per worker` : 'n/a'}
+        </RateFact>
+        <RateFact label="HTTP rate (start / end)">
+          {t?.http_initial_rps ? `${t.http_initial_rps.toFixed(0)} / ${(t.http_rate_rps || 0).toFixed(0)} req/s` : t?.configured_http_rps ? `${t.configured_http_rps} req/s per host` : 'n/a'}
+        </RateFact>
+        <RateFact label="Workers">{workers || 'n/a'}</RateFact>
+        <RateFact label="Automatic slowdowns">{t?.throttle_count ?? 0}</RateFact>
+        <RateFact label="Timeouts">{formatNumber(t?.timeouts ?? 0)}</RateFact>
+        <RateFact label="HTTP 429/503">{formatNumber(t?.http_429 ?? 0)}</RateFact>
+        <RateFact label="TCP resets">{formatNumber(t?.rst ?? 0)}</RateFact>
+      </div>
+      {events.length > 0 ? (
+        <ul className="max-h-40 space-y-0.5 overflow-y-auto font-mono text-[11px] text-muted-foreground">
+          {events.map((e, i) => (
+            <li key={i}>
+              <span className="text-foreground/70">{formatDateTime(e.at)}</span>{' '}
+              {e.kind === 'throttle' ? (
+                <span className="text-amber-700 dark:text-amber-300">
+                  slowed down: {throttleReasonLabel(e.x.reason)}
+                  {e.x.host ? ` (${e.x.host})` : ''}, {rateChange(e.x.old_rate, e.x.new_rate)}
+                </span>
+              ) : e.w.kind === 'paused' ? (
+                <span>
+                  window closed, paused{e.w.next_open ? `; resumes ${formatDateTime(e.w.next_open)}` : ''}
+                </span>
+              ) : (
+                <span>window opened, resumed from checkpoint</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          No automatic slowdowns. The governor halves the rate on bursts of timeouts, HTTP 429/503 or TCP resets and
+          speeds up again after a quiet period.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RateFact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[10px] tracking-wider text-muted-foreground uppercase">{label}</span>
+      <span className="font-mono">{children}</span>
     </div>
   );
 }

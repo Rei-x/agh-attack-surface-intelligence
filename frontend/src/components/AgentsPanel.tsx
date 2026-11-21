@@ -29,7 +29,7 @@ import { PeckLoader } from '@/components/Woodpecker';
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   online: { label: 'online', tone: 'success' },
   offline: { label: 'offline', tone: 'danger' },
-  disabled: { label: 'wyłączony', tone: 'neutral' },
+  disabled: { label: 'disabled', tone: 'neutral' },
 };
 
 function CopyBlock({ label, text }: { label: string; text: string }) {
@@ -44,14 +44,14 @@ function CopyBlock({ label, text }: { label: string; text: string }) {
           type="button"
           variant="outline"
           size="icon-xs"
-          aria-label="Kopiuj"
-          title="Kopiuj"
+          aria-label="Copy"
+          title="Copy"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(text);
-              toast.success('Skopiowano');
+              toast.success('Copied');
             } catch {
-              toast.error('Nie udało się skopiować', 'Zaznacz tekst ręcznie.');
+              toast.error('Could not copy', 'Select the text manually.');
             }
           }}
         >
@@ -84,7 +84,7 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
       setOfflineAfter(res.offline_after_sec);
       if (canManage) setTokens(await api.listAgentTokens());
     } catch (err) {
-      toast.error('Agenci', (err as Error).message);
+      toast.error('Agents', (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
       setForm({ name: '', site: '', ttl_hours: 24 });
       load();
     } catch (err) {
-      toast.error('Nie udało się utworzyć tokenu', (err as Error).message);
+      toast.error('Could not create token', (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -125,10 +125,10 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
   };
 
   const remove = async (a: Agent) => {
-    if (!window.confirm(`Usunąć agenta „${a.name}”? Jego poświadczenie przestanie działać, aktywny skan zostanie zatrzymany.`)) return;
+    if (!window.confirm(`Remove agent "${a.name}"? Its credential will stop working and any active scan will be stopped.`)) return;
     try {
       await api.deleteAgent(a.id);
-      toast.success('Usunięto agenta', a.name);
+      toast.success('Agent removed', a.name);
       load();
     } catch (err) {
       toast.error('Agent', (err as Error).message);
@@ -145,8 +145,8 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
             <PeckLoader />
           ) : agents.length === 0 ? (
             <Empty icon={RiRadarLine}>
-              Brak agentów. Agent to lekki skaner w innej sieci (VLAN, wydział, za NAT), który łączy się
-              tylko wychodząco do tego serwera.
+              No agents yet. An agent is a small scanner in another network (VLAN, department, behind NAT)
+              that only makes outbound connections to this server.
             </Empty>
           ) : (
             <Table>
@@ -154,8 +154,8 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
                 <TableRow>
                   <TableHead>Agent</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Wersja / skaner</TableHead>
-                  <TableHead>Dozwolone sieci</TableHead>
+                  <TableHead>Version / scanner</TableHead>
+                  <TableHead>Allowed networks</TableHead>
                   <TableHead className="text-right" />
                 </TableRow>
               </TableHeader>
@@ -176,16 +176,16 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
                           <Pill tone={st.tone} dot pulse={a.status === 'online'}>
                             {st.label}
                           </Pill>
-                          {a.current_run_id && <Pill tone="info">skanuje</Pill>}
+                          {a.current_run_id && <Pill tone="info">scanning</Pill>}
                         </div>
                         <div className="mt-1 text-[11px] text-muted-foreground" title={formatDateTime(a.last_seen_at)}>
-                          {a.last_seen_at ? `ostatnio ${formatRelativeTime(a.last_seen_at)}` : 'jeszcze nie połączony'}
+                          {a.last_seen_at ? `last seen ${formatRelativeTime(a.last_seen_at)}` : 'not connected yet'}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-[11px] text-muted-foreground">
                         <div>v{a.version || '?'} · {a.capabilities?.os}/{a.capabilities?.arch}</div>
                         <div>
-                          {a.capabilities?.nmap ? 'nmap' : 'TCP connect (bez nmap)'}
+                          {a.capabilities?.nmap ? 'nmap' : 'TCP connect (no nmap)'}
                           {a.capabilities?.privileged ? ' · root' : ''}
                         </div>
                       </TableCell>
@@ -196,7 +196,7 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
                             {allow.join(', ')}
                           </span>
                         ) : (
-                          <span className="text-amber-700 dark:text-amber-300">brak ograniczenia</span>
+                          <span className="text-amber-700 dark:text-amber-300">no restriction</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -205,19 +205,19 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
                             <Button variant="outline" size="xs" onClick={() => toggle(a)}>
                               {a.disabled ? (
                                 <>
-                                  <RiPlayLine data-icon="inline-start" /> Włącz
+                                  <RiPlayLine data-icon="inline-start" /> Enable
                                 </>
                               ) : (
                                 <>
-                                  <RiForbidLine data-icon="inline-start" /> Wyłącz
+                                  <RiForbidLine data-icon="inline-start" /> Disable
                                 </>
                               )}
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon-xs"
-                              aria-label="Usuń agenta"
-                              title="Usuń agenta"
+                              aria-label="Remove agent"
+                              title="Remove agent"
                               className="text-muted-foreground hover:text-destructive"
                               onClick={() => remove(a)}
                             >
@@ -234,9 +234,9 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
           )}
         </Card>
         <p className="text-[11px] text-muted-foreground">
-          Agent bez kontaktu przez {Math.round(offlineAfter)} s jest oznaczany jako offline, a jego trwający skan
-          wstrzymywany i wznawiany od punktu kontrolnego po powrocie. Profil przypisuje się do agenta w zakładce
-          Profile.
+          An agent silent for {Math.round(offlineAfter)} s is marked offline. Its running scan is paused and
+          resumes from the last checkpoint when the agent is back. Assign a profile to an agent in the Profiles
+          tab.
         </p>
       </div>
 
@@ -245,26 +245,26 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
           <Card size="sm">
             <form onSubmit={createToken} className="flex flex-col gap-5">
               <CardHeader>
-                <CardTitle className="text-sm">Dodaj agenta</CardTitle>
+                <CardTitle className="text-sm">Add agent</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 gap-4">
-                <Field label="Nazwa" htmlFor="ag-name">
+                <Field label="Name" htmlFor="ag-name">
                   <Input
                     id="ag-name"
                     value={form.name}
-                    placeholder="np. wydzial-eaiib"
+                    placeholder="e.g. dept-eaiib"
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   />
                 </Field>
-                <Field label="Lokalizacja / segment" htmlFor="ag-site">
+                <Field label="Location / segment" htmlFor="ag-site">
                   <Input
                     id="ag-site"
                     value={form.site}
-                    placeholder="np. VLAN 120, budynek D-17"
+                    placeholder="e.g. VLAN 120, building D-17"
                     onChange={(e) => setForm((f) => ({ ...f, site: e.target.value }))}
                   />
                 </Field>
-                <Field label="Ważność tokenu (godziny)" htmlFor="ag-ttl" hint="Token jest jednorazowy.">
+                <Field label="Token valid for (hours)" htmlFor="ag-ttl" hint="The token can be used once.">
                   <Input
                     id="ag-ttl"
                     type="number"
@@ -278,7 +278,7 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
               </CardContent>
               <CardFooter className="justify-end">
                 <Button type="submit" size="sm" disabled={busy}>
-                  <RiAddLine data-icon="inline-start" /> Utwórz token
+                  <RiAddLine data-icon="inline-start" /> Create token
                 </Button>
               </CardFooter>
             </form>
@@ -287,18 +287,18 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
           {created && (
             <Card size="sm">
               <CardHeader>
-                <CardTitle className="text-sm">Instalacja agenta</CardTitle>
+                <CardTitle className="text-sm">Install the agent</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Notice tone="warning">
-                  Token widać tylko teraz (serwer przechowuje wyłącznie jego skrót). Ważny do{' '}
-                  {formatDateTime(created.enroll_token.expires_at)}, jednorazowy.
+                  The token is shown only now (the server keeps only its hash). Valid until{' '}
+                  {formatDateTime(created.enroll_token.expires_at)}, single use.
                 </Notice>
                 <CopyBlock label="Linux + systemd (root)" text={created.install_command} />
-                <CopyBlock label="Ręcznie (dowolny system)" text={created.run_command} />
+                <CopyBlock label="Manual (any OS)" text={created.run_command} />
                 <p className="text-[11px] text-muted-foreground">
-                  Agent potrzebuje tylko wyjścia na <Code>{created.server_url}</Code> (HTTPS). Dodaj{' '}
-                  <Code>--allow-cidr 10.20.0.0/16</Code>, aby agent odrzucał cele spoza swojej sieci.
+                  The agent only needs outbound access to <Code>{created.server_url}</Code> (HTTPS). Add{' '}
+                  <Code>--allow-cidr 10.20.0.0/16</Code> so the agent rejects targets outside its network.
                 </p>
               </CardContent>
             </Card>
@@ -306,20 +306,20 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
 
           {pendingTokens.length > 0 && (
             <div className="space-y-2">
-              <SectionTitle>Niewykorzystane tokeny</SectionTitle>
+              <SectionTitle>Unused tokens</SectionTitle>
               {pendingTokens.map((t) => (
                 <div key={t.id} className="flex items-center justify-between gap-2 border px-3 py-2 text-xs">
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{t.name || 'bez nazwy'}</div>
+                    <div className="truncate font-medium">{t.name || 'unnamed'}</div>
                     <div className="font-mono text-[11px] text-muted-foreground">
-                      {t.prefix}… · do {formatDateTime(t.expires_at)}
+                      {t.prefix}… · until {formatDateTime(t.expires_at)}
                     </div>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label="Unieważnij token"
-                    title="Unieważnij token"
+                    aria-label="Revoke token"
+                    title="Revoke token"
                     className="text-muted-foreground hover:text-destructive"
                     onClick={async () => {
                       await api.revokeAgentToken(t.id);

@@ -197,8 +197,12 @@ func (s *Server) handleClusters(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
+	groupBy, ok := normalizeClusterGroupBy(r.URL.Query().Get("group_by"))
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid group_by: use one of favicon, http_title, tech_stack (alias: tech), service_product (alias: product)")
+		return
+	}
 	clusters := s.pipeline.Analyzer().ComputeClusters(hosts)
-	groupBy := strings.TrimSpace(r.URL.Query().Get("group_by"))
 	if groupBy != "" {
 		filtered := make([]domain.ServiceCluster, 0, len(clusters))
 		for _, c := range clusters {
@@ -209,4 +213,22 @@ func (s *Server) handleClusters(w http.ResponseWriter, r *http.Request) {
 		clusters = filtered
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"clusters": clusters})
+}
+
+// normalizeClusterGroupBy maps a group_by query value (with short aliases) to a cluster
+// GroupBy key. An unknown value is rejected instead of silently returning no clusters.
+func normalizeClusterGroupBy(v string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "":
+		return "", true
+	case "favicon", "favicon_mmh3":
+		return "favicon", true
+	case "http_title", "title":
+		return "http_title", true
+	case "tech_stack", "tech", "technology", "technologies":
+		return "tech_stack", true
+	case "service_product", "product", "service":
+		return "service_product", true
+	}
+	return "", false
 }

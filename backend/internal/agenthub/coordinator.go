@@ -560,7 +560,7 @@ func (c *Coordinator) DeleteAgent(ctx context.Context, id string) error {
 	}
 	c.mu.Unlock()
 	for _, rid := range runIDs {
-		c.finalizeRun(ctx, rid, domain.ScanStatusStopped, fmt.Sprintf("Agent %q został usunięty - skan zatrzymany. / Agent deleted, scan stopped.", name))
+		c.finalizeRun(ctx, rid, domain.ScanStatusStopped, fmt.Sprintf("Agent %q was deleted - scan stopped.", name))
 	}
 	return nil
 }

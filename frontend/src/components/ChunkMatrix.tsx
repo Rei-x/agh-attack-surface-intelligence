@@ -1,7 +1,8 @@
 import { memo, useMemo, useState } from 'react';
 import { formatDurationSeconds, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { ScanChunk } from '@/types/api';
+import type { ScanChunk, ThrottleEntry } from '@/types/api';
+import { collapseCommands, rateChange, throttleReasonLabel } from '@/lib/scanTelemetry';
 
 const FILL: Record<string, string> = {
   DONE: 'bg-emerald-500',
@@ -24,8 +25,24 @@ const LEGEND: { status: string; label: string }[] = [
  * (a /16 = 256 chunks) without overflowing: tiles shrink with count, wrap, and a
  * single shared hover card shows per-chunk details.
  */
-export const ChunkMatrix = memo(function ChunkMatrix({ chunks }: { chunks: ScanChunk[] }) {
+export const ChunkMatrix = memo(function ChunkMatrix({
+  chunks,
+  throttles = [],
+}: {
+  chunks: ScanChunk[];
+  /** Governor backoffs of the run; the ones inside a chunk's time span show on hover. */
+  throttles?: ThrottleEntry[];
+}) {
   const [hover, setHover] = useState<ScanChunk | null>(null);
+  const hoverThrottles = useMemo(() => {
+    if (!hover?.started_at) return [];
+    const from = Date.parse(hover.started_at);
+    const to = hover.finished_at ? Date.parse(hover.finished_at) : Date.now();
+    return throttles.filter((t) => {
+      const at = Date.parse(t.at);
+      return at >= from && at <= to;
+    });
+  }, [hover, throttles]);
 
   const counts = useMemo(() => {
     const out: Record<string, number> = {};
@@ -91,7 +108,7 @@ export const ChunkMatrix = memo(function ChunkMatrix({ chunks }: { chunks: ScanC
             <span>{String(hover.status).toUpperCase()}</span>
             <span>{formatNumber(hover.ip_count)} IP</span>
             <span>
-              {formatNumber(hover.active_hosts)} hostów · {formatNumber(hover.services_found)} usług
+              {formatNumber(hover.active_hosts)} hosts · {formatNumber(hover.services_found)} services
             </span>
             {hover.duration_ms > 0 && <span>{formatDurationSeconds(hover.duration_ms / 1000)}</span>}
             {hover.targets && hover.targets.length > 0 && (
@@ -103,21 +120,32 @@ export const ChunkMatrix = memo(function ChunkMatrix({ chunks }: { chunks: ScanC
             {hover.worker ? (
               <span>
                 worker {hover.worker}
-                {hover.max_rate_pps ? ` · ${hover.max_rate_pps} PPS` : ''}
+                {hover.max_rate_pps ? ` · nmap share ${hover.max_rate_pps} PPS` : ''}
               </span>
             ) : null}
             {hover.error && <span className="truncate text-rose-500">{hover.error}</span>}
           </>
         ) : (
-          <span>Najedź na kafelek, aby zobaczyć szczegóły chunka</span>
+          <span>Hover a tile to see chunk details</span>
         )}
       </div>
+      {hoverThrottles.length > 0 && (
+        <div className="space-y-0.5 text-[11px] text-amber-700 dark:text-amber-300">
+          {hoverThrottles.map((t, i) => (
+            <div key={i}>
+              Slowed down: {throttleReasonLabel(t.reason)}
+              {t.host ? ` from ${t.host}` : ''}, {rateChange(t.old_rate, t.new_rate)}
+            </div>
+          ))}
+        </div>
+      )}
       {hover?.nmap_commands && hover.nmap_commands.length > 0 && (
         <div className="space-y-1 rounded-md bg-muted/50 p-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
-          {hover.nmap_commands.map((cmd, i) => (
+          {collapseCommands(hover.nmap_commands).map((l, i) => (
             <div key={i} className="break-all">
               <span className="select-none text-foreground/60">$ </span>
-              {cmd}
+              {l.cmd}
+              {l.times > 1 && <span className="ml-2 select-none text-foreground/70">({l.times} attempts)</span>}
             </div>
           ))}
         </div>

@@ -21,7 +21,7 @@ const (
 )
 
 // ErrNoValidHosts is returned when nothing in an import survives validation.
-var ErrNoValidHosts = errors.New("brak poprawnych hostów: kolumna/pole 'ip' musi zawierać adres IPv4 lub IPv6 / no valid hosts: the 'ip' field must hold an IPv4 or IPv6 address")
+var ErrNoValidHosts = errors.New("no valid hosts: the 'ip' column/field must hold an IPv4 or IPv6 address")
 
 // DecodeText converts UTF-16 input (Excel "Unicode text" export, detected by its BOM) to
 // UTF-8 and drops a UTF-8 BOM; other input is returned unchanged.
@@ -186,7 +186,7 @@ func SanitizeObservations(in []domain.ObservedHost) ([]domain.ObservedHost, int,
 	}
 	if len(out) == 0 {
 		if skipped > 0 {
-			return nil, skipped, fmt.Errorf("%w (odrzucono %d rekordów / %d records rejected)", ErrNoValidHosts, skipped, skipped)
+			return nil, skipped, fmt.Errorf("%w (%d records rejected)", ErrNoValidHosts, skipped)
 		}
 		return nil, 0, ErrNoValidHosts
 	}

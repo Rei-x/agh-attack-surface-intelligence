@@ -11,7 +11,7 @@ import (
 
 const minPasswordLen = 8
 
-var errLastAdmin = errors.New("operacja odebrałaby dostęp ostatniemu administratorowi - najpierw nadaj rolę administratora innemu aktywnemu kontu / this would leave no active administrator")
+var errLastAdmin = errors.New("this would leave no active administrator - grant the admin role to another active account first")
 
 // guardLastAdmin simulates a user or role change and refuses it if no active account would
 // keep the admin.users permission afterwards (nobody could manage accounts any more).

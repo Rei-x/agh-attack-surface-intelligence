@@ -194,16 +194,33 @@ func TestOpsAPITriageTimelineSearchTagRulesWebhook(t *testing.T) {
 	if _, err := srv.pipeline.ProcessObservations(ctx, ingest.IngestRequest{Observations: []domain.ObservedHost{{IP: "10.80.0.1", IsAlive: true, Services: []domain.ObservedService{{Port: 22}}}}}); err != nil {
 		t.Fatal(err)
 	}
-	_ = doJSON(h, http.MethodPut, "/api/v1/tag-rules", analystTok, map[string]any{"rules": []map[string]any{
+	// Saving the rules applies them to the inventory right away.
+	r = doJSON(h, http.MethodPut, "/api/v1/tag-rules", analystTok, map[string]any{"rules": []map[string]any{
 		{"cidr": "10.66.0.0/22", "tags": []string{"wydzial-wi"}, "owner": "admin@wi.agh.edu.pl", "enabled": true},
-		{"cidr": "10.80.0.0/16", "tags": []string{"dc"}, "enabled": true},
+		{"cidr": "10.80.0.0/16", "tags": []string{"dc"}, "owner": "first@agh.edu.pl", "enabled": true},
 	}})
-	r = doJSON(h, http.MethodPost, "/api/v1/tag-rules/apply", analystTok, nil)
 	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"updated":1`) {
-		t.Fatalf("apply tag rules: %d %s", r.Code, r.Body.String())
+		t.Fatalf("save tag rules: %d %s", r.Code, r.Body.String())
 	}
 	if r := doJSON(h, http.MethodGet, "/api/v1/hosts?q="+urlq("tag:dc"), viewerTok, nil); !strings.Contains(r.Body.String(), "10.80.0.1") {
 		t.Fatalf("retroactive tag missing: %s", r.Body.String())
+	}
+	// Editing a rule moves owner and tags; the old rule's tag disappears.
+	r = doJSON(h, http.MethodPut, "/api/v1/tag-rules", analystTok, map[string]any{"rules": []map[string]any{
+		{"cidr": "10.80.0.0/16", "tags": []string{"datacenter"}, "owner": "second@agh.edu.pl", "enabled": true},
+	}})
+	if r.Code != http.StatusOK {
+		t.Fatalf("edit tag rules: %d %s", r.Code, r.Body.String())
+	}
+	r = doJSON(h, http.MethodGet, "/api/v1/hosts?q="+urlq("ip:10.80.0.1"), viewerTok, nil)
+	body := r.Body.String()
+	if !strings.Contains(body, "second@agh.edu.pl") || strings.Contains(body, "first@agh.edu.pl") ||
+		!strings.Contains(body, `"datacenter"`) || strings.Contains(body, `"dc"`) {
+		t.Fatalf("edited rule not re-applied: %s", body)
+	}
+	r = doJSON(h, http.MethodPost, "/api/v1/tag-rules/apply", analystTok, nil)
+	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"updated":0`) {
+		t.Fatalf("apply tag rules should be idempotent: %d %s", r.Code, r.Body.String())
 	}
 }
 

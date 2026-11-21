@@ -14,9 +14,22 @@ const (
 	PointsKnownVuln = 20
 	TagEOL          = "eol"
 	TagKnownVuln    = "known-vuln"
-	factorPrefixEOL = "Wersja EOL: "
-	factorPrefixCVE = "Pasywna wskazówka CVE: "
+	factorPrefixEOL = "EOL version: "
+	factorPrefixCVE = "Passive CVE hint: "
 )
+
+// derivedFactorPrefixes also lists the pre-translation (Polish) prefixes so factors stored
+// by older versions are replaced rather than counted twice.
+var derivedFactorPrefixes = []string{factorPrefixEOL, factorPrefixCVE, "Wersja EOL: ", "Pasywna wskazówka CVE: "}
+
+func isDerivedFactor(reason string) bool {
+	for _, p := range derivedFactorPrefixes {
+		if strings.HasPrefix(reason, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // Annotate fills svc.Outdated / svc.KnownVulns from the offline table (read-time view).
 func Annotate(svc *domain.Service, now time.Time) {
@@ -49,7 +62,7 @@ func ApplyScore(svc *domain.Service, now time.Time) {
 	Annotate(svc, now)
 	kept := svc.InterestingFactors[:0:0]
 	for _, f := range svc.InterestingFactors {
-		if !strings.HasPrefix(f.Reason, factorPrefixEOL) && !strings.HasPrefix(f.Reason, factorPrefixCVE) {
+		if !isDerivedFactor(f.Reason) {
 			kept = append(kept, f)
 		}
 	}

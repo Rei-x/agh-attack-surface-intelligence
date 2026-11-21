@@ -29,8 +29,8 @@ import { PeckSpinner } from '@/components/Woodpecker';
 
 const PRESETS = [
   { label: 'Lab AGH', hint: '172.28.0.10-14', value: '172.28.0.10-14' },
-  { label: 'Podsieć /24', hint: '256 IP', value: '172.28.0.0/24' },
-  { label: 'Skala 16 384 IP', hint: '10.0.0.0/18', value: '10.0.0.0/18' },
+  { label: 'Subnet /24', hint: '256 IP', value: '172.28.0.0/24' },
+  { label: 'Scale 16,384 IP', hint: '10.0.0.0/18', value: '10.0.0.0/18' },
 ];
 
 const DEFAULT_PORTS = '21,22,23,25,53,80,110,143,443,445,554,631,3000,3306,3389,5000,5432,6379,8000,8080,8081,8443,8888,9000,9090,9100,9200,27017';
@@ -64,7 +64,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const toast = useToast();
   const navigate = useNavigate();
 
-  const [targetsText, setTargetsText] = useState(PRESETS[0].value);
+  const [targetsText, setTargetsText] = useState('');
   const [ports, setPorts] = useState(DEFAULT_PORTS);
   const [rate, setRate] = useState(1000);
   const [windowEnabled, setWindowEnabled] = useState(false);
@@ -126,7 +126,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
     setSubmitting(true);
     try {
       const run = await api.startScan({
-        name: `Szybki skan — ${targets.slice(0, 2).join(', ')}${targets.length > 2 ? ` +${targets.length - 2}` : ''}`,
+        name: `Quick scan: ${targets.slice(0, 2).join(', ')}${targets.length > 2 ? ` +${targets.length - 2}` : ''}`,
         targets,
         allowed_ports: ports,
         max_rate_pps: rate,
@@ -136,12 +136,12 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
         timezone: 'Europe/Warsaw',
       });
       toast.success(
-        'Uruchomiono skan',
-        `${run?.name || 'Szybki skan'} · ${formatNumber(estimate?.effective_ips ?? run?.total_ips)} IP`
+        'Scan started',
+        `${run?.name || 'Quick scan'} · ${formatNumber(estimate?.effective_ips ?? run?.total_ips)} IP`
       );
       onOpenChange(false);
     } catch (err) {
-      toast.error('Błąd uruchomienia skanu', (err as Error).message);
+      toast.error('Could not start scan', (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -153,9 +153,9 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RiRadarLine className="size-5 text-primary" />
-            Nowy skan
+            New scan
           </DialogTitle>
-          <DialogDescription>IP, CIDR, zakres lub domena — po jednym w linii lub po przecinku.</DialogDescription>
+          <DialogDescription>IP, CIDR, range or domain. One per line or comma separated.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -182,13 +182,13 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
             })}
           </div>
 
-          <Field label="Cele" htmlFor="qs-targets">
+          <Field label="Targets" htmlFor="qs-targets">
             <Textarea
               id="qs-targets"
               value={targetsText}
               onChange={(e) => setTargetsText(e.target.value)}
               rows={3}
-              placeholder={'172.28.0.0/24\n10.0.0.1-50, intranet.agh.edu.pl'}
+              placeholder={'10.66.0.0/24\n10.0.0.1-50, intranet.agh.edu.pl'}
               className="font-mono text-xs"
               autoFocus
               onKeyDown={(e) => {
@@ -199,15 +199,15 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
           {/* Live estimator strip */}
           <div className="relative grid grid-cols-4 divide-x divide-border border border-border bg-muted/30">
-            <EstimateCell label="Efektywne IP" value={estimate ? formatNumber(estimate.effective_ips) : '—'} />
-            <EstimateCell label="Chunki" value={estimate ? formatNumber(estimate.chunk_count) : '—'} />
+            <EstimateCell label="Effective IPs" value={estimate ? formatNumber(estimate.effective_ips) : 'n/a'} />
+            <EstimateCell label="Chunks" value={estimate ? formatNumber(estimate.chunk_count) : 'n/a'} />
             <EstimateCell
-              label="Rozmiar chunka"
-              value={estimate ? formatNumber(estimate.recommended_chunk_size) : '—'}
+              label="Chunk size"
+              value={estimate ? formatNumber(estimate.recommended_chunk_size) : 'n/a'}
             />
             <EstimateCell
               label="ETA"
-              value={estimate ? formatDurationSeconds(estimate.estimated_seconds) : '—'}
+              value={estimate ? formatDurationSeconds(estimate.estimated_seconds) : 'n/a'}
               tone={estimate && windowEnabled && !estimate.fits_in_window ? 'warning' : undefined}
             />
             {estimating && (
@@ -216,7 +216,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
           </div>
           {estimate && estimate.excluded_ips > 0 && (
             <span className="-mt-2 text-[11px] text-muted-foreground tabular-nums">
-              {formatNumber(estimate.excluded_ips)} IP wykluczonych z {formatNumber(estimate.total_ips)}
+              {formatNumber(estimate.excluded_ips)} IPs excluded out of {formatNumber(estimate.total_ips)}
             </span>
           )}
           {estimateError && <Notice tone="danger">{estimateError}</Notice>}
@@ -229,12 +229,12 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
               className="flex w-full items-center justify-between px-3 py-2 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase hover:text-foreground"
               aria-expanded={advancedOpen}
             >
-              Parametry i okno czasowe
+              Parameters and time window
               <RiArrowDownSLine className={cn('size-4 transition-transform', advancedOpen && 'rotate-180')} />
             </button>
             {advancedOpen && (
               <div className="grid grid-cols-2 gap-3 border-t border-border p-3">
-                <Field label="Porty" htmlFor="qs-ports" className="col-span-2">
+                <Field label="Ports" htmlFor="qs-ports" className="col-span-2">
                   <Input
                     id="qs-ports"
                     value={ports}
@@ -242,7 +242,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
                     className="font-mono text-xs"
                   />
                 </Field>
-                <Field label="Maks. PPS" htmlFor="qs-rate">
+                <Field label="Max PPS" htmlFor="qs-rate">
                   <Input
                     id="qs-rate"
                     type="number"
@@ -253,7 +253,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
                     className="font-mono tabular-nums"
                   />
                 </Field>
-                <Field label="Okno czasowe">
+                <Field label="Time window">
                   <div className="flex h-8 items-center gap-2">
                     <Switch size="sm" checked={windowEnabled} onCheckedChange={(c) => setWindowEnabled(c)} />
                     <Input
@@ -262,16 +262,16 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
                       disabled={!windowEnabled}
                       onChange={(e) => setWindowStart(e.target.value)}
                       className="h-8 font-mono text-xs tabular-nums"
-                      aria-label="Początek okna"
+                      aria-label="Window start"
                     />
-                    <span className="text-muted-foreground">–</span>
+                    <span className="text-muted-foreground">to</span>
                     <Input
                       type="time"
                       value={windowEnd}
                       disabled={!windowEnabled}
                       onChange={(e) => setWindowEnd(e.target.value)}
                       className="h-8 font-mono text-xs tabular-nums"
-                      aria-label="Koniec okna"
+                      aria-label="Window end"
                     />
                   </div>
                 </Field>
@@ -290,11 +290,11 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
                 navigate('/scans');
               }}
             >
-              Pełna konfiguracja skanera →
+              Full scanner setup →
             </Button>
             <Button type="submit" disabled={targets.length === 0 || submitting}>
               {submitting ? <PeckSpinner className="h-3.5" /> : <RiPlayFill />}
-              Uruchom skan
+              Start scan
             </Button>
           </DialogFooter>
         </form>

@@ -1,6 +1,6 @@
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Background,
   BackgroundVariant,
@@ -34,7 +34,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
-import { formatNumber, lifecycleMeta, scoreBarColor, scoreColor } from '@/lib/format';
+import { formatNumber, lifecycleMeta, scoreColor } from '@/lib/format';
 import { PERMISSIONS } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -42,7 +42,7 @@ import { Input } from '@/components/ui/input';
 import { Pill, SimpleSelect } from '@/components/common';
 import { ServiceLogo } from '@/components/ServiceLogo';
 import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
-import type { GraphMode, GraphNode, GraphQuery, GraphResponse } from '@/types/api';
+import type { GraphHostRef, GraphMode, GraphNode, GraphQuery, GraphResponse } from '@/types/api';
 import { PeckSpinner } from '@/components/Woodpecker';
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -56,26 +56,28 @@ type FlowNode = Node<FlowNodeData>;
 type QuickFilter = 'all' | 'risk' | 'adminstaging' | 'active';
 
 const QUICK_FILTERS: { value: QuickFilter; label: string }[] = [
-  { value: 'all', label: 'Wszystkie' },
-  { value: 'risk', label: 'Ryzyko ≥ 50' },
-  { value: 'adminstaging', label: 'Admin / Staging' },
-  { value: 'active', label: 'Aktywne' },
+  { value: 'all', label: 'All' },
+  { value: 'risk', label: 'Risk ≥ 50' },
+  { value: 'adminstaging', label: 'Admin / staging' },
+  { value: 'active', label: 'Active' },
 ];
 
 const MODES: { value: GraphMode; label: string }[] = [
   { value: 'auto', label: 'Auto' },
-  { value: 'clustered', label: 'Klastrowy' },
-  { value: 'detailed', label: 'Szczegółowy' },
+  { value: 'clustered', label: 'Clustered' },
+  { value: 'detailed', label: 'Detailed' },
 ];
 
 const COL_X: Record<Column, number> = { scope: 0, host: 330, service: 700, tech: 1090 };
 const COL_W: Record<Column, number> = { scope: 260, host: 280, service: 300, tech: 250 };
 const COL_TITLE: Record<Column, string> = {
-  scope: 'Zakres',
-  host: 'Host / Podsieć',
-  service: 'Usługa',
-  tech: 'Technologia',
+  scope: 'Scope',
+  host: 'Host / subnet',
+  service: 'Service',
+  tech: 'Technology',
 };
+// Room at the top for the floating toolbar so it never covers the lane headers.
+const FIT_PADDING = { top: '150px', right: '32px', bottom: '32px', left: '32px' } as const;
 const GAP = 14;
 const GROUP_GAP = 34;
 const RISK_HIGH = '#f43f5e';
@@ -116,6 +118,67 @@ function serviceName(n: GraphNode): string {
   const name = str(m.product) || str(m.service_name);
   if (name) return name;
   return n.label.replace(/^:\d+(\/\w+)?\s*/, '').replace(/\s*\(\d+×\)\s*$/, '');
+}
+
+/** Assets-page query listing what a node stands for ('' when a single host is better). */
+function assetsQueryFor(n: GraphNode): string {
+  const m = n.meta || {};
+  if (n.kind === 'technology' || n.kind === 'signature') {
+    const name = str(m.name) || n.label;
+    return /\s/.test(name) ? `tech:"${name.replace(/"/g, '')}"` : `tech:${name}`;
+  }
+  if (n.kind === 'service' && isCluster(n)) {
+    const sub = str(m.subnet);
+    return `port:${num(m.port)}${sub ? ` cidr:${sub}` : ''}`;
+  }
+  if (n.kind === 'host' && isCluster(n)) return `cidr:${str(m.subnet)}`;
+  if (n.kind === 'scope' && str(m.subnet)) return `cidr:${str(m.subnet)}`;
+  return '';
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  cms: 'CMS',
+  framework: 'Framework',
+  server: 'Web server',
+  iot: 'IoT / device',
+  bmc: 'Server management (BMC)',
+  admin_panel: 'Admin panel',
+  staging: 'Staging / dev',
+  custom: 'Custom signature',
+};
+
+/** Human-readable facts for the side panel (instead of a raw meta dump). */
+function nodeFacts(n: GraphNode): { label: string; value: string }[] {
+  const m = n.meta || {};
+  const out: { label: string; value: string }[] = [];
+  const add = (label: string, value: unknown) => {
+    const v = str(value).trim();
+    if (v && v !== '0') out.push({ label, value: v });
+  };
+  if (n.kind === 'host' && isCluster(n)) {
+    add('Hosts', formatNumber(num(m.host_count)));
+    add('Active', formatNumber(num(m.active_count)));
+    add('High risk (score ≥ 50)', formatNumber(num(m.high_risk_count)));
+  } else if (n.kind === 'host') {
+    add('Hostname', m.hostname);
+    add('Owner', m.owner || 'none (no CIDR rule)');
+    add('Environment', m.environment);
+    add('Open services', m.service_count);
+    add('Stability', num(m.stability_score) ? `${num(m.stability_score)}%` : '');
+  } else if (n.kind === 'service') {
+    add('Port', num(m.port) ? `${num(m.port)}/${str(m.protocol) || 'tcp'}` : '');
+    add('Product', [str(m.product), str(m.version)].filter(Boolean).join(' '));
+    add('HTTP title', m.http_title);
+    if (isCluster(n)) add('Subnet', m.subnet);
+  } else if (n.kind === 'technology' || n.kind === 'signature') {
+    add('Category', CATEGORY_LABEL[str(m.category)] || m.category);
+    add('Version', m.version);
+    add('Best confidence', num(m.confidence) ? `${num(m.confidence)}%` : '');
+  } else if (n.kind === 'scope') {
+    add('Hosts', num(m.host_count) ? formatNumber(num(m.host_count)) : '');
+    add('/24 subnets', m.subnet_count);
+  }
+  return out;
 }
 
 function mergeGraphs(a: GraphResponse, b: GraphResponse): GraphResponse {
@@ -301,7 +364,7 @@ function NodeShell({
     <div
       className={cn(
         'relative h-full w-full border bg-card text-card-foreground shadow-xs transition-[box-shadow,border-color] hover:border-foreground/30',
-        selected ? 'border-primary ring-2 ring-primary/30' : 'border-border',
+        selected ? 'border-foreground/70 ring-2 ring-foreground/20' : 'border-border',
         className
       )}
     >
@@ -318,9 +381,10 @@ function NodeShell({
 }
 
 function RiskBar({ value, className }: { value: number; className?: string }) {
+  // Neutral bar: colour is reserved for the score pill (one red marker per card).
   return (
-    <div className={cn('h-1 w-full bg-muted', className)}>
-      <div className={cn('h-full', scoreBarColor(value))} style={{ width: `${Math.min(100, Math.max(3, value))}%` }} />
+    <div className={cn("h-1 w-full bg-muted", className)}>
+      <div className="h-full bg-foreground/45" style={{ width: `${Math.min(100, Math.max(3, value))}%` }} />
     </div>
   );
 }
@@ -339,15 +403,15 @@ const ScopeNode = memo(function ScopeNode({ data, selected }: NodeProps<FlowNode
   const hostCount = num(m.host_count);
   const subnetCount = num(m.subnet_count);
   return (
-    <NodeShell selected={selected} accent="var(--primary)">
+    <NodeShell selected={selected}>
       <div className="flex h-full items-center gap-3 px-3.5">
         <ServiceLogo kind="scope" size="lg" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate font-mono text-xs font-semibold" title={g.label}>
-            {str(m.subnet) || g.label.replace(/\s*\(\d+ hostów\)\s*$/, '')}
+            {str(m.subnet) || g.label.replace(/\s*\(\d+ hosts?\)\s*$/, "")}
           </span>
           <div className="flex items-center gap-1.5">
-            {hostCount > 0 && <Pill tone="primary">{formatNumber(hostCount)} hostów</Pill>}
+            {hostCount > 0 && <Pill tone="primary">{formatNumber(hostCount)} hosts</Pill>}
             {subnetCount > 0 && <Pill>{formatNumber(subnetCount)} /24</Pill>}
           </div>
         </div>
@@ -370,19 +434,19 @@ const HostNode = memo(function HostNode({ data, selected }: NodeProps<FlowNode>)
     const highRisk = num(m.high_risk_count);
     const active = num(m.active_count);
     return (
-      <NodeShell selected={selected} accent={highRisk > 0 ? RISK_HIGH : lc.stroke}>
+      <NodeShell selected={selected} accent={lc.stroke}>
         <Handle type="target" position={Position.Left} className={handleCls} />
         <div className="flex h-full flex-col justify-between gap-1.5 py-2.5 pr-3 pl-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center border border-primary/30 bg-primary/10 text-primary">
+            <span className="flex size-8 shrink-0 items-center justify-center border border-border bg-muted text-muted-foreground">
               <RiStackLine className="size-4" />
             </span>
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="truncate font-mono text-xs font-semibold">{subnet}</span>
               <span className="truncate text-[11px] text-muted-foreground tabular-nums">
-                {formatNumber(hostCount)} hostów ·{' '}
-                <span className={cn(highRisk > 0 && 'font-semibold text-rose-600 dark:text-rose-400')}>
-                  {formatNumber(highRisk)} wysokiego ryzyka
+                {formatNumber(hostCount)} hosts ·{" "}
+                <span className={cn(highRisk > 0 && "font-semibold text-foreground")}>
+                  {formatNumber(highRisk)} high risk
                 </span>
               </span>
             </div>
@@ -390,16 +454,16 @@ const HostNode = memo(function HostNode({ data, selected }: NodeProps<FlowNode>)
           </div>
           <RiskBar value={score} />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground tabular-nums">{formatNumber(active)} aktywnych</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">{formatNumber(active)} active</span>
             <button
               type="button"
-              className="nodrag nopan inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary hover:underline"
+              className="nodrag nopan inline-flex items-center gap-0.5 text-[11px] font-semibold text-foreground hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
                 drill(subnet);
               }}
             >
-              Rozwiń podsieć <RiArrowRightSLine className="size-3.5" />
+              Expand subnet <RiArrowRightSLine className="size-3.5" />
             </button>
           </div>
         </div>
@@ -414,7 +478,7 @@ const HostNode = memo(function HostNode({ data, selected }: NodeProps<FlowNode>)
   const live = g.state === 'ACTIVE' || g.state === 'NEW' || g.state === 'REACTIVATED';
   const svcCount = num(m.service_count);
   return (
-    <NodeShell selected={selected} accent={score >= 60 ? RISK_HIGH : lc.stroke} fresh={isFresh(g)}>
+    <NodeShell selected={selected} accent={lc.stroke} fresh={isFresh(g)}>
       <Handle type="target" position={Position.Left} className={handleCls} />
       <div className="flex h-full flex-col justify-center gap-1.5 pr-3 pl-3.5">
         <div className="flex items-center gap-2">
@@ -423,13 +487,13 @@ const HostNode = memo(function HostNode({ data, selected }: NodeProps<FlowNode>)
             <span className="relative size-2.5" style={{ backgroundColor: lc.stroke }} />
           </span>
           <span className="truncate font-mono text-[13px] font-semibold">{ip}</span>
-          {locked && <RiLockLine className="size-3 shrink-0 text-amber-500" aria-label="Pola zablokowane" />}
+          {locked && <RiLockLine className="size-3 shrink-0 text-amber-500" aria-label="Analyst-locked fields" />}
           <span className="flex-1" />
           <Pill className={cn('font-mono', scoreColor(score))}>{score}</Pill>
         </div>
         <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
           <span className="truncate">{hostname || lc.label}</span>
-          {svcCount > 0 && <span className="shrink-0 tabular-nums">{svcCount} usł.</span>}
+          {svcCount > 0 && <span className="shrink-0 tabular-nums">{svcCount} svc</span>}
         </div>
         <RiskBar value={score} />
       </div>
@@ -451,11 +515,7 @@ const ServiceNode = memo(function ServiceNode({ data, selected }: NodeProps<Flow
   const isIoT = Boolean(m.is_iot);
   const tlsWarn = Boolean(m.tls_warning);
   return (
-    <NodeShell
-      selected={selected}
-      accent={score >= 70 ? RISK_HIGH : score >= 45 ? '#f59e0b' : undefined}
-      fresh={isFresh(g)}
-    >
+    <NodeShell selected={selected} fresh={isFresh(g)}>
       <Handle type="target" position={Position.Left} className={handleCls} />
       <div className="flex h-full items-center gap-2.5 pr-3 pl-3.5">
         <ServiceLogo
@@ -474,10 +534,10 @@ const ServiceNode = memo(function ServiceNode({ data, selected }: NodeProps<Flow
               </span>
             )}
             <span className="truncate text-xs font-semibold" title={name}>
-              {name || '—'}
+              {name || "unknown"}
             </span>
             {count > 1 && (
-              <span className="ml-auto shrink-0 font-mono text-[10px] font-semibold text-primary tabular-nums">
+              <span className="ml-auto shrink-0 font-mono text-[10px] font-semibold text-muted-foreground tabular-nums">
                 {formatNumber(count)}×
               </span>
             )}
@@ -486,7 +546,7 @@ const ServiceNode = memo(function ServiceNode({ data, selected }: NodeProps<Flow
             {isAdmin && <Pill tone="warning">Admin</Pill>}
             {isStaging && <Pill tone="violet">Staging</Pill>}
             {isIoT && <Pill tone="info">IoT</Pill>}
-            {tlsWarn && <Pill tone="danger">TLS!</Pill>}
+            {tlsWarn && <Pill tone="warning">TLS</Pill>}
             {!isAdmin && !isStaging && !isIoT && !tlsWarn && (
               <span className="truncate text-[10px] text-muted-foreground">
                 {str(m.version) || str(m.http_title) || str(m.protocol) || 'tcp'}
@@ -519,7 +579,7 @@ const TechNode = memo(function TechNode({ data, selected }: NodeProps<FlowNode>)
               {name}
             </span>
             {version && <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{version}</span>}
-            {isSig && <span className="ml-auto shrink-0 text-[9px] font-semibold tracking-wider text-violet-500 uppercase">Syg.</span>}
+            {isSig && <span className="ml-auto shrink-0 text-[9px] font-semibold tracking-wider text-violet-500 uppercase">Sig</span>}
           </div>
           <div className="flex items-center gap-1.5">
             <div className="h-1 flex-1 bg-muted">
@@ -559,6 +619,7 @@ function GraphCanvas() {
   const { theme } = useTheme();
   const { fitView } = useReactFlow();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const subnet = searchParams.get('subnet') || '';
   const modeParam = searchParams.get('mode');
@@ -632,7 +693,7 @@ function GraphCanvas() {
         knownIds.current = new Set(data.nodes.map((n) => n.id));
         setGraph(data);
       } catch (err) {
-        if (!silent && seq === reqSeq.current) toast.error('Błąd ładowania grafu', (err as Error).message);
+        if (!silent && seq === reqSeq.current) toast.error("Could not load the graph", (err as Error).message);
       } finally {
         if (!silent && seq === reqSeq.current) setLoading(false);
       }
@@ -675,7 +736,7 @@ function GraphCanvas() {
     const key = JSON.stringify(query) + quick + graph.mode;
     if (key !== lastFitKey.current) {
       lastFitKey.current = key;
-      requestAnimationFrame(() => fitView({ padding: 0.12, duration: 450, maxZoom: 1.1 }));
+      requestAnimationFrame(() => fitView({ padding: FIT_PADDING, duration: 450, maxZoom: 1.1 }));
     }
   }, [graph, query, quick, setNodes, fitView]);
 
@@ -742,7 +803,7 @@ function GraphCanvas() {
           ...e,
           animated: risky || fresh || lit,
           style: {
-            stroke: lit ? 'var(--primary)' : fresh ? '#10b981' : risky ? RISK_HIGH : 'var(--muted-foreground)',
+            stroke: lit ? 'var(--foreground)' : fresh ? '#10b981' : 'var(--muted-foreground)',
             strokeWidth: lit ? 2 : risky ? 1.5 : 1,
             opacity: dim ? 0.08 : lit ? 1 : risky ? 0.7 : 0.35,
             transition: 'opacity 200ms',
@@ -784,8 +845,12 @@ function GraphCanvas() {
   const selected = selectedId ? nodeById.get(selectedId) || null : null;
   const selectedHostId = hostIdOf(selected);
 
+  // Every service behind the selection: a clustered service / technology node carries the
+  // full membership (service_ids), not one representative.
   const selectedServiceIds = useMemo(() => {
     if (!selected) return [];
+    const ids = selected.meta?.service_ids;
+    if (Array.isArray(ids) && ids.length) return ids.map(str).filter(Boolean);
     if (selected.kind === 'service') {
       const id = str(selected.meta?.service_id);
       return id ? [id] : [];
@@ -805,9 +870,9 @@ function GraphCanvas() {
     setPushing(true);
     try {
       await api.pushDefectDojoFindings({ service_ids: selectedServiceIds });
-      toast.success('Wysłano do DefectDojo', `${selectedServiceIds.length} usług(i)`);
+      toast.success('Sent to DefectDojo', `${selectedServiceIds.length} service(s)`);
     } catch (err) {
-      toast.error('Błąd wysyłki do DefectDojo', (err as Error).message);
+      toast.error('DefectDojo push failed', (err as Error).message);
     } finally {
       setPushing(false);
     }
@@ -837,23 +902,20 @@ function GraphCanvas() {
 
   const totalHosts = graph?.matched_hosts ?? 0;
   const statusLabel = graph
-    ? `${formatNumber(totalHosts)} hostów · ${graph.clustered ? 'tryb klastrowy' : 'tryb szczegółowy'}${
+    ? `${formatNumber(totalHosts)} hosts · ${graph.clustered ? 'clustered' : 'detailed'}${
         !graph.clustered && graph.shown_hosts < graph.matched_hosts
-          ? ` · pokazano ${formatNumber(graph.shown_hosts)}`
+          ? ` · showing ${formatNumber(graph.shown_hosts)}`
           : ''
       }`
-    : 'Ładowanie…';
+    : 'Loading…';
 
-  const metaEntries = selected
-    ? Object.entries(selected.meta || {}).filter(
-        ([k, v]) =>
-          !['is_cluster', 'host_id', 'service_id', 'locked_fields'].includes(k) &&
-          v !== '' &&
-          v !== null &&
-          v !== false &&
-          !(Array.isArray(v) && v.length === 0)
-      )
+  const memberHosts: GraphHostRef[] = Array.isArray(selected?.meta?.hosts)
+    ? (selected!.meta!.hosts as GraphHostRef[])
     : [];
+  const memberCount = num(selected?.meta?.host_count) || memberHosts.length;
+  const openHost = (id: string) => navigate(`/assets?host=${encodeURIComponent(id)}`);
+  const assetsQuery = selected ? assetsQueryFor(selected) : '';
+  const facts = selected ? nodeFacts(selected) : [];
 
   return (
     <div className="relative h-[calc(100vh-8.5rem)] w-full overflow-hidden bg-background ring-1 ring-foreground/5">
@@ -873,7 +935,7 @@ function GraphCanvas() {
           minZoom={0.05}
           maxZoom={2}
           fitView
-          fitViewOptions={{ padding: 0.12, maxZoom: 1.1 }}
+          fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1.1 }}
           proOptions={{ hideAttribution: true }}
           onNodeMouseEnter={(_, n) => n.type !== 'lane' && setHoverId(n.id)}
           onNodeMouseLeave={() => setHoverId(null)}
@@ -901,14 +963,14 @@ function GraphCanvas() {
           />
 
           {/* Floating toolbar */}
-          <Panel position="top-left" className="!m-3 max-w-[calc(100%-1.5rem)]">
+          <Panel position="top-left" className={cn('!m-3', selected ? 'max-w-[calc(100%-22.5rem)]' : 'max-w-[calc(100%-1.5rem)]')}>
             <div className="flex flex-wrap items-center gap-2 border border-border bg-card/95 p-1.5 shadow-sm backdrop-blur">
               <div className="relative w-52">
                 <RiSearchLine className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="IP, host, usługa, technologia…"
+                  placeholder="IP, host, service, technology…"
                   className="h-7 pl-7 text-xs"
                 />
               </div>
@@ -944,25 +1006,27 @@ function GraphCanvas() {
                   </button>
                 ))}
               </div>
-              {subnetOptions.length > 1 && !subnet && (
-                <SimpleSelect
-                  size="sm"
-                  value=""
-                  placeholder="Podsieć /24…"
-                  onValueChange={(v) => v && drill(v)}
-                  options={subnetOptions}
-                  className="h-7 w-44 text-xs"
-                />
-              )}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
+              {subnetOptions.length > 1 && !subnet && (
+                <div className="border border-border bg-card/95 px-1 backdrop-blur">
+                  <SimpleSelect
+                    size="sm"
+                    value=""
+                    placeholder="Jump to subnet…"
+                    onValueChange={(v) => v && drill(v)}
+                    options={subnetOptions}
+                    className="h-7 w-40 text-xs"
+                  />
+                </div>
+              )}
               <div className="flex h-7 items-center gap-1 border border-border bg-card/95 px-2 text-[11px] backdrop-blur">
                 <button
                   type="button"
                   onClick={clearSubnet}
                   className={cn('font-semibold', subnet ? 'text-primary hover:underline' : 'text-foreground')}
                 >
-                  Wszystkie
+                  All subnets
                 </button>
                 {subnet && (
                   <>
@@ -971,7 +1035,7 @@ function GraphCanvas() {
                     <button
                       type="button"
                       onClick={clearSubnet}
-                      aria-label="Wyczyść podsieć"
+                      aria-label="Clear subnet"
                       className="ml-0.5 text-muted-foreground hover:text-foreground"
                     >
                       <RiCloseLine className="size-3.5" />
@@ -991,17 +1055,17 @@ function GraphCanvas() {
                 variant="outline"
                 size="sm"
                 className="h-7 bg-card/95 text-[11px]"
-                onClick={() => fitView({ padding: 0.12, duration: 450, maxZoom: 1.1 })}
+                onClick={() => fitView({ padding: FIT_PADDING, duration: 450, maxZoom: 1.1 })}
               >
                 <RiFocus3Line />
-                Dopasuj widok
+                Fit view
               </Button>
               <Button
                 variant="outline"
                 size="icon-sm"
                 className="size-7 bg-card/95"
                 onClick={() => loadGraph()}
-                aria-label="Odśwież"
+                aria-label="Refresh"
               >
                 <RiRefreshLine className={cn(loading && 'animate-spin')} />
               </Button>
@@ -1048,44 +1112,87 @@ function GraphCanvas() {
                       ) : null}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon-xs" aria-label="Zamknij" onClick={() => setSelectedId(null)}>
+                  <Button variant="ghost" size="icon-xs" aria-label="Close" onClick={() => setSelectedId(null)}>
                     <RiCloseLine />
                   </Button>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-                  {metaEntries.length > 0 && (
-                    <dl className="flex flex-col gap-1 font-mono text-[11px]">
-                      {metaEntries.map(([k, v]) => (
-                        <div key={k} className="flex justify-between gap-3">
-                          <dt className="shrink-0 text-muted-foreground">{k}</dt>
-                          <dd className="text-right break-all">
-                            {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                  {facts.length > 0 && (
+                    <dl className="flex flex-col gap-1 text-[11px]">
+                      {facts.map((f) => (
+                        <div key={f.label} className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-muted-foreground">{f.label}</dt>
+                          <dd className="min-w-0 truncate text-right font-medium" title={f.value}>
+                            {f.value}
                           </dd>
                         </div>
                       ))}
                     </dl>
                   )}
-                  <span className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                    Ścieżka ataku · {path ? path.size - 1 : 0} powiązanych węzłów
+                  {memberHosts.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                        {formatNumber(memberCount)} {memberCount === 1 ? 'host' : 'hosts'}
+                        {memberCount > memberHosts.length ? ` · top ${memberHosts.length} by score` : ''}
+                      </span>
+                      <ul className="-mx-1 flex flex-col">
+                        {memberHosts.map((h) => (
+                          <li key={h.host_id}>
+                            <button
+                              type="button"
+                              onClick={() => openHost(h.host_id)}
+                              className="flex w-full items-center gap-2 px-1 py-1 text-left hover:bg-muted"
+                              title="Open in Assets"
+                            >
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate font-mono text-[11px] font-semibold">
+                                  {h.ip}
+                                  {h.port ? <span className="text-muted-foreground">:{h.port}</span> : null}
+                                </span>
+                                {(h.title || h.hostname || h.owner) && (
+                                  <span className="truncate text-[10px] text-muted-foreground">
+                                    {h.title || h.hostname || h.owner}
+                                  </span>
+                                )}
+                              </span>
+                              <Pill className={cn('shrink-0 font-mono', scoreColor(h.score))}>{h.score}</Pill>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <span className="text-[10px] text-muted-foreground">
+                    Attack path: {path ? path.size - 1 : 0} connected nodes highlighted
                   </span>
                 </div>
                 <div className="flex flex-col gap-2 border-t border-border p-3">
                   {selected.kind === 'host' && isCluster(selected) && (
                     <Button size="sm" onClick={() => drill(str(selected.meta?.subnet))}>
                       <RiArrowRightSLine />
-                      Rozwiń podsieć
+                      Expand subnet
                     </Button>
                   )}
                   {selectedHostId && (
                     <Button size="sm" onClick={() => setInspectHostId(selectedHostId)}>
                       <RiExternalLinkLine />
-                      Pełny inspektor
+                      Open host details
+                    </Button>
+                  )}
+                  {assetsQuery && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate(`/assets?q=${encodeURIComponent(assetsQuery)}`)}
+                    >
+                      <RiExternalLinkLine />
+                      Show in Assets
                     </Button>
                   )}
                   {selectedServiceIds.length > 0 && can(PERMISSIONS.DEFECTDOJO_PUSH) && (
-                    <Button size="sm" variant="outline" disabled={pushing} onClick={pushToDojo}>
+                    <Button size="sm" variant="ghost" disabled={pushing} onClick={pushToDojo}>
                       {pushing ? <PeckSpinner className="h-3.5" /> : <RiSendPlaneLine />}
-                      Wyślij do DefectDojo
+                      Push {selectedServiceIds.length === 1 ? "1 service" : `${selectedServiceIds.length} services`} to DefectDojo
                     </Button>
                   )}
                 </div>
@@ -1096,7 +1203,7 @@ function GraphCanvas() {
           {!loading && graph && graph.nodes.length === 0 && (
             <Panel position="top-center" className="!top-1/2 -translate-y-1/2">
               <div className="border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
-                Brak węzłów dla wybranych filtrów
+                No nodes match these filters
               </div>
             </Panel>
           )}

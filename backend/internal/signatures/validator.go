@@ -20,6 +20,7 @@ var allowedCategories = map[string]bool{
 	"framework":          true,
 	"server":             true,
 	"iot":                true,
+	"bmc":                true,
 	"admin_panel":        true,
 	"staging":            true,
 	"interesting_header": true,

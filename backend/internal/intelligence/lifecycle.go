@@ -221,7 +221,7 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 		case meetsMisses && meetsGrace && meetsPosterior:
 			newState = domain.HostStateInactive
 			host.StateTransitions++
-			reason = fmt.Sprintf("INACTIVE: %s < próg %d%%; minimum spełnione: %d braków (min. %d), %.0fh od ostatniej odpowiedzi (min. %dh)",
+			reason = fmt.Sprintf("INACTIVE: %s < threshold %d%%; minimums met: %d misses (min. %d), %.0fh since last response (min. %dh)",
 				live.Reason, thr, host.ConsecutiveMisses, cfg.MissingThreshold, elapsedSinceLastSeen.Hours(), cfg.GracePeriodHours)
 		default:
 			newState = domain.HostStateMissing
@@ -230,19 +230,19 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 			}
 			var waiting []string
 			if !meetsPosterior {
-				waiting = append(waiting, fmt.Sprintf("P(istnieje) %d%% ≥ próg %d%%", pct(live.PAlive), thr))
+				waiting = append(waiting, fmt.Sprintf("P(exists) %d%% ≥ threshold %d%%", pct(live.PAlive), thr))
 			}
 			if !meetsMisses {
-				waiting = append(waiting, fmt.Sprintf("%d braków (min. %d)", host.ConsecutiveMisses, cfg.MissingThreshold))
+				waiting = append(waiting, fmt.Sprintf("%d misses (min. %d)", host.ConsecutiveMisses, cfg.MissingThreshold))
 			}
 			if !meetsGrace {
-				waiting = append(waiting, fmt.Sprintf("%.0fh od ostatniej odpowiedzi (min. %dh)", elapsedSinceLastSeen.Hours(), cfg.GracePeriodHours))
+				waiting = append(waiting, fmt.Sprintf("%.0fh since last response (min. %dh)", elapsedSinceLastSeen.Hours(), cfg.GracePeriodHours))
 			}
 			prefix := "MISSING"
 			if isExpected {
-				prefix = fmt.Sprintf("brak odpowiedzi w %s %s zgodny z harmonogramem hosta", slotNamePL(slot), slot)
+				prefix = fmt.Sprintf("no response in the %s %s, consistent with the host's schedule", slotName(slot), slot)
 			}
-			reason = fmt.Sprintf("%s: %s; jeszcze nie INACTIVE (%s)", prefix, live.Reason, strings.Join(waiting, ", "))
+			reason = fmt.Sprintf("%s: %s; not INACTIVE yet (%s)", prefix, live.Reason, strings.Join(waiting, ", "))
 		}
 	}
 
