@@ -40,6 +40,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { VerifyProfileSettings } from '@/components/VulnIntel';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1218,6 +1219,7 @@ export function ScansPage() {
                         Capture screenshots
                       </Label>
                     </div>
+                    <VerifyProfileSettings profileId={editingProfileId} />
                     <p className="text-[11px] text-muted-foreground sm:col-span-2">
                       Automatic backoff is always on: bursts of timeouts, HTTP 429/503 or TCP resets halve the rate
                       (only for the affected host when a single host misbehaves) and it recovers after a quiet period.

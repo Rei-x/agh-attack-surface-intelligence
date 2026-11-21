@@ -396,6 +396,10 @@ export interface Service {
   outdated?: OutdatedComponent[];
   /** Passive, version-only hints at well-known CVEs. */
   known_vulns?: VulnHint[];
+  /** Known CVEs from the offline NVD / CISA KEV / EPSS snapshot (derived by the backend). */
+  vulns?: import('../lib/vulnintel').VulnSummary[];
+  /** Findings confirmed by safe verification checks (Verify deep mode). */
+  verified?: import('../lib/vulnintel').VerifiedFinding[];
   cluster_key?: string;
   interestingness: number;
   interesting_factors?: InterestingnessFactor[];

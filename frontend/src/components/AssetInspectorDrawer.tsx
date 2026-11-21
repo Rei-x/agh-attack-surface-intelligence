@@ -39,6 +39,7 @@ import { Empty, Notice, Pill, SectionTitle, SimpleSelect } from '@/components/co
 import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
 import { CategoryBadges, serviceFlags } from '@/components/CategoryBadge';
 import { EolEvidence } from '@/components/EolBadges';
+import { VerifiedEvidence, VerifyHostBar, VulnChip, VulnEvidence } from '@/components/VulnIntel';
 import { ServiceScreenshot } from '@/components/ServiceScreenshot';
 import { NotifyOwnerButton, TicketBadge } from '@/components/NotifyOwnerDialog';
 import { Button } from '@/components/ui/button';
@@ -599,6 +600,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
             <div className="min-h-0 flex-1 overflow-y-auto">
               {/* ===== SERVICES: Evidence + Confidence ===== */}
               <TabsContent value="services" className="p-6">
+                <VerifyHostBar hostId={host.id} canRun={canWrite} onDone={() => loadHost(host.id, true)} />
                 {(host.services || []).length === 0 ? (
                   <Empty>No open services</Empty>
                 ) : (
@@ -645,6 +647,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                   </span>
                                 )}
                                 <CategoryBadges flags={serviceFlags(svc)} size="xs" link />
+                                <VulnChip service={svc} />
                                 {(svc.locked_fields?.length || 0) > 0 && (
                                   <RiLockLine className="size-3.5 text-violet-600 dark:text-violet-400" />
                                 )}
@@ -729,6 +732,8 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                               </div>
 
                               <EolEvidence service={svc} />
+                              <VerifiedEvidence service={svc} />
+                              <VulnEvidence service={svc} />
 
                               {/* Service override editor */}
                               {isEditing && canWrite && (
