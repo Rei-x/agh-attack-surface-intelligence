@@ -199,6 +199,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		}()
 	}
 
+	stats := &stageStats{}
 	var mu sync.Mutex
 	nextIdx := 0
 	maxDispatched := -1
@@ -262,7 +263,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		return -1, nil, false
 	}
 
-	finish := func(i int, chunkStart time.Time, obs []domain.ObservedHost, chunkXML string, cmds []string, chunkErr error) {
+	finish := func(i int, chunkStart time.Time, obs []domain.ObservedHost, chunkXML string, cmds []string, sm chunkStageMs, chunkErr error) {
 		mu.Lock()
 		defer mu.Unlock()
 		ch := &run.Chunks[i]
@@ -350,6 +351,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 			"chunk_id": chunkSnapshot.ID, "chunk_index": chunkSnapshot.ChunkIndex, "status": chunkSnapshot.Status,
 			"active_hosts": chunkSnapshot.ActiveHosts, "services": chunkSnapshot.Services, "duration_ms": chunkSnapshot.DurationMs,
 			"worker": chunkSnapshot.Worker, "nmap_commands": chunkSnapshot.NmapCommands,
+			"stage_ms": sm,
 		})
 		emit("scan.progress", map[string]any{
 			"scanned_ips": run.ScannedIPs, "total_ips": run.TotalIPs,
@@ -374,8 +376,9 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 					return
 				}
 				chunkStart := e.cfg.Now()
-				obs, chunkXML, cmds, chunkErr := e.executeChunk(scanCtx, targets, ports, profile, perWorkerRate, fpWorkers, retryUnstable, gov, unstableSet, ipToDomains)
-				finish(i, chunkStart, obs, chunkXML, cmds, chunkErr)
+				var sm chunkStageMs
+				obs, chunkXML, cmds, chunkErr := e.executeChunk(scanCtx, targets, ports, profile, perWorkerRate, fpWorkers, retryUnstable, gov, unstableSet, ipToDomains, stats, &sm)
+				finish(i, chunkStart, obs, chunkXML, cmds, sm, chunkErr)
 			}
 		}(w)
 	}
@@ -396,6 +399,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		ScannedIPs:       segmentIPs,
 		ChunkWorkers:     workers,
 		PerWorkerRatePPS: perWorkerRate,
+		StageTimings:     stats.snapshot(),
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -447,6 +451,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	emit("scan.completed", map[string]any{
 		"total_ips": run.TotalIPs, "active_hosts": run.ActiveHosts, "services_found": run.ServicesFound,
 		"duration_ms": run.DurationMs, "has_nmap_xml": run.HasRawNmapXML, "chunk_workers": workers,
+		"stage_timings": stats.snapshot(),
 	})
 	if cb.OnCheckpoint != nil {
 		cb.OnCheckpoint(run)
@@ -506,6 +511,8 @@ func (e *Engine) executeChunk(
 	gov *Governor,
 	unstableSet map[string]struct{},
 	ipToDomains map[string][]string,
+	st *stageStats,
+	sm *chunkStageMs,
 ) ([]domain.ObservedHost, string, []string, error) {
 	var cmds []string
 	record := func(c string) {
@@ -513,10 +520,19 @@ func (e *Engine) executeChunk(
 			cmds = append(cmds, c)
 		}
 	}
+	stageStart := time.Now()
+	endStage := func(acc *atomic.Int64, dst *int64) {
+		d := time.Since(stageStart)
+		acc.Add(int64(d))
+		*dst += d.Milliseconds()
+		stageStart = time.Now()
+	}
 
 	// Stage 1: Host Discovery.
 	activeIPs, cmd, err := e.discoverStage(ctx, chunkIPs, ports, ratePPS, gov)
 	record(cmd)
+	endStage(&st.discoveryNs, &sm.Discovery)
+	st.discoveryIPs.Add(int64(len(chunkIPs)))
 	if err != nil {
 		return nil, "", cmds, err
 	}
@@ -563,6 +579,8 @@ func (e *Engine) executeChunk(
 		}
 		toReprobe = stillMissing
 	}
+	endStage(&st.reprobeNs, &sm.Reprobe)
+	st.liveHosts.Add(int64(len(activeIPs)))
 
 	// Stage 2: Service Detection strictly on active hosts & allowed ports.
 	var svcMap map[string][]domain.ObservedService
@@ -575,11 +593,16 @@ func (e *Engine) executeChunk(
 			return nil, "", cmds, err
 		}
 	}
+	for _, svcs := range svcMap {
+		st.openPorts.Add(int64(len(svcs)))
+	}
+	endStage(&st.serviceNs, &sm.Service)
 
 	// Stage 3: Safe HTTP/HTTPS/TLS Fingerprinting with bounded worker pool.
 	if profile.EnableHTTPFingerprint && len(activeIPs) > 0 {
-		e.fingerprintStage(ctx, activeIPs, svcMap, profile, fpWorkers, gov, ipToDomains)
+		e.fingerprintStage(ctx, activeIPs, svcMap, profile, fpWorkers, gov, ipToDomains, st)
 	}
+	endStage(&st.fingerprintNs, &sm.Fingerprint)
 	if ctx.Err() != nil {
 		return nil, "", cmds, ctx.Err()
 	}

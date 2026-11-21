@@ -33,6 +33,8 @@ type RunResult struct {
 	ChunkWorkers int `json:"chunk_workers"`
 	// PerWorkerRatePPS is the --max-rate given to each concurrent nmap process.
 	PerWorkerRatePPS int `json:"per_worker_rate_pps"`
+	// StageTimings breaks down where scanner time went in this segment.
+	StageTimings StageTimings `json:"stage_timings"`
 }
 
 // EngineConfig configures the 4-stage scanning engine.
@@ -143,6 +145,7 @@ func (e *Engine) fingerprintStage(
 	concurrency int,
 	gov *Governor,
 	ipToDomains map[string][]string,
+	st *stageStats,
 ) {
 	type fpJob struct {
 		ip       string
@@ -180,6 +183,7 @@ func (e *Engine) fingerprintStage(
 	if len(jobs) == 0 {
 		return
 	}
+	st.httpServices.Add(int64(len(jobs)))
 
 	workers := concurrency
 	if workers > len(jobs) {
@@ -216,6 +220,7 @@ func (e *Engine) fingerprintStage(
 					opts.Scheme = job.scheme
 				}
 				opts.RateLimiter = func(rctx context.Context, host string) error {
+					st.httpRequests.Add(1)
 					return gov.Wait(rctx, host)
 				}
 				opts.OnThrottle = func(host string, statusCode int, err error) {
