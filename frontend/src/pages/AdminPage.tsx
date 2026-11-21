@@ -28,6 +28,7 @@ import type {
   Service,
   User,
 } from '@/types/api';
+import { WebhookPanel } from '@/components/WebhookPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -52,7 +53,7 @@ import {
   SimpleSelect,
 } from '@/components/common';
 
-type AdminTab = 'defectdojo' | 'users' | 'rbac' | 'crypto' | 'audit';
+type AdminTab = 'defectdojo' | 'users' | 'rbac' | 'crypto' | 'audit' | 'alerts';
 
 const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Info'];
 
@@ -347,6 +348,7 @@ export function AdminPage() {
           {canRBAC && <TabsTrigger value="users">Użytkownicy</TabsTrigger>}
           {canRBAC && <TabsTrigger value="rbac">Role (RBAC)</TabsTrigger>}
           {canCrypto && <TabsTrigger value="crypto">Szyfrowanie</TabsTrigger>}
+          {canCrypto && <TabsTrigger value="alerts">Alerty</TabsTrigger>}
           {canAudit && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
         </TabsList>
 
@@ -914,6 +916,13 @@ export function AdminPage() {
                 </form>
               </Card>
             </div>
+          </TabsContent>
+        )}
+
+        {/* ALERT WEBHOOK (admin:settings) */}
+        {canCrypto && (
+          <TabsContent value="alerts" className="space-y-6">
+            <WebhookPanel />
           </TabsContent>
         )}
 
