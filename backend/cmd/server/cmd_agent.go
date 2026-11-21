@@ -111,7 +111,7 @@ func cmdAgent(args []string) error {
 	if err != nil {
 		var le *localdata.ErrLocked
 		if errors.As(err, &le) {
-			return fmt.Errorf("%v - another agent already uses %s", err, dir)
+			return fmt.Errorf("%w - another agent already uses %s", err, dir)
 		}
 		return err
 	}

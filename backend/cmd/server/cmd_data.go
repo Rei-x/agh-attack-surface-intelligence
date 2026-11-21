@@ -26,7 +26,7 @@ const scanTypeImportNmap = domain.ScanTypeImportNmap
 func lockedHint(err error) error {
 	var le *localdata.ErrLocked
 	if errors.As(err, &le) {
-		return fmt.Errorf("%v\n  stop `aegis serve` first, or upload the file in the web UI (Skaner) / API: POST /api/v1/ingest/import", err)
+		return fmt.Errorf("%w\n  stop `aegis serve` first, or upload the file in the web UI (Skaner) / API: POST /api/v1/ingest/import", err)
 	}
 	return err
 }

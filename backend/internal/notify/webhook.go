@@ -330,9 +330,9 @@ func (n *Notifier) Send(ctx context.Context, rawURL string, payload any) error {
 		// Never leak the secret URL (it carries the channel token) into logs / API errors.
 		var uerr *url.Error
 		if errors.As(err, &uerr) {
-			return fmt.Errorf("webhook request to %s failed: %v", MaskURL(rawURL), uerr.Err)
+			return fmt.Errorf("webhook request to %s failed: %w", MaskURL(rawURL), uerr.Err)
 		}
-		return fmt.Errorf("webhook request failed: %v", err)
+		return fmt.Errorf("webhook request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
