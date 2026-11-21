@@ -126,6 +126,7 @@ func (s *Server) registerRoutes() {
 	s.handle("GET /api/v1/dashboard/summary", mw.RequirePerm(domain.PermDashboardRead, s.handleDashboardSummary))
 	s.handle("GET /api/v1/graph", mw.RequirePerm(domain.PermAssetsRead, s.handleGraph))
 	s.handle("GET /api/v1/clusters", mw.RequirePerm(domain.PermAssetsRead, s.handleClusters))
+	s.handle("GET /api/v1/inventory", mw.RequirePerm(domain.PermAssetsRead, s.handleInventory))
 	s.handle("GET /api/v1/events/stream", mw.Authenticate(s.hub.ServeHTTP))
 
 	// Targets, Exclusions, Profiles

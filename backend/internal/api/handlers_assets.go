@@ -48,8 +48,12 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 	if totalPages < 1 {
 		totalPages = 1
 	}
+	var body any = hosts
+	if q.Get("fields") == "summary" {
+		body = summarizeHosts(hosts)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"hosts":       hosts,
+		"hosts":       body,
 		"total":       total,
 		"page":        page,
 		"limit":       limit,
