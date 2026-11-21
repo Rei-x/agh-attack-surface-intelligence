@@ -435,7 +435,10 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	// (bounded by fpSem). A chunk is checkpointed (finish) only when every stage is done, so
 	// the ledger semantics are unchanged: an interrupted chunk goes back to PENDING whatever
 	// stage it was in. inflight bounds how far discovery may run ahead of the later stages.
-	inflight := make(chan struct{}, 3*workers+svcWorkers)
+	// A waiting chunk costs a few KB, so discovery may run up to 32 chunks ahead of the
+	// later stages: slow HTTP fingerprinting must not stall the rate-bound sweep (on the
+	// Hetzner run a 3*workers bound idled every sweep while chunks queued for HTTP).
+	inflight := make(chan struct{}, workers+svcWorkers+32)
 	svcCh := make(chan *chunkWork, svcWorkers)
 	complete := func(w *chunkWork, err error) {
 		var obs []domain.ObservedHost

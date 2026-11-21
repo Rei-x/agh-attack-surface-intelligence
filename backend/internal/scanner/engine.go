@@ -3,6 +3,8 @@ package scanner
 import (
 	"context"
 	"hash/fnv"
+	"log"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -154,6 +156,9 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 // speculativeHTTPTimeout bounds HTTP probes of services nmap did not identify.
 const speculativeHTTPTimeout = 3 * time.Second
 
+// debugHTTP (ASI_DEBUG_HTTP=1) logs every HTTP fingerprint error the Governor sees.
+var debugHTTP = os.Getenv("ASI_DEBUG_HTTP") != ""
+
 func (e *Engine) fingerprintStage(
 	ctx context.Context,
 	activeIPs []string,
@@ -249,6 +254,9 @@ func (e *Engine) fingerprintStage(
 					opts.Timeout = speculativeHTTPTimeout
 				}
 				opts.OnThrottle = func(host string, statusCode int, err error) {
+					if debugHTTP && (statusCode > 0 || err != nil) {
+						log.Printf("[DEBUG] http %s:%d speculative=%v status=%d err=%v", job.ip, job.port, speculative, statusCode, err)
+					}
 					if statusCode > 0 {
 						gov.RecordHTTPStatus(host, statusCode)
 					} else if err != nil && !speculative {
