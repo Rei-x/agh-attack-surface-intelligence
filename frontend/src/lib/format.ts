@@ -2,7 +2,7 @@ export function formatDateTime(value?: string | null): string {
   if (!value) return '—';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  return new Intl.DateTimeFormat('pl-PL', {
+  return new Intl.DateTimeFormat('en-GB', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -16,7 +16,7 @@ export function formatShortTime(value?: string | null): string {
   if (!value) return '—';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  return new Intl.DateTimeFormat('pl-PL', {
+  return new Intl.DateTimeFormat('en-GB', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -37,14 +37,14 @@ export function formatRelativeTime(value?: string | null): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (diffSec < 5) return 'przed chwilą';
-  if (diffSec < 60) return `${diffSec}s temu`;
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min temu`;
+  if (diffMin < 60) return `${diffMin} min ago`;
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr} godz. temu`;
+  if (diffHr < 24) return `${diffHr} h ago`;
   const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay} dn. temu`;
+  return `${diffDay} d ago`;
 }
 
 export function formatDurationSeconds(seconds?: number | null): string {
@@ -61,7 +61,7 @@ export function formatDurationSeconds(seconds?: number | null): string {
 
 export function formatNumber(n?: number | null): string {
   if (n == null || !Number.isFinite(n)) return '0';
-  return new Intl.NumberFormat('pl-PL').format(n);
+  return new Intl.NumberFormat('en-GB').format(n);
 }
 
 /**
@@ -89,19 +89,19 @@ export function lifecycleMeta(state?: string): {
 } {
   switch (state) {
     case 'NEW':
-      return { label: 'NOWY', badge: TONE.info, dot: 'bg-sky-500', stroke: '#38bdf8' };
+      return { label: 'NEW', badge: TONE.info, dot: 'bg-sky-500', stroke: '#38bdf8' };
     case 'ACTIVE':
-      return { label: 'AKTYWNY', badge: TONE.success, dot: 'bg-emerald-500', stroke: '#10b981' };
+      return { label: 'ACTIVE', badge: TONE.success, dot: 'bg-emerald-500', stroke: '#10b981' };
     case 'INTERMITTENT':
-      return { label: 'NIESTABILNY', badge: TONE.warning, dot: 'bg-amber-500', stroke: '#f59e0b' };
+      return { label: 'UNSTABLE', badge: TONE.warning, dot: 'bg-amber-500', stroke: '#f59e0b' };
     case 'MISSING':
-      return { label: 'ZAGINIONY', badge: TONE.orange, dot: 'bg-orange-500', stroke: '#f97316' };
+      return { label: 'MISSING', badge: TONE.orange, dot: 'bg-orange-500', stroke: '#f97316' };
     case 'INACTIVE':
-      return { label: 'NIEAKTYWNY', badge: TONE.neutral, dot: 'bg-stone-400', stroke: '#78716c' };
+      return { label: 'INACTIVE', badge: TONE.neutral, dot: 'bg-stone-400', stroke: '#78716c' };
     case 'REACTIVATED':
-      return { label: 'REAKTYWOWANY', badge: TONE.violet, dot: 'bg-violet-500', stroke: '#a78bfa' };
+      return { label: 'REACTIVATED', badge: TONE.violet, dot: 'bg-violet-500', stroke: '#a78bfa' };
     default:
-      return { label: state || 'NIEZNANY', badge: TONE.neutral, dot: 'bg-stone-400', stroke: '#a8a29e' };
+      return { label: state || 'UNKNOWN', badge: TONE.neutral, dot: 'bg-stone-400', stroke: '#a8a29e' };
   }
 }
 
@@ -112,21 +112,21 @@ export function scanStatusMeta(status?: string): {
 } {
   switch (status) {
     case 'RUNNING':
-      return { label: 'W TRAKCIE', badge: TONE.primary, pulse: true };
+      return { label: 'RUNNING', badge: TONE.primary, pulse: true };
     case 'CALIBRATING':
-      return { label: 'KALIBRACJA', badge: TONE.info, pulse: true };
+      return { label: 'CALIBRATING', badge: TONE.info, pulse: true };
     case 'QUEUED':
-      return { label: 'W KOLEJCE', badge: TONE.neutral };
+      return { label: 'QUEUED', badge: TONE.neutral };
     case 'PAUSED_WINDOW':
-      return { label: 'PAUSED_WINDOW', badge: TONE.warning };
+      return { label: 'PAUSED (WINDOW)', badge: TONE.warning };
     case 'PAUSED_USER':
-      return { label: 'WSTRZYMANY', badge: TONE.warning };
+      return { label: 'PAUSED', badge: TONE.warning };
     case 'COMPLETED':
-      return { label: 'ZAKOŃCZONY', badge: TONE.success };
+      return { label: 'COMPLETED', badge: TONE.success };
     case 'STOPPED':
-      return { label: 'ZATRZYMANY', badge: TONE.neutral };
+      return { label: 'STOPPED', badge: TONE.neutral };
     case 'FAILED':
-      return { label: 'BŁĄD', badge: TONE.danger };
+      return { label: 'FAILED', badge: TONE.danger };
     default:
       return { label: status || '—', badge: TONE.neutral };
   }
@@ -139,11 +139,11 @@ export function severityMeta(severity?: string): {
   switch ((severity || '').toLowerCase()) {
     case 'critical':
     case 'high':
-      return { label: 'WYSOKI', badge: TONE.danger };
+      return { label: 'HIGH', badge: TONE.danger };
     case 'medium':
-      return { label: 'ŚREDNI', badge: TONE.warning };
+      return { label: 'MEDIUM', badge: TONE.warning };
     case 'low':
-      return { label: 'NISKI', badge: TONE.info };
+      return { label: 'LOW', badge: TONE.info };
     default:
       return { label: 'INFO', badge: TONE.neutral };
   }
@@ -161,4 +161,53 @@ export function scoreBarColor(score: number): string {
   if (score >= 50) return 'bg-amber-500';
   if (score >= 25) return 'bg-sky-500';
   return 'bg-stone-400';
+}
+
+/** "1 host", "3 hosts" (English plural; pass an explicit plural for irregular words). */
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${formatNumber(n)} ${n === 1 ? one : many}`;
+}
+
+const ENV_LABELS: Record<string, string> = {
+  prod: 'Production',
+  production: 'Production',
+  staging: 'Staging',
+  dev: 'Development',
+  development: 'Development',
+  test: 'Test',
+  unknown: 'Unknown',
+};
+
+export function envLabel(env?: string | null): string {
+  if (!env) return '—';
+  return ENV_LABELS[env.toLowerCase()] || env;
+}
+
+/** Translate EOL labels produced by the backend in Polish ("nginx 1.14 – gałąź EOL od 2019-04"). */
+export function eolLabel(label: string): string {
+  return label.replace(/\s*[–-]\s*gałąź EOL od\s*/i, ' · EOL since ');
+}
+
+/**
+ * Score factor as shown to the analyst. Most backend reasons are English already; EOL / CVE
+ * factors carry a Polish prefix.
+ */
+export function translateFactor(reason: string): string {
+  return eolLabel(
+    reason
+      .replace(/^Wersja EOL:\s*/i, 'End-of-life version: ')
+      .replace(/^Pasywna wskazówka CVE:\s*/i, 'Known CVE (passive, by version): ')
+      .replace(/ < próg /g, ' < threshold ')
+  );
+}
+
+/** Asset-query term with the value quoted when it contains spaces or commas. */
+export function queryTerm(key: string, value: string): string {
+  const v = value.trim().replace(/"/g, '');
+  return /[\s,]/.test(v) ? `${key}:"${v}"` : `${key}:${v}`;
+}
+
+/** /assets URL for an asset query. */
+export function assetsLink(q: string): string {
+  return `/assets?q=${encodeURIComponent(q)}`;
 }

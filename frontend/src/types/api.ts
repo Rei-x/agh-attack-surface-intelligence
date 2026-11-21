@@ -811,3 +811,34 @@ export interface WebhookConfig {
   last_error?: string;
   last_sent_at?: string;
 }
+
+/** One product row of GET /api/v1/inventory; `query` lists the hosts behind it. */
+export interface InventoryProduct {
+  name: string;
+  category?: string;
+  query: string;
+  logo_names: string[];
+  host_count: number;
+  service_count: number;
+  eol_count: number;
+  vuln_count: number;
+  admin_count: number;
+  new_count: number;
+  max_score: number;
+  versions: Array<{ version: string; count: number }>;
+  ports: number[];
+}
+
+export interface InventoryQuickFilter {
+  key: string;
+  query: string;
+  count: number;
+}
+
+export interface InventoryResponse {
+  products: InventoryProduct[];
+  quick_filters: InventoryQuickFilter[];
+  /** Scan scope with overlapping CIDRs merged (raw_ips = naive sum). */
+  scope: { ips: number; raw_ips: number; targets: number };
+  total_hosts: number;
+}

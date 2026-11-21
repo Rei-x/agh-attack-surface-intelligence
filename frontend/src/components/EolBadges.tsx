@@ -1,33 +1,21 @@
-import { Pill } from '@/components/common';
+import { CategoryBadge, outdatedDetail, vulnDetail } from '@/components/CategoryBadge';
+import { eolLabel } from '@/lib/format';
 import type { Service } from '@/types/api';
 
 type EolService = Pick<Service, 'outdated' | 'known_vulns'>;
 
 /**
- * Badges for end-of-life versions ("nginx 1.14 – gałąź EOL od 2019-04") and passive CVE
- * hints. The full evidence (source, data date, distro caveat) is in the tooltip.
+ * Compact icon badges for end-of-life versions and passive CVE hints; the evidence (branch,
+ * EOL date, source, distro caveat) is in the tooltip.
  */
-export function EolBadges({ service }: { service: EolService }) {
+export function EolBadges({ service, size }: { service: EolService; size?: 'xs' | 'sm' }) {
   const outdated = service.outdated || [];
   const hints = service.known_vulns || [];
   if (outdated.length === 0 && hints.length === 0) return null;
   return (
     <>
-      {outdated.map((o) => (
-        <Pill
-          key={`${o.product}-${o.branch}`}
-          tone="orange"
-          className="normal-case tracking-normal"
-          title={o.evidence}
-        >
-          EOL · {o.label}
-        </Pill>
-      ))}
-      {hints.map((h) => (
-        <Pill key={h.id} tone="danger" className="normal-case tracking-normal" title={h.evidence}>
-          {h.id} (pasywnie)
-        </Pill>
-      ))}
+      {hints.length > 0 && <CategoryBadge kind="cve" size={size} detail={hints.map(vulnDetail)} />}
+      {outdated.length > 0 && <CategoryBadge kind="eol" size={size} detail={outdated.map(outdatedDetail)} />}
     </>
   );
 }
@@ -40,15 +28,15 @@ export function EolEvidence({ service }: { service: EolService }) {
   return (
     <div className="space-y-2">
       <h4 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
-        Wersje EOL i wskazówki CVE
+        End-of-life versions and CVE hints
       </h4>
       <ul className="space-y-1.5 text-xs">
         {outdated.map((o) => (
           <li key={`${o.product}-${o.branch}`} className="border-l-2 border-orange-500/60 pl-2">
-            <span className="font-medium text-foreground">{o.label}</span>
-            <span className="text-muted-foreground"> — {o.evidence} </span>
-            <a href={o.source} target="_blank" rel="noreferrer" className="underline">
-              źródło
+            <span className="font-medium text-foreground">{eolLabel(o.label)}</span>
+            <span className="text-muted-foreground"> — {outdatedDetail(o)} </span>
+            <a href={o.source} target="_blank" rel="noopener noreferrer" className="underline">
+              source
             </a>
           </li>
         ))}
@@ -57,10 +45,10 @@ export function EolEvidence({ service }: { service: EolService }) {
             <span className="font-medium text-foreground">
               {h.id}: {h.name}
             </span>
-            <span className="text-muted-foreground"> — {h.evidence} </span>
+            <span className="text-muted-foreground"> — {vulnDetail(h)} </span>
             {h.references[0] && (
-              <a href={h.references[0]} target="_blank" rel="noreferrer" className="underline">
-                źródło
+              <a href={h.references[0]} target="_blank" rel="noopener noreferrer" className="underline">
+                reference
               </a>
             )}
           </li>

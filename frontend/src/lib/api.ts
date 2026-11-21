@@ -14,6 +14,7 @@ import type {
   HealthResponse,
   Host,
   HostPage,
+  InventoryResponse,
   LoginResponse,
   Role,
   ScanDiffResponse,
@@ -629,4 +630,32 @@ export const api = {
     const res = await request<unknown>(`/api/v1/admin/audit${buildQuery(params || {})}`);
     return unwrapList<AuditLog>(res, ['logs', 'audit', 'items', 'data']);
   },
+
+  // Light host list (no evidence/headers/history) for the asset table: ?fields=summary.
+  listHostSummaries: async (params?: {
+    q?: string;
+    state?: string;
+    tag?: string;
+    min_score?: number;
+    env?: string;
+    has_admin?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<HostPage> => {
+    const res = await request<Record<string, unknown>>(
+      `/api/v1/hosts${buildQuery({ ...(params || {}), fields: 'summary' })}`
+    );
+    const hosts = unwrapList<Host>(res, ['hosts']);
+    const total = Number(res.total ?? hosts.length);
+    const limit = Number(res.limit ?? params?.limit ?? 50);
+    return {
+      hosts,
+      total,
+      page: Number(res.page ?? params?.page ?? 1),
+      limit,
+      total_pages: Number(res.total_pages ?? Math.max(1, Math.ceil(total / Math.max(1, limit)))),
+    };
+  },
+  /** Product inventory, quick-filter counts and de-duplicated scan scope. */
+  inventory: () => request<InventoryResponse>('/api/v1/inventory'),
 };
