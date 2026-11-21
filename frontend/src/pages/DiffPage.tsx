@@ -19,6 +19,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { TONE, formatDateTime, formatShortTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
+import { NotifyOwnerButton } from '@/components/NotifyOwnerDialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -402,6 +403,9 @@ export function DiffPage() {
       <Button variant="ghost" size="icon-xs" title="Copy a note for the owner" aria-label="Copy note for owner" onClick={() => copyNote(ch)}>
         <RiFileCopyLine />
       </Button>
+      {ch.host_id && 'service_id' in ch && ch.service_id && (
+        <NotifyOwnerButton icon hostId={ch.host_id} serviceId={ch.service_id} />
+      )}
       {canPush && ch.id && (
         <Button
           variant="ghost"

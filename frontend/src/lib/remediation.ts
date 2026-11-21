@@ -250,7 +250,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     body = text;
   }
   if (!res.ok) {
-    const msg = (body && typeof body === 'object' && (body as { error?: string }).error) || `HTTP ${res.status}`;
+    const msg =
+      (body && typeof body === 'object' ? (body as { error?: string }).error : undefined) || `HTTP ${res.status}`;
     throw new ApiError(res.status, msg, body);
   }
   return body as T;

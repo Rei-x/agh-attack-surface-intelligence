@@ -38,6 +38,7 @@ import { Empty, Notice, Pill, SectionTitle, SimpleSelect } from '@/components/co
 import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
 import { CategoryBadges, serviceFlags } from '@/components/CategoryBadge';
 import { EolEvidence } from '@/components/EolBadges';
+import { NotifyOwnerButton, TicketBadge } from '@/components/NotifyOwnerDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -646,6 +647,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                   <RiLockLine className="size-3.5 text-violet-600 dark:text-violet-400" />
                                 )}
                                 <TriageBadge triage={svc.triage} />
+                                <TicketBadge serviceId={svc.id} />
                               </div>
                               {http?.title && (
                                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -688,6 +690,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                         {isEditing ? 'Cancel' : 'Edit'}
                                       </Button>
                                     )}
+                                    <NotifyOwnerButton hostId={host.id} serviceId={svc.id} />
                                     {canPushDD && (
                                       <Tooltip>
                                         <TooltipTrigger render={<span className="inline-flex" />}>

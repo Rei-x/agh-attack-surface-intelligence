@@ -41,6 +41,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Empty, PageHeader, Pill, Stat, StatStrip } from '@/components/common';
 import { LiveTelemetryBanner } from '@/components/LiveTelemetryBanner';
+import { DigestCard } from '@/components/DigestCard';
+import { NotifyOwnerButton } from '@/components/NotifyOwnerDialog';
 import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
 import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
 import { CategoryBadges, serviceFlags } from '@/components/CategoryBadge';
@@ -463,7 +465,7 @@ export function DashboardPage() {
                     <TableHead className="h-9 w-40 text-[10px]">Endpoint</TableHead>
                     <TableHead className="h-9 text-[10px]">Service</TableHead>
                     <TableHead className="h-9 w-32 text-[10px]">Risk</TableHead>
-                    {canPush && <TableHead className="h-9 w-12 pr-5" />}
+                    <TableHead className="h-9 w-20 pr-5" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -495,8 +497,9 @@ export function DashboardPage() {
                       <TableCell>
                         <CategoryBadges flags={serviceFlags(svc)} size="xs" max={5} />
                       </TableCell>
-                      {canPush && (
-                        <TableCell className="pr-5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <TableCell className="pr-5 text-right" onClick={(e) => e.stopPropagation()}>
+                        <NotifyOwnerButton icon hostId={svc.host_id} serviceId={svc.id} />
+                        {canPush && (
                           <Tooltip>
                             <TooltipTrigger
                               render={
@@ -518,8 +521,8 @@ export function DashboardPage() {
                               {dd.ready ? 'Push to DefectDojo now (findings are also synced automatically)' : dd.reason}
                             </TooltipContent>
                           </Tooltip>
-                        </TableCell>
-                      )}
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -550,6 +553,7 @@ export function DashboardPage() {
         </Card>
 
         <div className="flex flex-col gap-6 xl:col-span-5">
+          <DigestCard onOpenHost={setInspectHostId} />
           <Card size="sm">
             <CardHeader>
               <CardTitle className={cardTitleCls}>Risk by technology</CardTitle>
