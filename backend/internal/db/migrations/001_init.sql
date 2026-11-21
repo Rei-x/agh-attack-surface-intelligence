@@ -1,4 +1,4 @@
--- AegisASI PostgreSQL 17 Schema (Encryption At Rest + Dynamic RBAC + Overrides)
+-- Dzięcioł PostgreSQL 17 Schema (Encryption At Rest + Dynamic RBAC + Overrides)
 
 CREATE TABLE IF NOT EXISTS crypto_keys (
     kid TEXT PRIMARY KEY,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS scan_profiles (
     grace_period_hours INTEGER NOT NULL DEFAULT 48,
     retry_unstable_count INTEGER NOT NULL DEFAULT 2,
     enable_http_fingerprint BOOLEAN NOT NULL DEFAULT TRUE,
-    user_agent TEXT NOT NULL DEFAULT 'AegisASI-CBI-AGH/1.0',
+    user_agent TEXT NOT NULL DEFAULT 'Dzieciol-CBI-AGH/1.0',
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -317,6 +317,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Remote scanning agents: a profile may be routed to an enrolled agent (aegis agent).
+-- Remote scanning agents: a profile may be routed to an enrolled agent (dzieciol agent).
 -- The agent registry, enrollment tokens and job leases live in app_settings (encrypted).
 ALTER TABLE scan_profiles ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT '';

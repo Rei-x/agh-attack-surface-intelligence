@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { PeckLoader } from '@/components/Woodpecker';
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   online: { label: 'online', tone: 'success' },
@@ -62,7 +63,7 @@ function CopyBlock({ label, text }: { label: string; text: string }) {
 }
 
 /**
- * Remote scanning agents (aegis agent): a lightweight scanner inside another network segment
+ * Remote scanning agents (dzieciol agent): a lightweight scanner inside another network segment
  * that connects OUT to this server over HTTPS, pulls jobs and uploads results. Everyone with
  * scans:read sees the list; admins (admin:settings) add, disable and remove agents.
  */
@@ -141,7 +142,7 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
       <div className={canManage ? 'space-y-6 xl:col-span-8' : 'space-y-6 xl:col-span-12'}>
         <Card size="sm" className="py-0">
           {loading ? (
-            <Empty>Ładowanie…</Empty>
+            <PeckLoader />
           ) : agents.length === 0 ? (
             <Empty icon={RiRadarLine}>
               Brak agentów. Agent to lekki skaner w innej sieci (VLAN, wydział, za NAT), który łączy się

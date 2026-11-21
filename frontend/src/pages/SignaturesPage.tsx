@@ -47,6 +47,7 @@ import {
   SimpleSelect,
   type SelectOption,
 } from '@/components/common';
+import { PeckLoader } from '@/components/Woodpecker';
 
 const EMPTY_SIG: Partial<Signature> = {
   name: '',
@@ -597,7 +598,7 @@ export function SignaturesPage() {
             </div>
 
             {loading ? (
-              <Empty>Ładowanie…</Empty>
+              <PeckLoader />
             ) : filteredSignatures.length === 0 ? (
               <Empty icon={RiSearchLine}>Brak wyników</Empty>
             ) : (

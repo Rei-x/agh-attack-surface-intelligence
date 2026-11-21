@@ -7,10 +7,6 @@
 #   DZIECIOL_VERSION        release tag to install (default: latest), e.g. v1.2.0
 #   DZIECIOL_INSTALL_DIR    target directory (default: /usr/local/bin as root, else ~/.local/bin)
 #   DZIECIOL_DOWNLOAD_BASE  alternative base URL holding dzieciol-<os>-<arch> + checksums.txt (mirror)
-# The old AEGIS_VERSION / AEGIS_INSTALL_DIR / AEGIS_DOWNLOAD_BASE names still work.
-#
-# Upgrading from the old `aegis` binary: if one is found in the target directory it is
-# replaced by a symlink to `dzieciol`, so existing scripts and aegis-agent units keep working.
 #
 # The script verifies the SHA-256 checksum from checksums.txt and never uses sudo.
 #
@@ -28,9 +24,9 @@ if [ "${1:-}" = "--agent" ]; then
 fi
 
 REPO="Rei-x/agh-attack-surface-intelligence"
-VERSION="${DZIECIOL_VERSION:-${AEGIS_VERSION:-latest}}"
-INSTALL_DIR="${DZIECIOL_INSTALL_DIR:-${AEGIS_INSTALL_DIR:-}}"
-DOWNLOAD_BASE="${DZIECIOL_DOWNLOAD_BASE:-${AEGIS_DOWNLOAD_BASE:-}}"
+VERSION="${DZIECIOL_VERSION:-latest}"
+INSTALL_DIR="${DZIECIOL_INSTALL_DIR:-}"
+DOWNLOAD_BASE="${DZIECIOL_DOWNLOAD_BASE:-}"
 
 say() { printf '%s\n' "dzieciol-install: $*"; }
 die() { printf '%s\n' "dzieciol-install: error: $*" >&2; exit 1; }
@@ -112,10 +108,6 @@ target="$dir/dzieciol$ext"
 chmod 0755 "$tmp/$asset"
 mv -f "$tmp/$asset" "$target"
 say "installed $target"
-# Upgrade from the pre-rename `aegis` binary: point the old name at the new one.
-if [ "$os" != windows ] && [ -e "$dir/aegis" ]; then
-  ln -sf "dzieciol" "$dir/aegis" && say "$dir/aegis now points to dzieciol (old name kept for compatibility)"
-fi
 "$target" version || true
 
 if [ "$AGENT" = 1 ]; then

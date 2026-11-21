@@ -24,9 +24,9 @@ const (
 	interruptedByWindowMsg = "interrupted: scan window closed; chunk will be rescanned in the next window"
 )
 
-// DefaultChunkWorkers returns ASI_CHUNK_WORKERS (1..64) or 4.
+// DefaultChunkWorkers returns DZIECIOL_CHUNK_WORKERS (1..64) or 4.
 func DefaultChunkWorkers() int {
-	if v := strings.TrimSpace(os.Getenv("ASI_CHUNK_WORKERS")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("DZIECIOL_CHUNK_WORKERS")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 64 {
 			return n
 		}

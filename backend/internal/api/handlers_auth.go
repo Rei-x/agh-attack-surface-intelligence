@@ -48,7 +48,7 @@ var passwordCheckSlots = make(chan struct{}, 4)
 
 // dummyPasswordHash is verified for unknown usernames to equalize login timing.
 var dummyPasswordHash = func() string {
-	h, _ := crypto.HashPassword("aegis-timing-equalizer")
+	h, _ := crypto.HashPassword("dzieciol-timing-equalizer")
 	return h
 }()
 

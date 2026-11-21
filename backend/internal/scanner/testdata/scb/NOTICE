@@ -20,5 +20,5 @@ WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 License for the specific language governing permissions and limitations
 under the License.
 
-Each file keeps its original SPDX header. AegisASI uses them only as test
+Each file keeps its original SPDX header. Dzięcioł uses them only as test
 fixtures for its nmap XML parser (see ../../scb_fixtures_test.go).

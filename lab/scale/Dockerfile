@@ -1,4 +1,4 @@
-# AegisASI scale lab: emulator + scorer + nmap (for the optional scanner-runner).
+# Dzięcioł scale lab: emulator + scorer + nmap (for the optional scanner-runner).
 FROM golang:1.24-alpine AS build
 WORKDIR /src
 COPY go.mod ./

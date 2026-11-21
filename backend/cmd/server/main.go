@@ -45,7 +45,7 @@ Commands:
   version                   Print version information
 
 Common flags:
-  --data-dir DIR            Data directory (default ~/.dzieciol, env ASI_DATA_DIR)
+  --data-dir DIR            Data directory (default ~/.dzieciol, env DZIECIOL_DATA_DIR)
 
 Examples:
   dzieciol serve

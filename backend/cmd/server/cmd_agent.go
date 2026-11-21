@@ -29,15 +29,10 @@ and uploads results (buffered on disk while the server is unreachable).
 
 Every flag can also come from the environment: DZIECIOL_AGENT_SERVER, DZIECIOL_AGENT_TOKEN,
 DZIECIOL_AGENT_NAME, DZIECIOL_AGENT_DATA_DIR, DZIECIOL_AGENT_CA_FILE, DZIECIOL_AGENT_INSECURE=true,
-DZIECIOL_AGENT_ALLOW_CIDR (comma separated). The older AEGIS_AGENT_* names work as well.`
+DZIECIOL_AGENT_ALLOW_CIDR (comma separated).`
 
-// agentEnv reads DZIECIOL_AGENT_<key>, falling back to the pre-rename AEGIS_AGENT_<key>.
-func agentEnv(key string) string {
-	if v := os.Getenv("DZIECIOL_AGENT_" + key); v != "" {
-		return v
-	}
-	return os.Getenv("AEGIS_AGENT_" + key)
-}
+// agentEnv reads DZIECIOL_AGENT_<key>.
+func agentEnv(key string) string { return os.Getenv("DZIECIOL_AGENT_" + key) }
 
 // exitCredentialRejected tells systemd not to restart (RestartPreventExitStatus=3): a deleted
 // agent must be re-enrolled, restarting cannot fix it.
@@ -60,7 +55,7 @@ func parseAgentFlags(name string, args []string) (*agentFlags, error) {
 	fs.StringVar(&f.server, "server", agentEnv("SERVER"), "Dzięcioł server URL, e.g. https://dzieciol.example.edu")
 	fs.StringVar(&f.token, "token", agentEnv("TOKEN"), "one-time enrollment token (first run only)")
 	fs.StringVar(&f.name, "name", agentEnv("NAME"), "agent name shown in the UI (default: token name or hostname)")
-	fs.StringVar(&f.dataDir, "data-dir", "", "data directory for the credential and buffered results (default /var/lib/dzieciol-agent as root, else ~/.dzieciol-agent; an existing aegis-agent directory is reused)")
+	fs.StringVar(&f.dataDir, "data-dir", "", "data directory for the credential and buffered results (default /var/lib/dzieciol-agent as root, else ~/.dzieciol-agent)")
 	fs.StringVar(&f.caFile, "ca-file", agentEnv("CA_FILE"), "extra CA certificate (PEM) to trust for the server")
 	fs.BoolVar(&f.insecure, "insecure", strings.EqualFold(agentEnv("INSECURE"), "true"), "skip TLS verification / allow plain HTTP (LAB ONLY)")
 	fs.Var(&f.allow, "allow-cidr", "only ever scan inside these networks (repeatable or comma separated); jobs outside are refused")
@@ -76,21 +71,21 @@ func parseAgentFlags(name string, args []string) (*agentFlags, error) {
 
 func agentDataDir(flagValue string) (string, error) {
 	dir := strings.TrimSpace(flagValue)
-	for _, env := range []string{"DZIECIOL_AGENT_DATA_DIR", "AEGIS_AGENT_DATA_DIR", "STATE_DIRECTORY"} { // STATE_DIRECTORY: systemd
+	for _, env := range []string{"DZIECIOL_AGENT_DATA_DIR", "STATE_DIRECTORY"} { // STATE_DIRECTORY: systemd
 		if dir == "" {
 			dir = strings.TrimSpace(strings.Split(os.Getenv(env), ":")[0])
 		}
 	}
 	if dir == "" {
-		base, legacy := "/var/lib/dzieciol-agent", "/var/lib/aegis-agent"
-		if os.Geteuid() != 0 || runtime.GOOS == "windows" {
+		if os.Geteuid() == 0 && runtime.GOOS != "windows" {
+			dir = "/var/lib/dzieciol-agent"
+		} else {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				return "", fmt.Errorf("cannot determine home directory (use --data-dir): %w", err)
 			}
-			base, legacy = filepath.Join(home, ".dzieciol-agent"), filepath.Join(home, ".aegis-agent")
+			dir = filepath.Join(home, ".dzieciol-agent")
 		}
-		dir = localdata.PreferExisting(base, legacy)
 	}
 	return filepath.Abs(dir)
 }
@@ -151,7 +146,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-# DZIECIOL_AGENT_SERVER / _TOKEN / _ALLOW_CIDR ... (0600, root; AEGIS_AGENT_* also read).
+# DZIECIOL_AGENT_SERVER / _TOKEN / _ALLOW_CIDR ... (0600, root).
 # The token is single-use: after the first start the credential lives in the state directory.
 EnvironmentFile=-/etc/dzieciol-agent.env
 ExecStart=/usr/local/bin/dzieciol agent
@@ -185,9 +180,6 @@ const (
 	agentEnvPath  = "/etc/dzieciol-agent.env"
 	agentUnitPath = "/etc/systemd/system/dzieciol-agent.service"
 	agentBinPath  = "/usr/local/bin/dzieciol"
-	// Pre-rename unit: left untouched (it keeps running whatever /usr/local/bin/aegis is), but two
-	// agents with separate credentials should not run side by side, so install warns.
-	legacyAgentUnitPath = "/etc/systemd/system/aegis-agent.service"
 )
 
 func envQuote(v string) string {
@@ -261,9 +253,6 @@ func cmdAgentInstall(args []string) error {
 		}
 	}
 	fmt.Printf("%[1]s service installed and started.\n  logs:   journalctl -u %[1]s -f\n  status: systemctl status %[1]s\n", agentService)
-	if _, err := os.Stat(legacyAgentUnitPath); err == nil {
-		fmt.Printf("note: the old aegis-agent service is still installed; if it targets the same server, stop it:\n  systemctl disable --now aegis-agent\n")
-	}
 	return nil
 }
 

@@ -56,7 +56,7 @@ type EngineConfig struct {
 	CustomServiceScanFn func(ctx context.Context, activeIPs []string, ports []int) (map[string][]domain.ObservedService, string, error)
 
 	// MaxChunkWorkers bounds concurrent chunk workers (each runs its own nmap process).
-	// 0 = DefaultChunkWorkers() (ASI_CHUNK_WORKERS env or 4). Further bounded by profile
+	// 0 = DefaultChunkWorkers() (DZIECIOL_CHUNK_WORKERS env or 4). Further bounded by profile
 	// Concurrency, by MaxRatePPS/MinWorkerRatePPS and by the number of pending chunks.
 	MaxChunkWorkers int
 	// WindowPollInterval controls how often a running scan re-checks its time window so an
@@ -157,8 +157,8 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 // speculativeHTTPTimeout bounds HTTP probes of services nmap did not identify.
 const speculativeHTTPTimeout = 3 * time.Second
 
-// debugHTTP (ASI_DEBUG_HTTP=1) logs every HTTP fingerprint error the Governor sees.
-var debugHTTP = os.Getenv("ASI_DEBUG_HTTP") != ""
+// debugHTTP (DZIECIOL_DEBUG_HTTP=1) logs every HTTP fingerprint error the Governor sees.
+var debugHTTP = os.Getenv("DZIECIOL_DEBUG_HTTP") != ""
 
 func (e *Engine) fingerprintStage(
 	ctx context.Context,

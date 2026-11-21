@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# AegisASI — Encryption At Rest Proof Script (PostgreSQL Direct Inspection)
+# Dzięcioł — Encryption At Rest Proof Script (PostgreSQL Direct Inspection)
 #
 # Queries PostgreSQL directly via `docker compose exec -T postgres psql` to prove:
 #   1. Sensitive columns are stored as AES-256-GCM envelope ciphertext (`enc:v1:<kid>:...`)
@@ -11,8 +11,8 @@
 set -euo pipefail
 
 PG_SERVICE="${PG_SERVICE:-postgres}"
-PG_USER="${POSTGRES_USER:-aegis}"
-PG_DB="${POSTGRES_DB:-aegis_asi}"
+PG_USER="${POSTGRES_USER:-dzieciol}"
+PG_DB="${POSTGRES_DB:-dzieciol}"
 
 if [[ -t 1 ]]; then
   GREEN=$'\033[0;32m'
@@ -29,7 +29,7 @@ psql_exec() {
   docker compose exec -T "$PG_SERVICE" psql -q -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 "$@"
 }
 
-echo "${BOLD}${CYAN}=== AegisASI Encryption At Rest Verification (PostgreSQL Direct Query) ===${RESET}"
+echo "${BOLD}${CYAN}=== Dzięcioł Encryption At Rest Verification (PostgreSQL Direct Query) ===${RESET}"
 echo "Target container: ${PG_SERVICE} | Database: ${PG_DB} | User: ${PG_USER}"
 echo ""
 
@@ -37,7 +37,7 @@ echo ""
 echo "${BOLD}[1/4] Discovering schema tables in PostgreSQL...${RESET}"
 TABLES="$(psql_exec -tA -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;")"
 if [[ -z "$TABLES" ]]; then
-  echo "${RED}FAIL: No tables found in schema 'public'. Is AegisASI started and migrated?${RESET}"
+  echo "${RED}FAIL: No tables found in schema 'public'. Is Dzięcioł started and migrated?${RESET}"
   exit 1
 fi
 echo "$TABLES" | sed 's/^/  - /'
@@ -100,7 +100,7 @@ SQL
 
 if [[ -z "$AUDIT_OUTPUT" ]]; then
   echo "${RED}FAIL: Found 0 columns containing 'enc:v1:' or 'wrap:v1:' ciphertext!${RESET}"
-  echo "Ensure AegisASI has been started and at least demo accounts / assets have been seeded."
+  echo "Ensure Dzięcioł has been started and at least demo accounts / assets have been seeded."
   exit 1
 fi
 
@@ -164,9 +164,9 @@ BEGIN
     ) INTO c;
     hits := hits + c;
   END LOOP;
-  PERFORM set_config('aegis.leak_hits', hits::TEXT, false);
+  PERFORM set_config('dzieciol.leak_hits', hits::TEXT, false);
 END $$;
-SELECT current_setting('aegis.leak_hits');
+SELECT current_setting('dzieciol.leak_hits');
 SQL
 )"
 LEAK_COUNT="${LEAK_COUNT:-0}"

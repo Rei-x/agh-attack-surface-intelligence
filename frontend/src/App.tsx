@@ -15,6 +15,7 @@ import { SignaturesPage } from './pages/SignaturesPage';
 import { AdminPage } from './pages/AdminPage';
 import { PERMISSIONS } from './lib/permissions';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { PeckLoader } from '@/components/Woodpecker';
 
 function ProtectedRoute({
   children,
@@ -27,8 +28,8 @@ function ProtectedRoute({
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-        Ładowanie…
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <PeckLoader />
       </div>
     );
   }

@@ -27,8 +27,8 @@ type bootstrapResult struct {
 //   - demo accounts that still have their publicly known password are deactivated, so turning
 //     demo mode off actually closes them;
 //   - if no active administrator remains (fresh install without demo accounts), an "admin"
-//     account is created (or re-enabled) with ASI_ADMIN_PASSWORD or a random password that is
-//     printed once to the terminal. Without this, ASI_SEED_DEMO=false meant nobody could log in.
+//     account is created (or re-enabled) with DZIECIOL_ADMIN_PASSWORD or a random password that is
+//     printed once to the terminal. Without this, DZIECIOL_SEED_DEMO=false meant nobody could log in.
 func secureAccounts(ctx context.Context, store db.Store, seedDemo bool) (bootstrapResult, error) {
 	var res bootstrapResult
 	if seedDemo {
@@ -61,7 +61,7 @@ func secureAccounts(ctx context.Context, store db.Store, seedDemo bool) (bootstr
 		return res, nil
 	}
 
-	password := strings.TrimSpace(os.Getenv("ASI_ADMIN_PASSWORD"))
+	password := strings.TrimSpace(os.Getenv("DZIECIOL_ADMIN_PASSWORD"))
 	if password == "" {
 		password, err = randomPassword(20)
 		if err != nil {
@@ -69,7 +69,7 @@ func secureAccounts(ctx context.Context, store db.Store, seedDemo bool) (bootstr
 		}
 		res.AdminPassword = password
 	} else if len(password) < 10 {
-		return res, fmt.Errorf("ASI_ADMIN_PASSWORD must be at least 10 characters")
+		return res, fmt.Errorf("DZIECIOL_ADMIN_PASSWORD must be at least 10 characters")
 	}
 	hash, err := crypto.HashPassword(password)
 	if err != nil {
@@ -93,7 +93,7 @@ func secureAccounts(ctx context.Context, store db.Store, seedDemo bool) (bootstr
 		}
 	}
 	res.AdminCreated = true
-	log.Printf("[WARN] no active administrator existed: account 'admin' was created/re-enabled (password shown once on the terminal or taken from ASI_ADMIN_PASSWORD)")
+	log.Printf("[WARN] no active administrator existed: account 'admin' was created/re-enabled (password shown once on the terminal or taken from DZIECIOL_ADMIN_PASSWORD)")
 	return res, nil
 }
 

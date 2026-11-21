@@ -1,4 +1,4 @@
-# Specyfikacja Techniczna i Strategia Wygranej: **AegisASI** (Attack Surface Intelligence dla CBI AGH)
+# Specyfikacja Techniczna i Strategia Wygranej: **Dzięcioł** (Attack Surface Intelligence dla CBI AGH)
 
 > **Zadanie:** HackNation 2026 — `[Akademia Górniczo-Hutnicza] Attack Surface Intelligence`
 > **Zamawiający:** Centrum Bezpieczeństwa Informacji AGH (CBI AGH)

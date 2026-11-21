@@ -19,7 +19,8 @@ import (
 
 // File format of the local encrypted store:
 //
-//	"AEGISDB1" (8 bytes magic) | nonce(12) | AES-256-GCM( gzip( JSON(memoryState) ) ) | tag(16)
+//	"AEGISDB1" (8 bytes magic; with the AAD and the crypto KDF labels it predates the
+//	Dzięcioł rename and is kept so existing store files decrypt after a plain file rename) | nonce(12) | AES-256-GCM( gzip( JSON(memoryState) ) ) | tag(16)
 //
 // The GCM key is derived from the master key (KEK) via HMAC-SHA256 and the magic is bound
 // as AAD. Inside, all sensitive fields are additionally envelope-encrypted per row with the

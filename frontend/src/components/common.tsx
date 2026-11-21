@@ -2,6 +2,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { TONE, type Tone } from '@/lib/format';
 import { Label } from '@/components/ui/label';
+import { WoodpeckerMark } from '@/components/Woodpecker';
 import {
   Select,
   SelectContent,
@@ -128,13 +129,15 @@ export function StatStrip({ children, className }: { children: React.ReactNode; 
   );
 }
 
-/** One-line empty state. */
+/** One-line empty state. `bird` shows the resting woodpecker instead of an icon. */
 export function Empty({
   icon: Icon,
+  bird,
   children,
   className,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
+  bird?: boolean;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -145,7 +148,11 @@ export function Empty({
         className
       )}
     >
-      {Icon && <Icon className="size-5 opacity-50" />}
+      {bird ? (
+        <WoodpeckerMark className="h-6 opacity-70" title="" />
+      ) : (
+        Icon && <Icon className="size-5 opacity-50" />
+      )}
       <span>{children}</span>
     </div>
   );

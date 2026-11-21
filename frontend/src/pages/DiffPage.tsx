@@ -38,6 +38,7 @@ import {
 } from '@/components/common';
 import type { ChangeEvent, ChangedServiceDiff, ScanDiffResponse, ScanRun } from '@/types/api';
 import { changeOwner } from '@/components/EolBadges';
+import { PeckLoader } from '@/components/Woodpecker';
 
 type BeforeAfter = { before?: Record<string, unknown>; after?: Record<string, unknown> };
 
@@ -391,7 +392,7 @@ export function DiffPage() {
         <TabsContent value="changed" className="pt-4">
           <Card size="sm" className="py-0">
             {changedCount === 0 ? (
-              <Empty>Brak zmian</Empty>
+              <Empty bird>Stuk, stuk… bez zmian</Empty>
             ) : (
               <div className="divide-y divide-border">
                 {[...timeAnomalies, ...changedServices].map((ch: ChangedServiceDiff, idx) => {
@@ -457,7 +458,7 @@ export function DiffPage() {
           </div>
           <Card size="sm" className="py-0">
             {loading && allChanges.length === 0 ? (
-              <Empty>Ładowanie…</Empty>
+              <PeckLoader />
             ) : allChanges.length === 0 ? (
               <Empty>Brak zdarzeń</Empty>
             ) : (

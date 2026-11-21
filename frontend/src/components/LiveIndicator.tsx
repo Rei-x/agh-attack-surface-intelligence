@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { PeckSpinner } from '@/components/Woodpecker';
 
 const TONE_TEXT = {
   danger: 'text-rose-600 dark:text-rose-400',
@@ -31,8 +32,10 @@ export function LiveDot({ live, className }: { live: boolean; className?: string
 }
 
 export function LiveIndicator() {
-  const { connected, clients, liveFeed, lastEventAt, clearEvents } = useLiveEvents();
+  const { connected, clients, liveFeed, lastEventAt, clearEvents, activeScan } = useLiveEvents();
   const [open, setOpen] = useState(false);
+  // A scan is knocking right now: show the pecking bird next to the live dot.
+  const pecking = connected && !!activeScan && (activeScan.status === 'RUNNING' || activeScan.status === 'CALIBRATING');
 
   return (
     <>
@@ -54,11 +57,13 @@ export function LiveIndicator() {
         >
           <LiveDot live={connected} />
           {connected ? 'Live' : 'Offline'}
+          {pecking && <PeckSpinner className="h-3.5" />}
           <span className="border-l border-current/20 pl-2 tabular-nums text-muted-foreground">
             {liveFeed.length}
           </span>
         </TooltipTrigger>
         <TooltipContent>
+          {pecking && 'Stuk, stuk · skan w toku · '}
           {formatClock(lastEventAt)}
           {clients > 0 && ` · ${clients} client${clients === 1 ? '' : 's'}`}
         </TooltipContent>
@@ -85,7 +90,7 @@ export function LiveIndicator() {
           </div>
           <div className="flex-1 overflow-y-auto font-mono text-[11px]">
             {liveFeed.length === 0 ? (
-              <div className="py-10 text-center text-muted-foreground">—</div>
+              <div className="py-10 text-center text-muted-foreground">Cisza w lesie</div>
             ) : (
               liveFeed.map((ev, idx) => {
                 const d = describeEvent(ev);

@@ -1,5 +1,5 @@
 [Unit]
-Description=AegisASI scale lab (10.66.0.0/18 network emulator)
+Description=Dzięcioł scale lab (10.66.0.0/18 network emulator)
 After=network-online.target
 Wants=network-online.target
 

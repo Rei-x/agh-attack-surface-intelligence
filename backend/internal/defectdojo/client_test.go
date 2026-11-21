@@ -162,13 +162,13 @@ func TestDefectDojoClientUsesReimportWithResolvedContext(t *testing.T) {
 	}
 }
 
-// TestRealDefectDojo runs against a live instance when AEGIS_DD_URL and AEGIS_DD_TOKEN are set:
+// TestRealDefectDojo runs against a live instance when DZIECIOL_DD_URL and DZIECIOL_DD_TOKEN are set:
 //
-//	AEGIS_DD_URL=http://localhost:8081 AEGIS_DD_TOKEN=... go test ./internal/defectdojo -run Real -v
+//	DZIECIOL_DD_URL=http://localhost:8081 DZIECIOL_DD_TOKEN=... go test ./internal/defectdojo -run Real -v
 func TestRealDefectDojo(t *testing.T) {
-	url, token := os.Getenv("AEGIS_DD_URL"), os.Getenv("AEGIS_DD_TOKEN")
+	url, token := os.Getenv("DZIECIOL_DD_URL"), os.Getenv("DZIECIOL_DD_TOKEN")
 	if url == "" || token == "" {
-		t.Skip("AEGIS_DD_URL/AEGIS_DD_TOKEN not set")
+		t.Skip("DZIECIOL_DD_URL/DZIECIOL_DD_TOKEN not set")
 	}
 	cfg := &domain.DefectDojoConfig{URL: url, APIToken: token}
 	client := NewClient()

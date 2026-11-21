@@ -10,7 +10,7 @@ import (
 
 func TestFreshInstallWithoutDemoGetsAnAdmin(t *testing.T) {
 	ctx := context.Background()
-	t.Setenv("ASI_ADMIN_PASSWORD", "")
+	t.Setenv("DZIECIOL_ADMIN_PASSWORD", "")
 	vault, _ := crypto.NewVault("")
 	store := db.NewMemoryStore(vault)
 	if err := db.SeedDefaults(ctx, store, false); err != nil {
@@ -36,13 +36,13 @@ func TestFreshInstallWithoutDemoGetsAnAdmin(t *testing.T) {
 
 func TestDisablingDemoModeClosesDemoAccounts(t *testing.T) {
 	ctx := context.Background()
-	t.Setenv("ASI_ADMIN_PASSWORD", "a-strong-admin-pass")
+	t.Setenv("DZIECIOL_ADMIN_PASSWORD", "a-strong-admin-pass")
 	vault, _ := crypto.NewVault("")
 	store := db.NewMemoryStore(vault)
 	if err := db.SeedDefaults(ctx, store, true); err != nil { // was a demo install
 		t.Fatal(err)
 	}
-	res, err := secureAccounts(ctx, store, false) // restarted with ASI_SEED_DEMO=false
+	res, err := secureAccounts(ctx, store, false) // restarted with DZIECIOL_SEED_DEMO=false
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +56,6 @@ func TestDisablingDemoModeClosesDemoAccounts(t *testing.T) {
 	}
 	admin, _ := store.GetUserByUsername(ctx, "admin")
 	if !admin.Active || crypto.VerifyPassword("Admin123!", admin.PasswordHash) || !crypto.VerifyPassword("a-strong-admin-pass", admin.PasswordHash) {
-		t.Fatal("admin must be re-enabled with ASI_ADMIN_PASSWORD, not the demo password")
+		t.Fatal("admin must be re-enabled with DZIECIOL_ADMIN_PASSWORD, not the demo password")
 	}
 }

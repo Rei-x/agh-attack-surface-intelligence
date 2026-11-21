@@ -93,7 +93,7 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 	if strings.Contains(e.Description, "temu") || strings.Contains(e.Description, "lat") {
 		t.Errorf("description must not carry a time-relative age (breaks DefectDojo hash dedup):\n%s", e.Description)
 	}
-	if !reflect.DeepEqual(e.Tags, []string{"dzieciol", "aegis-asi", "eol", "owner:admin@wi.agh.edu.pl", "wydzial-wi"}) {
+	if !reflect.DeepEqual(e.Tags, []string{"dzieciol", "eol", "owner:admin@wi.agh.edu.pl", "wydzial-wi"}) {
 		t.Errorf("tags: %v", e.Tags)
 	}
 	if len(e.Endpoints) != 1 || e.Endpoints[0].Host != "10.66.0.12" || e.Endpoints[0].Port != 80 || e.Endpoints[0].Protocol != "http" {
@@ -201,11 +201,11 @@ func TestImportChangeFindingsRequest(t *testing.T) {
 
 // TestRealDefectDojoChangeFindings checks dedup and closing against a live instance:
 //
-//	AEGIS_DD_URL=http://localhost:8081 AEGIS_DD_TOKEN=... go test ./internal/defectdojo -run RealDefectDojoChange -v
+//	DZIECIOL_DD_URL=http://localhost:8081 DZIECIOL_DD_TOKEN=... go test ./internal/defectdojo -run RealDefectDojoChange -v
 func TestRealDefectDojoChangeFindings(t *testing.T) {
-	url, token := os.Getenv("AEGIS_DD_URL"), os.Getenv("AEGIS_DD_TOKEN")
+	url, token := os.Getenv("DZIECIOL_DD_URL"), os.Getenv("DZIECIOL_DD_TOKEN")
 	if url == "" || token == "" {
-		t.Skip("AEGIS_DD_URL/AEGIS_DD_TOKEN not set")
+		t.Skip("DZIECIOL_DD_URL/DZIECIOL_DD_TOKEN not set")
 	}
 	cfg := &domain.DefectDojoConfig{URL: url, APIToken: token}
 	c := NewClient()

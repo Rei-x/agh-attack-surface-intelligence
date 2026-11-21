@@ -1,4 +1,4 @@
-# AegisASI a OWASP secureCodeBox
+# Dzięcioł a OWASP secureCodeBox
 
 Treść zadania wskazuje [OWASP secureCodeBox](https://www.securecodebox.io) (SCB,
 Apache-2.0, <https://github.com/secureCodeBox/secureCodeBox>) jako najbliższe istniejące
@@ -9,12 +9,12 @@ od razu rozpoznał koncepcje. Oba narzędzia mogą też wymieniać dane w obie s
 Dziękujemy autorom secureCodeBox. Wszystkie pliki skopiowane z SCB mają zachowane nagłówki
 SPDX i plik `NOTICE` z licencją Apache-2.0.
 
-## 1. Słownik: pojęcie SCB i odpowiednik w AegisASI
+## 1. Słownik: pojęcie SCB i odpowiednik w Dzięcioł
 
-| secureCodeBox | AegisASI | Gdzie |
+| secureCodeBox | Dzięcioł | Gdzie |
 |---|---|---|
 | **ScanType** (`nmap`, `sslyze`, `ssh-audit`; definicja skanera z parametrami) | **Preset profilu skanowania**: „Szybki discovery”, „Standard”, „Pełny web”. Preset wypełnia formularz profilu, a limity zostają zachowawcze. | UI: Skany → Profile → „Typ skanu (preset)”; `frontend/src/pages/ScansPage.tsx` (`PROFILE_PRESETS`) |
-| **Scan** (jednorazowe uruchomienie) | **Scan run** (przebieg skanowania) z Coverage Ledger (lista chunków) | `POST /api/v1/scans`, `aegis scan` |
+| **Scan** (jednorazowe uruchomienie) | **Scan run** (przebieg skanowania) z Coverage Ledger (lista chunków) | `POST /api/v1/scans`, `dzieciol scan` |
 | **ScheduledScan** (`spec.interval`, cykliczny Scan) | **Profil z `schedule_cron` + okno czasowe** (`window_start`/`window_end`, strefa czasowa) | `internal/scheduler`, `internal/scanner/window.go` |
 | **Hook** (ReadOnly / ReadAndWrite, np. `persistence-defectdojo`, `notification`) | **Integracja DefectDojo** (automatyczny reimport po skanie) i **webhook alertów** (Slack/Teams/Discord/n8n) | `internal/defectdojo`, `internal/notify` |
 | **findings.json** (zunifikowany format wyników) | **Eksport `format=scb`** (i import tego samego formatu) | `internal/ingest/scb_export.go`, `scb_import.go` |
@@ -28,9 +28,9 @@ SPDX i plik `NOTICE` z licencją Apache-2.0.
 ### Eksport do SCB
 
 ```bash
-aegis export --format scb -o aegis-findings.json
+dzieciol export --format scb -o dzieciol-findings.json
 # lub API (uprawnienie export:read):
-curl -H "Authorization: Bearer $TOKEN" "https://aegis/api/v1/export?format=scb&state=ACTIVE" -o findings.json
+curl -H "Authorization: Bearer $TOKEN" "https://dzieciol/api/v1/export?format=scb&state=ACTIVE" -o findings.json
 ```
 
 W UI: Skany → Import/Eksport → przycisk **secureCodeBox**.
@@ -42,7 +42,7 @@ kształcie jak parser nmap w SCB (`scanners/nmap/parser/parser.js`): `name: "Ope
 `tunnel`, `operating_system`. Reguły kaskadowe SCB, które dopasowują np.
 `category: "Open Port", attributes.port: 22`, zadziałają więc na naszym eksporcie bez zmian.
 Nasze dodatkowe dane (stan cyklu życia, scoring, technologie, URL, tagi) trafiają do
-`attributes.aegis`. Identyfikatory to deterministyczne UUID, więc ponowny eksport tego samego
+`attributes.dzieciol`. Identyfikatory to deterministyczne UUID, więc ponowny eksport tego samego
 hosta lub portu daje to samo `id`, a deduplikacja po stronie SCB lub DefectDojo działa.
 
 ### Import z SCB
@@ -50,8 +50,8 @@ hosta lub portu daje to samo `id`, a deduplikacja po stronie SCB lub DefectDojo 
 Zespół, który już ma SCB, może przekazać nam jego wyniki:
 
 ```bash
-aegis import findings.json            # wykrywane automatycznie
-aegis import wyniki.json --format scb
+dzieciol import findings.json         # wykrywane automatycznie
+dzieciol import wyniki.json --format scb
 ```
 
 W UI: Import → Format „secureCodeBox findings.json” (albo zwykły JSON, bo format jest
@@ -89,21 +89,21 @@ Hook `persistence-defectdojo` z SCB i nasz klient DefectDojo robią to samo: wys
 `reimport-scan` z `auto_create_context`, więc DefectDojo sam zakłada Product Type, Product,
 Engagement i Test. Nazwy odpowiadają sobie tak:
 
-| Adnotacja SCB (`defectdojo.securecodebox.io/…`) | Domyślnie w SCB | AegisASI (zmienna środowiskowa) | Domyślnie w AegisASI |
+| Adnotacja SCB (`defectdojo.securecodebox.io/…`) | Domyślnie w SCB | Dzięcioł (zmienna środowiskowa) | Domyślnie w Dzięcioł |
 |---|---|---|---|
-| `product-type-name` | Product Type o id 1 | `ASI_DEFECTDOJO_PRODUCT_TYPE_NAME` | `AegisASI` |
-| `product-name` | nazwa ScheduledScan | `ASI_DEFECTDOJO_PRODUCT_NAME` | `AGH Attack Surface` |
-| `engagement-name` | nazwa Scan | `ASI_DEFECTDOJO_ENGAGEMENT_NAME` | `AegisASI continuous discovery` |
-| `engagement-deduplicate-on-engagement` | `false` | `ASI_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | `false` |
-| `test-title` | nazwa Scan | (automatycznie) | `AegisASI Nmap: <nazwa profilu>` |
-| `minimum_severity` | brak | `ASI_DEFECTDOJO_MINIMUM_SEVERITY` | `Info` |
+| `product-type-name` | Product Type o id 1 | `DZIECIOL_DEFECTDOJO_PRODUCT_TYPE_NAME` | `Dzięcioł` |
+| `product-name` | nazwa ScheduledScan | `DZIECIOL_DEFECTDOJO_PRODUCT_NAME` | `AGH Attack Surface` |
+| `engagement-name` | nazwa Scan | `DZIECIOL_DEFECTDOJO_ENGAGEMENT_NAME` | `Dzięcioł continuous discovery` |
+| `engagement-deduplicate-on-engagement` | `false` | `DZIECIOL_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | `false` |
+| `test-title` | nazwa Scan | (automatycznie) | `Dzięcioł Nmap: <nazwa profilu>` |
+| `minimum_severity` | brak | `DZIECIOL_DEFECTDOJO_MINIMUM_SEVERITY` | `Info` |
 
 Produkt lub engagement przypięty po ID w ustawieniach (Admin → DefectDojo) ma pierwszeństwo
 przed nazwami. Jeden profil skanowania odpowiada jednemu testowi w DefectDojo, tak jak
 ScheduledScan w SCB. Każdy kolejny przebieg robi reimport do tego samego testu z
 `close_old_findings=true`, więc usługi, które zniknęły, są zamykane jako mitigated.
 
-## 4. „Cascading scans” w AegisASI
+## 4. „Cascading scans” w Dzięcioł
 
 W SCB reguła kaskadowa uruchamia nowy Scan (osobny pod) dla findingu, np. `Open Port` 22
 uruchamia `ssh-audit`, a 443 uruchamia `sslyze`. U nas ten sam pomysł działa w jednym
@@ -133,12 +133,12 @@ pakietu. Korzystają z handshake'u TLS zebranego przy fingerprincie HTTP i z ban
 Na razie pojawiają się one w eksporcie `scb`. Świadomie nie robimy pełnego `sslyze`
 (enumeracja wszystkich wersji i szyfrów) ani pełnego `ssh-audit` (lista algorytmów z
 KEXINIT), bo to oznaczałoby dodatkowe połączenia do każdej usługi. Jeśli zespół chce takiej
-głębi, może zrobić eksport `scb` z AegisASI, przekazać go do SCB, który uruchomi swoje
-reguły kaskadowe, a jego wyniki zaimportować z powrotem do AegisASI.
+głębi, może zrobić eksport `scb` z Dzięcioł, przekazać go do SCB, który uruchomi swoje
+reguły kaskadowe, a jego wyniki zaimportować z powrotem do Dzięcioł.
 
-## 5. Co AegisASI dodaje ponad SCB (wymagania zadania)
+## 5. Co Dzięcioł dodaje ponad SCB (wymagania zadania)
 
-| Wymaganie zadania | SCB | AegisASI |
+| Wymaganie zadania | SCB | Dzięcioł |
 |---|---|---|
 | Okna czasowe skanowania z pauzą i wznowieniem | ScheduledScan uruchamia skan, ale nie pauzuje go w trakcie | okno HH:MM–HH:MM ze strefą czasową. Przebieg pauzuje się na końcu okna (`PAUSED_WINDOW`) i wznawia od niedokończonego chunku |
 | >10 000 IP bez obciążania sieci | jeden pod nmap na cały zakres (lub ręczne dzielenie) | adaptacyjny podział na chunki (`chunk_target_sec`), Target Noise Governor (wycofanie przy timeoutach i RST), limity pps i rps na profil |
@@ -150,12 +150,12 @@ reguły kaskadowe, a jego wyniki zaimportować z powrotem do AegisASI.
 
 ## 6. Jak używać obu narzędzi razem
 
-1. **AegisASI jako źródło inwentarza dla SCB.** Cykliczne, bezpieczne discovery w oknach
-   czasowych robi AegisASI. Eksport `scb` (np. z cron: `aegis export --format scb --state ACTIVE`)
+1. **Dzięcioł jako źródło inwentarza dla SCB.** Cykliczne, bezpieczne discovery w oknach
+   czasowych robi Dzięcioł. Eksport `scb` (np. z cron: `dzieciol export --format scb --state ACTIVE`)
    trafia do SCB, gdzie reguły kaskadowe na `Open Port` uruchamiają głębsze skany (sslyze,
    ssh-audit, nuclei) tam, gdzie zespół ma na nie zgodę.
-2. **SCB jako dodatkowe źródło dla AegisASI.** Wyniki nmap, ssh-audit i sslyze z istniejących
-   ScheduledScanów importuje się przez `aegis import findings.json`. Trafiają do tego samego
+2. **SCB jako dodatkowe źródło dla Dzięcioł.** Wyniki nmap, ssh-audit i sslyze z istniejących
+   ScheduledScanów importuje się przez `dzieciol import findings.json`. Trafiają do tego samego
    inwentarza, diffu i alertów, a kategorie SCB widać jako tagi `scb:*`.
 3. **Wspólny DefectDojo.** Jeśli oba narzędzia mają te same nazwy Product Type, Product i
    Engagement (pkt 3), wyniki lądują w jednym produkcie w DefectDojo, jako osobne testy.

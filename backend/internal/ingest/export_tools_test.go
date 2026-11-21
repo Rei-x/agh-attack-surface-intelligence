@@ -93,7 +93,7 @@ func TestExportECSProducesNDJSONPerService(t *testing.T) {
 		t.Fatalf("bad @timestamp: %v", d["@timestamp"])
 	}
 	ev := d["event"].(map[string]any)
-	if ev["kind"] != "state" || ev["dataset"] != "aegis.asset" {
+	if ev["kind"] != "state" || ev["dataset"] != "dzieciol.asset" {
 		t.Fatalf("bad event: %v", ev)
 	}
 	if d["destination"].(map[string]any)["port"].(float64) != 80 {

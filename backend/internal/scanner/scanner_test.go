@@ -305,7 +305,7 @@ func TestExactOvernightWindowPauseAndResume(t *testing.T) {
 func TestEngineEndToEndWithLocalHTTPServerAndUnstableReprobe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Server", "nginx/1.25.1")
-		_, _ = w.Write([]byte(`<title>Aegis Lab Service</title>`))
+		_, _ = w.Write([]byte(`<title>Dzieciol Lab Service</title>`))
 	}))
 	defer srv.Close()
 
@@ -357,8 +357,8 @@ func TestEngineEndToEndWithLocalHTTPServerAndUnstableReprobe(t *testing.T) {
 		t.Fatalf("expected 1 open service on port %d, got %+v", port, out.ObservedHosts[0].Services)
 	}
 	svc := out.ObservedHosts[0].Services[0]
-	if svc.HTTP == nil || svc.HTTP.Title != "Aegis Lab Service" {
-		t.Fatalf("expected Stage 3 HTTP fingerprint title 'Aegis Lab Service', got %+v", svc.HTTP)
+	if svc.HTTP == nil || svc.HTTP.Title != "Dzieciol Lab Service" {
+		t.Fatalf("expected Stage 3 HTTP fingerprint title 'Dzieciol Lab Service', got %+v", svc.HTTP)
 	}
 	if out.RawNmapXML == "" {
 		t.Fatalf("expected non-empty Nmap XML from pure-Go fallback")

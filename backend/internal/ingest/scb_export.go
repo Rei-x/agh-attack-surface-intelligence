@@ -48,6 +48,7 @@ type SCBScan struct {
 // scbFindingID is a stable RFC 4122 (v5-style, SHA-1) UUID, so re-exporting the same
 // host/port yields the same id and downstream deduplication keeps working.
 func scbFindingID(parts ...string) string {
+	// Seed predates the rename; kept so finding IDs stay stable across exports.
 	sum := sha1.Sum([]byte("aegis-asi/scb\x00" + strings.Join(parts, "\x00")))
 	b := sum[:16]
 	b[6] = (b[6] & 0x0f) | 0x50
@@ -83,7 +84,7 @@ func BuildSCBFindings(hosts []domain.Host, now time.Time) []SCBFinding {
 	if latest.IsZero() {
 		latest = now
 	}
-	scan := &SCBScan{CreatedAt: scbTimestamp(latest), Name: "aegis-asi-inventory", Namespace: "aegis-asi", ScanType: "aegis-asi"}
+	scan := &SCBScan{CreatedAt: scbTimestamp(latest), Name: "dzieciol-inventory", Namespace: "dzieciol", ScanType: "dzieciol"}
 
 	out := make([]SCBFinding, 0, len(hosts)*2)
 	for _, h := range hosts {
@@ -97,7 +98,7 @@ func BuildSCBFindings(hosts []domain.Host, now time.Time) []SCBFinding {
 		if h.Hostname != "" {
 			hostname = h.Hostname
 		}
-		aegisHost := map[string]any{
+		dzHost := map[string]any{
 			"host_id":         h.ID,
 			"lifecycle_state": h.LifecycleState,
 			"first_seen":      scbTimestamp(h.FirstSeen),
@@ -107,10 +108,10 @@ func BuildSCBFindings(hosts []domain.Host, now time.Time) []SCBFinding {
 			"tags":            nonNilStrings(h.Tags),
 		}
 		if h.Environment != "" {
-			aegisHost["environment"] = h.Environment
+			dzHost["environment"] = h.Environment
 		}
 		if h.Owner != "" {
-			aegisHost["owner"] = h.Owner
+			dzHost["owner"] = h.Owner
 		}
 		out = append(out, SCBFinding{
 			ID:           scbFindingID("host", h.IP),
@@ -127,7 +128,7 @@ func BuildSCBFindings(hosts []domain.Host, now time.Time) []SCBFinding {
 				"ip_addresses":     ips,
 				"hostname":         hostname,
 				"operating_system": osName,
-				"aegis":            aegisHost,
+				"dzieciol":         dzHost,
 			},
 		})
 
@@ -161,7 +162,7 @@ func BuildSCBFindings(hosts []domain.Host, now time.Time) []SCBFinding {
 				}
 				techs = append(techs, label)
 			}
-			aegisSvc := map[string]any{
+			dzSvc := map[string]any{
 				"service_id":      s.ID,
 				"interestingness": s.Interestingness,
 				"triage_status":   s.TriageStatus,
@@ -171,10 +172,10 @@ func BuildSCBFindings(hosts []domain.Host, now time.Time) []SCBFinding {
 				"last_seen":       scbTimestamp(s.LastSeen),
 			}
 			if u := ServiceURL(h, s); u != "" {
-				aegisSvc["url"] = u
+				dzSvc["url"] = u
 			}
 			if s.HTTP != nil && s.HTTP.Title != "" {
-				aegisSvc["http_title"] = s.HTTP.Title
+				dzSvc["http_title"] = s.HTTP.Title
 			}
 			out = append(out, SCBFinding{
 				ID:           scbFindingID("port", h.IP, proto, portStr),
@@ -203,7 +204,7 @@ func BuildSCBFindings(hosts []domain.Host, now time.Time) []SCBFinding {
 					"tunnel":           tunnel,
 					"cpe":              nilIfEmpty(s.CPE),
 					"banner":           nilIfEmpty(s.Banner),
-					"aegis":            aegisSvc,
+					"dzieciol":         dzSvc,
 				},
 			})
 

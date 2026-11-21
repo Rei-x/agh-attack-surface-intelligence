@@ -58,6 +58,8 @@ func NewVault(masterKey string) (*Vault, error) {
 		return nil, err
 	}
 
+	// The "aegis-asi:" KDF labels predate the Dzięcioł rename and are kept on purpose:
+	// changing them would make every existing blind index, JWT and store unreadable.
 	v := &Vault{
 		kek:             kek,
 		hmacKey:         deriveSubkey(kek, "aegis-asi:blind-index:v1"),
@@ -81,7 +83,7 @@ func parseMasterKey(raw string) ([]byte, bool, error) {
 		if _, err := io.ReadFull(rand.Reader, b); err != nil {
 			return nil, false, fmt.Errorf("generate dev master key: %w", err)
 		}
-		log.Printf("[WARN] ASI_MASTER_KEY is unset; generated ephemeral 256-bit dev master key (set ASI_MASTER_KEY in production)")
+		log.Printf("[WARN] DZIECIOL_MASTER_KEY is unset; generated ephemeral 256-bit dev master key (set DZIECIOL_MASTER_KEY in production)")
 		return b, true, nil
 	}
 
@@ -100,7 +102,7 @@ func parseMasterKey(raw string) ([]byte, bool, error) {
 	}
 
 	// 3. Fallback: derive 32-byte key via SHA-256 from passphrase
-	log.Printf("[WARN] ASI_MASTER_KEY is not raw 32-byte hex/base64; deriving 256-bit KEK via SHA-256")
+	log.Printf("[WARN] DZIECIOL_MASTER_KEY is not raw 32-byte hex/base64; deriving 256-bit KEK via SHA-256")
 	sum := sha256.Sum256([]byte(raw))
 	return sum[:], false, nil
 }
@@ -153,7 +155,7 @@ func unwrapWithKEK(kek []byte, wrapped string) (string, []byte, error) {
 	}
 	dek, err := aesGCMDecrypt(kek, payload, []byte("dek:"+kid))
 	if err != nil {
-		return "", nil, fmt.Errorf("unwrap dek %s (wrong ASI_MASTER_KEY?): %w", kid, err)
+		return "", nil, fmt.Errorf("unwrap dek %s (wrong DZIECIOL_MASTER_KEY?): %w", kid, err)
 	}
 	if len(dek) != 32 {
 		return "", nil, errors.New("unwrapped DEK has invalid length")

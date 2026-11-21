@@ -591,7 +591,7 @@ type scanChangeSummary struct {
 }
 
 type scanReport struct {
-	Version     string               `json:"aegis_version"`
+	Version     string               `json:"dzieciol_version"`
 	ScanRun     *domain.ScanRun      `json:"scan_run"`
 	Engine      string               `json:"engine"`
 	DurationSec float64              `json:"duration_sec"`

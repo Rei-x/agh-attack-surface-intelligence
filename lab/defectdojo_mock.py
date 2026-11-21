@@ -1,6 +1,6 @@
 """lab-defectdojo-mock (172.28.0.20:8000, host :18000): DefectDojo API v2 mock + live HTML viewer.
 
-Implements DefectDojo API v2 endpoints used by AegisASI:
+Implements DefectDojo API v2 endpoints used by Dzięcioł:
   - GET  /api/v2/users/
   - GET  /api/v2/products/
   - GET  /api/v2/engagements/
@@ -48,7 +48,7 @@ class DefectDojoStore:
                     "id": 1,
                     "engagement": 1,
                     "test_type": 1,
-                    "title": "AegisASI Continuous Discovery",
+                    "title": "Dzięcioł Continuous Discovery",
                     "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 }
             ]
@@ -70,7 +70,7 @@ class DefectDojoStore:
                 "id": self.next_test_id,
                 "engagement": int(data.get("engagement", 1) or 1),
                 "test_type": int(data.get("test_type", 1) or 1),
-                "title": str(data.get("title") or "AegisASI Findings"),
+                "title": str(data.get("title") or "Dzięcioł Findings"),
                 "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
             self.tests.append(item)
@@ -134,7 +134,7 @@ class DefectDojoStore:
             fid = self.next_finding_id
             item = {
                 "id": fid,
-                "title": str(payload.get("title") or "Untitled AegisASI Finding"),
+                "title": str(payload.get("title") or "Untitled Dzięcioł Finding"),
                 "description": str(payload.get("description") or ""),
                 "severity": str(payload.get("severity") or "Medium"),
                 "numerical_severity": str(payload.get("numerical_severity") or "S2"),
@@ -143,7 +143,7 @@ class DefectDojoStore:
                 "active": bool(payload.get("active", True)),
                 "verified": bool(payload.get("verified", True)),
                 "unique_id_from_tool": uid,
-                "vuln_id_from_tool": str(payload.get("vuln_id_from_tool") or "aegis-asi"),
+                "vuln_id_from_tool": str(payload.get("vuln_id_from_tool") or "dzieciol"),
                 "mitigation": str(payload.get("mitigation") or ""),
                 "references": str(payload.get("references") or ""),
                 "tags": payload.get("tags") if isinstance(payload.get("tags"), list) else [],
@@ -254,8 +254,8 @@ def render_ui_html() -> str:
             </article>"""
         )
 
-    scans_html = "\n".join(scan_rows) if scan_rows else '<p class="empty">No Nmap XML scans received yet. Push a scan from AegisASI to see it here.</p>'
-    findings_html = "\n".join(finding_rows) if finding_rows else '<p class="empty">No Findings pushed yet. Select a host/service in AegisASI and click "Push to DefectDojo".</p>'
+    scans_html = "\n".join(scan_rows) if scan_rows else '<p class="empty">No Nmap XML scans received yet. Push a scan from Dzięcioł to see it here.</p>'
+    findings_html = "\n".join(finding_rows) if finding_rows else '<p class="empty">No Findings pushed yet. Select a host/service in Dzięcioł and click "Push to DefectDojo".</p>'
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -294,7 +294,7 @@ def render_ui_html() -> str:
     <header>
       <div>
         <h1>DefectDojo API v2 Mock Receiver</h1>
-        <div class="muted">Offline-ready live viewer for AegisASI (CBI AGH) &middot; Auto-refreshes every 10s</div>
+        <div class="muted">Offline-ready live viewer for Dzięcioł (CBI AGH) &middot; Auto-refreshes every 10s</div>
       </div>
       <div class="muted">API base: <code>http://172.28.0.20:8000/api/v2/</code></div>
     </header>
@@ -365,7 +365,7 @@ class DefectDojoHandler(BaseLabHandler):
         detail = {
             "/api/v2/engagements/1/": {"id": 1, "name": "CBI AGH Continuous Attack Surface Discovery", "product": 1},
             "/api/v2/products/1/": {"id": 1, "name": "AGH University Campus Network", "prod_type": 1},
-            "/api/v2/product_types/1/": {"id": 1, "name": "AegisASI"},
+            "/api/v2/product_types/1/": {"id": 1, "name": "Dzięcioł"},
         }
         if path in detail:
             self.send_response_body(200, json.dumps(detail[path]), content_type="application/json")
@@ -382,8 +382,8 @@ class DefectDojoHandler(BaseLabHandler):
                         "results": [
                             {
                                 "id": 1,
-                                "username": "aegis-integrator",
-                                "first_name": "AegisASI",
+                                "username": "dzieciol-integrator",
+                                "first_name": "Dzięcioł",
                                 "last_name": "CBI AGH",
                                 "email": "soc@agh.edu.pl",
                                 "is_active": True,
@@ -442,7 +442,7 @@ class DefectDojoHandler(BaseLabHandler):
                     {
                         "count": 2,
                         "results": [
-                            {"id": 1, "name": "AegisASI Finding"},
+                            {"id": 1, "name": "Dzięcioł Finding"},
                             {"id": 2, "name": "Nmap Scan"},
                         ],
                     }
@@ -515,7 +515,7 @@ class DefectDojoHandler(BaseLabHandler):
                     total += 1
             else:
                 rec = STORE.add_scan(scan_type, 1, fields.get("scan_date") or datetime.date.today().isoformat(),
-                                     files.get("file", ("nmap.xml", b""))[0], raw, ["aegis-asi"])
+                                     files.get("file", ("nmap.xml", b""))[0], raw, ["dzieciol"])
                 rec["test"] = rec["test_id"] = test_id
                 total = int(rec.get("finding_count", 0))
             self.send_response_body(201, json.dumps({"test": test_id, "test_id": test_id, "engagement_id": 1, "product_id": 1,

@@ -1,6 +1,6 @@
 # =============================================================================
-# AegisASI — Deterministic University Test Lab + DefectDojo v2 Mock
-# Subnet: 172.28.0.0/24 (shared with docker-compose.yml's aegis-asi-net)
+# Dzięcioł — Deterministic University Test Lab + DefectDojo v2 Mock
+# Subnet: 172.28.0.0/24 (shared with docker-compose.yml's dzieciol-net)
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d
@@ -9,7 +9,7 @@
 # =============================================================================
 
 x-lab-common: &lab-common
-  image: aegis-asi-lab:local
+  image: dzieciol-lab:local
   build:
     context: ./lab
     dockerfile: Dockerfile
@@ -19,54 +19,54 @@ x-lab-common: &lab-common
 services:
   lab-cms:
     <<: *lab-common
-    container_name: aegis-lab-cms
+    container_name: dzieciol-lab-cms
     hostname: portal.wi.agh.local
     command: ["python3", "/lab/cms_server.py"]
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.10
 
   lab-admin:
     <<: *lab-common
-    container_name: aegis-lab-admin
+    container_name: dzieciol-lab-admin
     hostname: admin.cbi.agh.local
     command: ["python3", "/lab/admin_server.py"]
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.11
 
   lab-staging:
     <<: *lab-common
-    container_name: aegis-lab-staging
+    container_name: dzieciol-lab-staging
     hostname: staging.usos.agh.local
     command: ["python3", "/lab/staging_server.py"]
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.12
 
   lab-iot:
     <<: *lab-common
-    container_name: aegis-lab-iot
+    container_name: dzieciol-lab-iot
     hostname: printer-c2-114.agh.local
     command: ["python3", "/lab/iot_server.py"]
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.13
 
   lab-flapping:
     <<: *lab-common
-    container_name: aegis-lab-flapping
+    container_name: dzieciol-lab-flapping
     hostname: moodle.agh.local
     command: ["python3", "/lab/flapping_server.py"]
     ports:
       - "${LAB_FLAPPING_CONTROL_PORT:-19999}:9999"
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.14
 
   lab-defectdojo-mock:
     <<: *lab-common
-    container_name: aegis-lab-defectdojo-mock
+    container_name: dzieciol-lab-defectdojo-mock
     hostname: defectdojo.cbi.agh.local
     command: ["python3", "/lab/defectdojo_mock.py"]
     environment:
@@ -74,12 +74,12 @@ services:
     ports:
       - "${LAB_DEFECTDOJO_PORT:-18000}:8000"
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.20
 
 networks:
-  aegis-net:
-    name: aegis-asi-net
+  dzieciol-net:
+    name: dzieciol-net
     driver: bridge
     ipam:
       driver: default

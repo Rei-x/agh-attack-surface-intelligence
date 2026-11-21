@@ -40,6 +40,7 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-brand: var(--brand);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -62,73 +63,82 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.147 0.004 49.25);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.147 0.004 49.25);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.147 0.004 49.25);
-  --primary: oklch(0.488 0.243 264.376);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.97 0.001 106.424);
-  --muted-foreground: oklch(0.553 0.013 58.071);
-  --accent: oklch(0.97 0.001 106.424);
-  --accent-foreground: oklch(0.216 0.006 56.043);
+  /* Dzięcioł palette (from the cover): paper / ink / woodpecker red. Semantic status
+     colours (emerald/amber/rose/sky...) stay Tailwind's, so red here means "brand", not "bad". */
+  --brand: #e8392f;
+  --background: #f7f5f0;
+  --foreground: #0a0c0b;
+  --card: #ffffff;
+  --card-foreground: #0a0c0b;
+  --popover: #ffffff;
+  --popover-foreground: #0a0c0b;
+  --primary: #c62f26;
+  --primary-foreground: #fffaf5;
+  --secondary: #eeebe4;
+  --secondary-foreground: #141716;
+  --muted: #eeebe4;
+  --muted-foreground: #5f645f;
+  --accent: #eeebe4;
+  --accent-foreground: #141716;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.923 0.003 48.717);
-  --input: oklch(0.923 0.003 48.717);
-  --ring: oklch(0.709 0.01 56.259);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
+  --border: #e2ded5;
+  --input: #dcd8ce;
+  --ring: #c62f26;
+  --chart-1: #e8392f;
+  --chart-2: #5b605c;
+  --chart-3: #8f8a80;
+  --chart-4: #c9c3b6;
+  --chart-5: #232826;
   --radius: 0.875rem;
-  --sidebar: oklch(0.985 0.001 106.423);
-  --sidebar-foreground: oklch(0.147 0.004 49.25);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.97 0.001 106.424);
-  --sidebar-accent-foreground: oklch(0.216 0.006 56.043);
-  --sidebar-border: oklch(0.923 0.003 48.717);
-  --sidebar-ring: oklch(0.709 0.01 56.259);
+  --sidebar: #f1eee8;
+  --sidebar-foreground: #0a0c0b;
+  --sidebar-primary: #c62f26;
+  --sidebar-primary-foreground: #fffaf5;
+  --sidebar-accent: #e6e2da;
+  --sidebar-accent-foreground: #141716;
+  --sidebar-border: #e2ded5;
+  --sidebar-ring: #c62f26;
+  --wp-head: #141716;
+  --wp-edge: transparent;
+  --wp-bark: #d6d1c6;
   color-scheme: light;
 }
 
 .dark {
-  --background: oklch(0.147 0.004 49.25);
-  --foreground: oklch(0.985 0.001 106.423);
-  --card: oklch(0.216 0.006 56.043);
-  --card-foreground: oklch(0.985 0.001 106.423);
-  --popover: oklch(0.216 0.006 56.043);
-  --popover-foreground: oklch(0.985 0.001 106.423);
-  --primary: oklch(0.424 0.199 265.638);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.268 0.007 34.298);
-  --muted-foreground: oklch(0.709 0.01 56.259);
-  --accent: oklch(0.268 0.007 34.298);
-  --accent-foreground: oklch(0.985 0.001 106.423);
+  --background: #0a0c0b;
+  --foreground: #f2efe8;
+  --card: #111413;
+  --card-foreground: #f2efe8;
+  --popover: #131716;
+  --popover-foreground: #f2efe8;
+  --primary: #d9352b;
+  --primary-foreground: #fffaf5;
+  --secondary: #1b1f1d;
+  --secondary-foreground: #f2efe8;
+  --muted: #1b1f1d;
+  --muted-foreground: #8d918c;
+  --accent: #1b1f1d;
+  --accent-foreground: #f2efe8;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.553 0.013 58.071);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.216 0.006 56.043);
-  --sidebar-foreground: oklch(0.985 0.001 106.423);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.268 0.007 34.298);
-  --sidebar-accent-foreground: oklch(0.985 0.001 106.423);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.553 0.013 58.071);
+  --border: rgb(242 239 232 / 9%);
+  --input: rgb(242 239 232 / 14%);
+  --ring: #e8392f;
+  --chart-1: #e8392f;
+  --chart-2: #c9c3b6;
+  --chart-3: #8f8a80;
+  --chart-4: #5b605c;
+  --chart-5: #343a37;
+  --sidebar: #0d100f;
+  --sidebar-foreground: #f2efe8;
+  --sidebar-primary: #e8392f;
+  --sidebar-primary-foreground: #fffaf5;
+  --sidebar-accent: #1a1e1c;
+  --sidebar-accent-foreground: #f2efe8;
+  --sidebar-border: rgb(242 239 232 / 8%);
+  --sidebar-ring: #e8392f;
+  --wp-head: #141716;
+  --wp-edge: rgb(242 239 232 / 30%);
+  --wp-bark: #2c322f;
   color-scheme: dark;
 }
 
@@ -177,4 +187,101 @@
 }
 @utility animate-live-row {
   animation: live-row 2.4s ease-out;
+}
+
+/* ---- Dzięcioł: woodpecker art (components/Woodpecker.tsx) ------------------------- */
+.wp-head {
+  fill: var(--wp-head);
+  stroke: var(--wp-edge);
+  stroke-width: 5;
+}
+.wp-scene-head .wp-head {
+  stroke: none;
+}
+.wp-bark {
+  fill: var(--wp-bark);
+}
+
+/* Loader: wind back, knock twice, rest. Rings fire on each knock. */
+@keyframes wp-jab {
+  0%, 30%, 100% { transform: translateX(0); }
+  40% { transform: translateX(-9%); }
+  48% { transform: translateX(2%); }
+  58% { transform: translateX(-6%); }
+  66% { transform: translateX(2%); }
+  76% { transform: translateX(0); }
+}
+@keyframes wp-ring {
+  0%, 46% { opacity: 0; transform: scale(0.3); }
+  50% { opacity: 0.95; }
+  80%, 100% { opacity: 0; transform: scale(2.4); }
+}
+.wp-jab {
+  animation: wp-jab 1.3s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+.wp-ring {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 6;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wp-ring 1.3s ease-out infinite;
+}
+.wp-ring-2 {
+  animation-delay: 0.18s;
+}
+
+/* Login scene: same motion as the cover. */
+@keyframes wp-scene-peck {
+  0%, 55%, 100% { transform: rotate(0); }
+  62% { transform: rotate(-7deg); }
+  70% { transform: rotate(1.5deg); }
+  78% { transform: rotate(-5deg); }
+  86% { transform: rotate(0); }
+}
+@keyframes wp-scene-ring {
+  0%, 60% { opacity: 0; transform: scale(0.2); }
+  64% { opacity: 0.9; }
+  100% { opacity: 0; transform: scale(2.6); }
+}
+.wp-scene-peck {
+  transform-box: view-box;
+  transform-origin: 1150px 726px;
+  animation: wp-scene-peck 1.6s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+.wp-scene-ring {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 2.5;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wp-scene-ring 1.6s ease-out infinite;
+}
+.wp-scene-ring.wp-r2 { animation-delay: 0.25s; }
+.wp-scene-ring.wp-r3 { animation-delay: 0.5s; }
+
+/* "stuk stuk": a red ripple, e.g. at the tip of a running scan's progress rail. */
+@keyframes wp-knock {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(2.8); }
+}
+.wp-knock {
+  animation: wp-knock 1.3s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-anim *,
+  .wp-jab,
+  .wp-ring,
+  .wp-knock,
+  .wp-scene-peck,
+  .wp-scene-ring {
+    animation: none !important;
+  }
+  .wp-ring,
+  .wp-knock {
+    opacity: 0;
+  }
 }

@@ -132,10 +132,10 @@ func (s *Server) validateProfileAgent(ctx context.Context, p *domain.ScanProfile
 	return "nieznany agent skanujący / unknown scanning agent"
 }
 
-// publicBaseURL is the URL agents should use to reach this server: ASI_PUBLIC_URL, else the
+// publicBaseURL is the URL agents should use to reach this server: DZIECIOL_PUBLIC_URL, else the
 // scheme/host the admin's browser used (honouring a TLS-terminating reverse proxy).
 func publicBaseURL(r *http.Request) string {
-	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("ASI_PUBLIC_URL")), "/"); v != "" {
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("DZIECIOL_PUBLIC_URL")), "/"); v != "" {
 		return v
 	}
 	scheme := "http"

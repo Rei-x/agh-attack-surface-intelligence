@@ -58,7 +58,7 @@ func NewPostgresStore(ctx context.Context, databaseURL string, vault *crypto.Vau
 		if err := vault.LoadWrappedDEKs(keys, activeKID); err != nil {
 			pool.Close()
 			return nil, fmt.Errorf("unwrap crypto keys: the master key does not match the data in this database "+
-				"(klucz główny nie pasuje do danych w bazie) - restore the original master.key or ASI_MASTER_KEY: %w", err)
+				"(klucz główny nie pasuje do danych w bazie) - restore the original master.key or DZIECIOL_MASTER_KEY: %w", err)
 		}
 	} else {
 		wrappedMap, active := vault.ExportWrappedDEKs()

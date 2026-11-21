@@ -6,7 +6,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-# DZIECIOL_AGENT_SERVER / _TOKEN / _ALLOW_CIDR ... (0600, root; AEGIS_AGENT_* also read).
+# DZIECIOL_AGENT_SERVER / _TOKEN / _ALLOW_CIDR ... (0600, root).
 # The token is single-use: after the first start the credential lives in the state directory.
 EnvironmentFile=-/etc/dzieciol-agent.env
 ExecStart=/usr/local/bin/dzieciol agent

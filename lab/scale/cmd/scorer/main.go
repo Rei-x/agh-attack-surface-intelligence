@@ -1,4 +1,4 @@
-// Command scorer compares AegisASI JSON exports (GET /api/v1/export?format=json)
+// Command scorer compares Dzięcioł JSON exports (GET /api/v1/export?format=json)
 // with scale-lab ground truth and prints a markdown accuracy report.
 //
 //	scorer -truth1 truth-run1.json -export1 export-run1.json \
@@ -934,9 +934,9 @@ func diffRows(w io.Writer, label string, want, got diffSets) map[string]prf {
 func main() {
 	var (
 		t1      = flag.String("truth1", "", "truth for run 1 (required)")
-		e1      = flag.String("export1", "", "AegisASI JSON export for run 1 (required)")
+		e1      = flag.String("export1", "", "Dzięcioł JSON export for run 1 (required)")
 		t2      = flag.String("truth2", "", "truth for run 2")
-		e2      = flag.String("export2", "", "AegisASI JSON export for run 2")
+		e2      = flag.String("export2", "", "Dzięcioł JSON export for run 2")
 		ad      = flag.String("app-diff", "", "GET /api/v1/scans/diff?from=run1&to=run2 response")
 		portStr = flag.String("ports", "", "ports that were scanned (default: all lab ports)")
 		meta    = flag.String("meta", "", "JSON object with run metadata (durations etc.) to include")
@@ -974,7 +974,7 @@ func main() {
 		defer f.Close()
 		w = f
 	}
-	fmt.Fprintf(w, "# AegisASI scale-lab accuracy report\n\nLab: `%s`, seed %d, %d IPs in scope, ports scored: %d.\n\n", td1.CIDR, td1.Seed, 1<<(32-netip.MustParsePrefix(td1.CIDR).Bits()), len(ports))
+	fmt.Fprintf(w, "# Dzięcioł scale-lab accuracy report\n\nLab: `%s`, seed %d, %d IPs in scope, ports scored: %d.\n\n", td1.CIDR, td1.Seed, 1<<(32-netip.MustParsePrefix(td1.CIDR).Bits()), len(ports))
 	summary := map[string]any{}
 	if *meta != "" {
 		var m map[string]any

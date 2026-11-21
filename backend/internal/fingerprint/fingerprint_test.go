@@ -23,7 +23,7 @@ func TestMurmurHash3AndShodanFavicon(t *testing.T) {
 	}
 
 	// Verify ShodanBase64 wraps at 76 chars with trailing newline.
-	raw := bytes.Repeat([]byte("AegisASI-Favicon-Test-"), 5)
+	raw := bytes.Repeat([]byte("Dzieciol-Favicon-Test-"), 5)
 	b64 := ShodanBase64(raw)
 	if !bytes.HasSuffix(b64, []byte("\n")) {
 		t.Fatalf("ShodanBase64 missing trailing newline")
@@ -119,7 +119,7 @@ func TestHTTPProbeExtractsFullEvidenceAndEnforcesReadOnly(t *testing.T) {
 
 	opts := DefaultOptions()
 	opts.Scheme = "http"
-	opts.UserAgent = "AegisASI-Test/1.0"
+	opts.UserAgent = "Dzieciol-Test/1.0"
 	opts.SafePaths = []string{"/admin", "/robots.txt", "/nonexistent"}
 
 	fp, err := Probe(context.Background(), host, port, "", &opts)
@@ -188,8 +188,8 @@ func TestHTTPProbeExtractsFullEvidenceAndEnforcesReadOnly(t *testing.T) {
 	// Verify strictly read-only methods and custom User-Agent.
 	mu.Lock()
 	defer mu.Unlock()
-	if seenUA != "AegisASI-Test/1.0" {
-		t.Fatalf("User-Agent = %q, want AegisASI-Test/1.0", seenUA)
+	if seenUA != "Dzieciol-Test/1.0" {
+		t.Fatalf("User-Agent = %q, want Dzieciol-Test/1.0", seenUA)
 	}
 	for _, m := range seenMethods {
 		if m != http.MethodGet && m != http.MethodHead {

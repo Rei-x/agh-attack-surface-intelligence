@@ -74,7 +74,7 @@ func (s *Server) hardeningMiddleware(next http.Handler) http.Handler {
 		}
 
 		// CORS: the bundled UI is same-origin and needs none. Cross-origin access is granted only
-		// to origins listed in ASI_CORS_ORIGINS (never "*"; auth is a bearer token, no cookies).
+		// to origins listed in DZIECIOL_CORS_ORIGINS (never "*"; auth is a bearer token, no cookies).
 		if origin := strings.TrimRight(r.Header.Get("Origin"), "/"); origin != "" && allowed[origin] {
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Set("Vary", "Origin")

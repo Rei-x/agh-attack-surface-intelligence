@@ -11,12 +11,12 @@ import (
 )
 
 func TestPostgresServiceProductSourceRoundTrip(t *testing.T) {
-	url := os.Getenv("ASI_TEST_DATABASE_URL")
+	url := os.Getenv("DZIECIOL_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("set ASI_TEST_DATABASE_URL to run against PostgreSQL")
+		t.Skip("set DZIECIOL_TEST_DATABASE_URL to run against PostgreSQL")
 	}
 	ctx := context.Background()
-	vault, err := crypto.NewVault(os.Getenv("ASI_MASTER_KEY"))
+	vault, err := crypto.NewVault(os.Getenv("DZIECIOL_MASTER_KEY"))
 	if err != nil {
 		t.Fatal(err)
 	}

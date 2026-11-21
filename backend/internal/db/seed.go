@@ -42,7 +42,7 @@ func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 		roleIDs[spec.Slug] = role.ID
 	}
 
-	// 2. Seed 4 demo accounts when ASI_SEED_DEMO=true
+	// 2. Seed 4 demo accounts when DZIECIOL_SEED_DEMO=true
 	if seedDemo {
 		for _, demo := range auth.DemoAccounts {
 			existing, err := store.GetUserByUsername(ctx, demo.Username)

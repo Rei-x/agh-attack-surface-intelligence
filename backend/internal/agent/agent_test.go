@@ -274,10 +274,10 @@ func TestCheckServerURLRequiresTLS(t *testing.T) {
 		insecure bool
 		ok       bool
 	}{
-		{"https://aegis.example.edu", false, true},
+		{"https://dzieciol.example.edu", false, true},
 		{"http://127.0.0.1:8080", false, true},
 		{"http://localhost:8080", false, true},
-		{"http://aegis.example.edu", false, false},
+		{"http://dzieciol.example.edu", false, false},
 		{"http://10.0.0.5:8080", true, true},
 		{"ftp://x", true, false},
 	} {

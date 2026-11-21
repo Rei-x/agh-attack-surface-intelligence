@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   RiArrowDownSLine,
   RiFlashlightLine,
-  RiLoader4Line,
   RiPlayFill,
   RiRadarLine,
 } from '@remixicon/react';
@@ -26,6 +25,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Field, Notice } from '@/components/common';
+import { PeckSpinner } from '@/components/Woodpecker';
 
 const PRESETS = [
   { label: 'Lab AGH', hint: '172.28.0.10-14', value: '172.28.0.10-14' },
@@ -211,7 +211,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
               tone={estimate && windowEnabled && !estimate.fits_in_window ? 'warning' : undefined}
             />
             {estimating && (
-              <RiLoader4Line className="absolute top-1.5 right-1.5 size-3 animate-spin text-muted-foreground" />
+              <PeckSpinner className="absolute top-1.5 right-1.5 h-3" />
             )}
           </div>
           {estimate && estimate.excluded_ips > 0 && (
@@ -293,7 +293,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
               Pełna konfiguracja skanera →
             </Button>
             <Button type="submit" disabled={targets.length === 0 || submitting}>
-              {submitting ? <RiLoader4Line className="animate-spin" /> : <RiPlayFill />}
+              {submitting ? <PeckSpinner className="h-3.5" /> : <RiPlayFill />}
               Uruchom skan
             </Button>
           </DialogFooter>

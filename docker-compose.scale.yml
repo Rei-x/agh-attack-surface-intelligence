@@ -1,12 +1,12 @@
 # =============================================================================
-# AegisASI — large-network scale lab (default 10.66.0.0/18 = 16,384 IPs, ~1,500 live)
+# Dzięcioł — large-network scale lab (default 10.66.0.0/18 = 16,384 IPs, ~1,500 live)
 #
 # One container owns the whole /18: live hosts are /32 addresses on a dummy
 # interface, dead IPs are blackholed (no reply at all). Scanners on
-# aegis-asi-net reach it through a route `10.66.0.0/18 via 172.28.0.66`.
+# dzieciol-net reach it through a route `10.66.0.0/18 via 172.28.0.66`.
 #
 #   docker compose -f docker-compose.scale.yml up -d --build
-#   docker exec aegis-asi-app ip route replace 10.66.0.0/18 via 172.28.0.66
+#   docker exec dzieciol-app ip route replace 10.66.0.0/18 via 172.28.0.66
 #   curl -s localhost:19900/stats
 #
 # Optional scanner runner (nmap + route preinstalled):
@@ -21,8 +21,8 @@ services:
     build:
       context: ./lab/scale
       dockerfile: Dockerfile
-    image: aegis-asi-scalelab:local
-    container_name: aegis-scale-lab
+    image: dzieciol-scalelab:local
+    container_name: dzieciol-scale-lab
     hostname: scale-lab
     restart: unless-stopped
     cap_add:
@@ -52,13 +52,13 @@ services:
       - scale-truth:/var/lib/scalelab
     mem_limit: 512m
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.66
 
   scale-runner:
-    image: aegis-asi-scalelab:local
+    image: dzieciol-scalelab:local
     profiles: ["runner"]
-    container_name: aegis-scale-runner
+    container_name: dzieciol-scale-runner
     depends_on:
       - scale-lab
     cap_add:
@@ -70,13 +70,13 @@ services:
       - scale-truth:/var/lib/scalelab:ro
       - ./lab/scale/out:/out
     networks:
-      aegis-net:
+      dzieciol-net:
         ipv4_address: 172.28.0.67
 
 volumes:
   scale-truth:
 
 networks:
-  aegis-net:
-    name: aegis-asi-net
+  dzieciol-net:
+    name: dzieciol-net
     external: true

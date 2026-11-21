@@ -1,4 +1,4 @@
-// Package webui embeds the built React SOC dashboard into the aegis binary.
+// Package webui embeds the built React SOC dashboard into the dzieciol binary.
 //
 // `make ui` (or scripts in the Makefile) copies frontend/dist/* into ./ui before `go build`.
 // The directory is git-ignored except for .gitkeep, so a plain `go build ./...` always works:
@@ -36,5 +36,5 @@ const PlaceholderHTML = `<!doctype html>
 main{max-width:40rem;padding:2rem}code{background:#1b2340;padding:.15rem .4rem;border-radius:4px}a{color:#7aa2ff}</style></head>
 <body><main><h1>Dzięcioł API działa</h1>
 <p>Ten plik binarny został zbudowany bez interfejsu webowego. Zbuduj go poleceniem <code>make build</code>
-(które uruchamia <code>make ui</code>) albo wskaż zbudowany frontend przez <code>ASI_STATIC_DIR=/ścieżka/do/dist</code>.</p>
+(które uruchamia <code>make ui</code>) albo wskaż zbudowany frontend przez <code>DZIECIOL_STATIC_DIR=/ścieżka/do/dist</code>.</p>
 <p>API: <a href="/api/v1/health">/api/v1/health</a></p></main></body></html>`

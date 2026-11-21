@@ -1,4 +1,4 @@
-# AegisASI: metody badawcze (materiał na slajdy)
+# Dzięcioł: metody badawcze (materiał na slajdy)
 
 Trzy pytania z treści zadania i nasze odpowiedzi oparte na publikacjach:
 
@@ -116,7 +116,7 @@ Każda technologia w API ma pole `explanation` z rachunkiem, np. `html 0.80 ⊕ 
 | **Nadmierna pewność (OCE)** | | **1,3 pp** | | **0,2 pp** |
 | ECE (dwustronny) | | 8,8 pp | | 16,6 pp |
 
-**Jak to czytać.** Stary model dawał 85–90% pojedynczemu trafieniu w ścieżkę (np. „Prometheus”, bo odpowiada `/metrics`), a w tym przedziale tylko 67% predykcji było trafnych. Nowy model nie przecenia pewności w żadnym przedziale powyżej 50%. Ceną jest zamierzona ostrożność: laboratorium jest „czyste” (nikt nie podmienia nagłówków), więc wykrycia z jednego nagłówka są w nim zawsze trafne, a my i tak pokazujemy dla nich 78–80%. W prawdziwej sieci proxy, WAF-y i load balancery zmieniają nagłówki. Dlatego wolimy zaniżać pewność niż ją zawyżać. Pomiar powtórzysz poleceniem `calibrate -replay obs.jsonl` (bez sieci) albo zbierzesz nowe dane w kontenerze w `aegis-asi-net`.
+**Jak to czytać.** Stary model dawał 85–90% pojedynczemu trafieniu w ścieżkę (np. „Prometheus”, bo odpowiada `/metrics`), a w tym przedziale tylko 67% predykcji było trafnych. Nowy model nie przecenia pewności w żadnym przedziale powyżej 50%. Ceną jest zamierzona ostrożność: laboratorium jest „czyste” (nikt nie podmienia nagłówków), więc wykrycia z jednego nagłówka są w nim zawsze trafne, a my i tak pokazujemy dla nich 78–80%. W prawdziwej sieci proxy, WAF-y i load balancery zmieniają nagłówki. Dlatego wolimy zaniżać pewność niż ją zawyżać. Pomiar powtórzysz poleceniem `calibrate -replay obs.jsonl` (bez sieci) albo zbierzesz nowe dane w kontenerze w `dzieciol-net`.
 
 ---
 

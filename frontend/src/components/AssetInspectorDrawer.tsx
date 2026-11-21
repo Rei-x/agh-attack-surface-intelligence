@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Host, Service, ServiceObservation, TimeSlotStat } from '@/types/api';
+import { PeckLoader } from '@/components/Woodpecker';
 
 interface Props {
   hostId: string | null;
@@ -448,7 +449,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
         </SheetHeader>
 
         {!ready || !host ? (
-          <Empty className="flex-1">Ładowanie…</Empty>
+          <PeckLoader className="flex-1" />
         ) : (
           <Tabs
             value={activeTab}

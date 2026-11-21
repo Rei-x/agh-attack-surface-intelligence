@@ -1,8 +1,8 @@
-# AegisASI — System Architecture
+# Dzięcioł — System Architecture
 
 > **Attack Surface Intelligence Platform for Centrum Bezpieczeństwa Informacji AGH (CBI AGH)**
 
-AegisASI is a single Go binary (`aegis`) with an embedded React/TypeScript SOC dashboard. Data lives in an encrypted single-file store (`~/.aegis/aegis-store.enc`) by default, or in PostgreSQL 17 when `DATABASE_URL` is set; both apply the same per-field envelope encryption. It is purpose-built for continuous, safe, auditable attack surface discovery across large university networks (10,000–65,536+ IPs) with minimal operational overhead.
+Dzięcioł is a single Go binary (`dzieciol`) with an embedded React/TypeScript SOC dashboard. Data lives in an encrypted single-file store (`~/.dzieciol/dzieciol-store.enc`) by default, or in PostgreSQL 17 when `DATABASE_URL` is set; both apply the same per-field envelope encryption. It is purpose-built for continuous, safe, auditable attack surface discovery across large university networks (10,000–65,536+ IPs) with minimal operational overhead.
 
 ---
 
@@ -12,10 +12,10 @@ AegisASI is a single Go binary (`aegis`) with an embedded React/TypeScript SOC d
 flowchart TB
     subgraph Client["SOC Analysts & Operators"]
         UI["React 19 + TypeScript SPA<br/>(Dashboard, Graph, Assets, Diff, Studio, Admin)"]
-        CLI["aegis CLI (scan, import, export, diff)<br/>Automation / CI / E2E Scripts"]
+        CLI["dzieciol CLI (scan, import, export, diff)<br/>Automation / CI / E2E Scripts"]
     end
 
-    subgraph App["AegisASI Single Binary (Go 1.24)"]
+    subgraph App["Dzięcioł Single Binary (Go 1.24)"]
         API["REST API + SSE Event Bus<br/>(JWT HS256 + Dynamic RBAC + Audit Log)"]
         ING["Unified Ingestion Pipeline<br/>(Active / Manual / CSV / JSON / Passive)"]
         ENG["Chunked Scan Engine<br/>(Target Normalizer, Scope/Deny Gate,<br/>WindowGuard, Target Noise Governor)"]
@@ -37,7 +37,7 @@ flowchart TB
     subgraph External["Target Networks & Integrations"]
         NET["AGH Campus Subnets (/16+)<br/>or Deterministic Test Lab (172.28.0.0/24)"]
         DD_SRV["DefectDojo API v2<br/>(Production or Offline Mock Receiver)"]
-        AGENT["aegis agent<br/>(remote segment, outbound HTTPS only)"]
+        AGENT["dzieciol agent<br/>(remote segment, outbound HTTPS only)"]
     end
 
     UI -->|HTTPS / REST + SSE| API
@@ -102,7 +102,7 @@ Every sensitive field (in PostgreSQL columns and in the file store alike: host I
 
 ```mermaid
 flowchart LR
-    KEK["ASI_MASTER_KEY<br/>(256-bit KEK in env / KMS)"] -->|Wrap/Unwrap AES-256-GCM<br/>AAD: dek:kid| DEK["Versioned 256-bit DEK<br/>(dek-v1, dek-v2, ...)"]
+    KEK["DZIECIOL_MASTER_KEY<br/>(256-bit KEK in env / KMS)"] -->|Wrap/Unwrap AES-256-GCM<br/>AAD: dek:kid| DEK["Versioned 256-bit DEK<br/>(dek-v1, dek-v2, ...)"]
     KEK -->|HMAC-SHA256 label:<br/>aegis-asi:blind-index:v1| HKEY["Blind Index Subkey"]
     KEK -->|HMAC-SHA256 label:<br/>aegis-asi:jwt-signing:v1| JKEY["JWT Subkey (fallback)"]
 
@@ -122,7 +122,7 @@ flowchart LR
 | **Algorithm** | AES-256-GCM (AEAD) | Confidentiality + 128-bit integrity tag per field |
 | **Envelope Format** | `enc:v1:<kid>:<base64(nonce\|ct\|tag)>` | Self-describing key version for seamless online rotation |
 | **Context Binding (AAD)** | `table:record_id:column` | Prevents ciphertext transplantation / row-swapping attacks inside DB |
-| **DEK Storage** | `wrap:v1:<kid>:<base64(...)>` with AAD `dek:<kid>` | Database dump alone cannot unwrap DEKs without `ASI_MASTER_KEY` |
+| **DEK Storage** | `wrap:v1:<kid>:<base64(...)>` with AAD `dek:<kid>` | Database dump alone cannot unwrap DEKs without `DZIECIOL_MASTER_KEY` |
 | **Exact Lookups** | HMAC-SHA256 blind index (`hosts.ip_hmac`) | Fast indexed deduplication without storing plaintext IPs |
 | **Key Rotation** | `POST /api/v1/admin/crypto/rotate` | Generates `dek-v(N+1)`, re-encrypts sensitive rows under new DEK while preserving old DEKs for zero-downtime decryption |
 | **Verification** | `scripts/verify_encryption.sh` + `/api/v1/admin/crypto/status` | Direct `psql` inspection proving ciphertext storage with zero plaintext leakage (PostgreSQL mode) |
@@ -201,5 +201,5 @@ where each matched evidence receipt $i$ contributes a calibrated weight $w_i \in
 
 ## 6. Remote Scanning Agents & Scheduler
 
-- **`aegis agent`** runs the same `scanner.Engine` inside a network segment the server cannot reach. It only opens outbound HTTPS to the server: one-time enrollment token, heartbeat, long-polled job leases, per-chunk results ingested through the same `ingest.Pipeline` (disappearance detection scoped to the chunk's IPs), and checkpoint resume after restarts. Protocol and security model: [DEPLOYMENT.md, section 0a](./DEPLOYMENT.md).
+- **`dzieciol agent`** runs the same `scanner.Engine` inside a network segment the server cannot reach. It only opens outbound HTTPS to the server: one-time enrollment token, heartbeat, long-polled job leases, per-chunk results ingested through the same `ingest.Pipeline` (disappearance detection scoped to the chunk's IPs), and checkpoint resume after restarts. Protocol and security model: [DEPLOYMENT.md, section 0a](./DEPLOYMENT.md).
 - **Scheduler** (`internal/scheduler`) fires profiles with `schedule_cron`; a slot that falls outside the profile's time window is deferred to the next window opening, and a profile never has two active runs.

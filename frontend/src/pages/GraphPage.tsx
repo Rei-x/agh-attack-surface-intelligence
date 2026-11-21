@@ -23,7 +23,6 @@ import {
   RiCloseLine,
   RiExternalLinkLine,
   RiFocus3Line,
-  RiLoader4Line,
   RiLockLine,
   RiRefreshLine,
   RiSearchLine,
@@ -44,6 +43,7 @@ import { Pill, SimpleSelect } from '@/components/common';
 import { ServiceLogo } from '@/components/ServiceLogo';
 import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
 import type { GraphMode, GraphNode, GraphQuery, GraphResponse } from '@/types/api';
+import { PeckSpinner } from '@/components/Woodpecker';
 
 /* ────────────────────────────────────────────────────────────────────────── */
 /* Types & helpers                                                           */
@@ -981,7 +981,7 @@ function GraphCanvas() {
               </div>
               <span className="flex h-7 items-center gap-1.5 border border-border bg-card/95 px-2 font-mono text-[11px] tabular-nums backdrop-blur">
                 {loading ? (
-                  <RiLoader4Line className="size-3 animate-spin text-muted-foreground" />
+                  <PeckSpinner className="h-3" />
                 ) : (
                   <span className={cn('size-1.5', graph?.clustered ? 'bg-primary' : 'bg-emerald-500')} />
                 )}
@@ -1084,7 +1084,7 @@ function GraphCanvas() {
                   )}
                   {selectedServiceIds.length > 0 && can(PERMISSIONS.DEFECTDOJO_PUSH) && (
                     <Button size="sm" variant="outline" disabled={pushing} onClick={pushToDojo}>
-                      {pushing ? <RiLoader4Line className="animate-spin" /> : <RiSendPlaneLine />}
+                      {pushing ? <PeckSpinner className="h-3.5" /> : <RiSendPlaneLine />}
                       Wyślij do DefectDojo
                     </Button>
                   )}

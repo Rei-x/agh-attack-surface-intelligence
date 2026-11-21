@@ -213,7 +213,7 @@ func newFinding(h *domain.Host, kind, title, severity, description string) Chang
 	if h.Owner != "" {
 		title += " [właściciel: " + h.Owner + "]"
 	}
-	tags := []string{"dzieciol", "aegis-asi", kind}
+	tags := []string{"dzieciol", kind}
 	if h.Owner != "" {
 		tags = append(tags, "owner:"+tagSlug(h.Owner))
 	}

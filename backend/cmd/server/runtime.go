@@ -83,10 +83,10 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	rt := &appRuntime{Postgres: dbURL != ""}
 
-	// The data dir holds master.key even in PostgreSQL mode (unless ASI_MASTER_KEY is set).
+	// The data dir holds master.key even in PostgreSQL mode (unless DZIECIOL_MASTER_KEY is set).
 	dir, err := localdata.Open(dirPath)
 	if err != nil {
-		if !rt.Postgres || os.Getenv("ASI_MASTER_KEY") == "" {
+		if !rt.Postgres || os.Getenv("DZIECIOL_MASTER_KEY") == "" {
 			return nil, err
 		}
 	}
@@ -131,7 +131,7 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 			return fail(err)
 		}
 	} else {
-		masterKey, rt.KeySource = os.Getenv("ASI_MASTER_KEY"), localdata.KeyFromEnv
+		masterKey, rt.KeySource = os.Getenv("DZIECIOL_MASTER_KEY"), localdata.KeyFromEnv
 	}
 	rt.Vault, err = crypto.NewVault(masterKey)
 	if err != nil {
@@ -210,12 +210,12 @@ func printBootstrap(w io.Writer, b bootstrapResult) {
 		fmt.Fprintf(w, "  This password is shown ONCE. Log in and change it in Admin > Users.\n")
 		fmt.Fprintf(w, "  ============================================================\n\n")
 	} else if b.AdminCreated {
-		fmt.Fprintf(w, "\n  Administrator account 'admin' created with the password from ASI_ADMIN_PASSWORD.\n\n")
+		fmt.Fprintf(w, "\n  Administrator account 'admin' created with the password from DZIECIOL_ADMIN_PASSWORD.\n\n")
 	}
 }
 
 func seedDemoDefault() bool {
-	return strings.EqualFold(envOrDefault("ASI_SEED_DEMO", "true"), "true")
+	return strings.EqualFold(envOrDefault("DZIECIOL_SEED_DEMO", "true"), "true")
 }
 
 // quietLogs silences the standard logger (used by terminal-oriented commands) unless verbose.

@@ -41,7 +41,7 @@ export interface TriagePatch {
   expires_at?: string;
 }
 
-const TOKEN_KEY = 'aegis_asi_token';
+const TOKEN_KEY = 'dzieciol_token';
 
 export function getStoredToken(): string | null {
   try {
@@ -470,12 +470,12 @@ export const api = {
       rawResponse: true,
     });
     const ext = EXPORT_EXT[params.format];
-    saveBlob(await res.blob(), `aegis-asi-export-${new Date().toISOString().slice(0, 10)}${ext}`);
+    saveBlob(await res.blob(), `dzieciol-export-${new Date().toISOString().slice(0, 10)}${ext}`);
   },
   /** Merged raw nmap XML (-oX) of one scan run. */
   downloadScanNmapXml: async (scanId: string) => {
     const res = await request<Response>(`/api/v1/scans/${scanId}/nmap.xml`, { rawResponse: true });
-    saveBlob(await res.blob(), `aegis-run-${scanId}-nmap.xml`);
+    saveBlob(await res.blob(), `dzieciol-run-${scanId}-nmap.xml`);
   },
 
   // Signatures Studio
@@ -513,7 +513,7 @@ export const api = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `aegis-asi-signatures-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `dzieciol-signatures-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();

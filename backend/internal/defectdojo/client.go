@@ -84,6 +84,9 @@ type FindingResult struct {
 
 // UniqueID produces a deterministic deduplication key for DefectDojo unique_id_from_tool.
 func UniqueID(hostIP string, port int, protocol, sourceID string) string {
+	// The "aegis" seed/prefix predates the rename and is deliberately kept: it is the
+	// finding identity DefectDojo deduplicates on, so changing it would close and
+	// re-create every existing finding.
 	raw := fmt.Sprintf("aegis-asi:%s:%d:%s:%s", strings.TrimSpace(hostIP), port, strings.ToLower(protocol), strings.TrimSpace(sourceID))
 	sum := sha256.Sum256([]byte(raw))
 	return "aegis-" + hex.EncodeToString(sum[:16])
@@ -286,7 +289,7 @@ func (c *Client) reimport(ctx context.Context, cfg *domain.DefectDojoConfig, ic 
 	for _, f := range fields {
 		_ = mw.WriteField(f[0], f[1])
 	}
-	_ = mw.WriteField("tags", "aegis-asi")
+	_ = mw.WriteField("tags", "dzieciol")
 	fw, err := mw.CreateFormFile("file", fileName)
 	if err != nil {
 		return nil, err
@@ -428,7 +431,7 @@ func (c *Client) PushFindings(ctx context.Context, cfg *domain.DefectDojoConfig,
 			Mitigation:       f.Mitigation,
 			Impact:           f.Impact,
 			References:       f.References,
-			Tags:             append([]string{"dzieciol", "aegis-asi", "cbi-agh"}, f.Tags...),
+			Tags:             append([]string{"dzieciol", "cbi-agh"}, f.Tags...),
 		}
 		if f.HostIP != "" {
 			g.ComponentName = f.HostIP

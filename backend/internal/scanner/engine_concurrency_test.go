@@ -16,11 +16,11 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// TestMain lets the test binary impersonate nmap: when AEGIS_FAKE_NMAP_LOG is set the process
+// TestMain lets the test binary impersonate nmap: when DZIECIOL_FAKE_NMAP_LOG is set the process
 // logs its argv + wall-clock interval, sleeps, and prints nmap-style XML. This exercises the
 // real exec path (argv building, concurrency, --max-rate split) without network access.
 func TestMain(m *testing.M) {
-	if logPath := os.Getenv("AEGIS_FAKE_NMAP_LOG"); logPath != "" && len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-test.") {
+	if logPath := os.Getenv("DZIECIOL_FAKE_NMAP_LOG"); logPath != "" && len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-test.") {
 		os.Exit(fakeNmapMain(logPath, os.Args[1:]))
 	}
 	os.Exit(m.Run())
@@ -175,7 +175,7 @@ func TestChunkWorkerPlanSplitsGlobalRate(t *testing.T) {
 
 func TestConcurrentChunkWorkersHonorTotalRateCapWithRealExec(t *testing.T) {
 	logPath := t.TempDir() + "/fake-nmap.log"
-	t.Setenv("AEGIS_FAKE_NMAP_LOG", logPath)
+	t.Setenv("DZIECIOL_FAKE_NMAP_LOG", logPath)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -479,12 +479,12 @@ func TestBuildNmapArgsSafeAndTuned(t *testing.T) {
 }
 
 func TestNmapOptionsFromEnv(t *testing.T) {
-	t.Setenv("ASI_NMAP_PING_ICMP", "false")
-	t.Setenv("ASI_NMAP_PING_SYN_PORTS", "22,443")
-	t.Setenv("ASI_NMAP_PING_ACK_PORTS", "")
-	t.Setenv("ASI_NMAP_HOST_TIMEOUT", "90s")
-	t.Setenv("ASI_NMAP_VERSION_INTENSITY", "12") // out of range -> ignored
-	t.Setenv("ASI_NMAP_TIMING", "2")
+	t.Setenv("DZIECIOL_NMAP_PING_ICMP", "false")
+	t.Setenv("DZIECIOL_NMAP_PING_SYN_PORTS", "22,443")
+	t.Setenv("DZIECIOL_NMAP_PING_ACK_PORTS", "")
+	t.Setenv("DZIECIOL_NMAP_HOST_TIMEOUT", "90s")
+	t.Setenv("DZIECIOL_NMAP_VERSION_INTENSITY", "12") // out of range -> ignored
+	t.Setenv("DZIECIOL_NMAP_TIMING", "2")
 	o := NmapOptionsFromEnv()
 	if o.PingICMPEcho || len(o.PingSYNPorts) != 2 || len(o.PingACKPorts) != 0 || o.ServiceHostTimeout != 90*time.Second || o.VersionIntensity != DefaultNmapOptions().VersionIntensity || o.Timing != 2 {
 		t.Fatalf("env overrides not applied correctly: %+v", o)

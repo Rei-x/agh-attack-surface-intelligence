@@ -12,7 +12,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   toggleTheme: () => {},
 });
 
-const STORAGE_KEY = 'aegis_asi_theme';
+const STORAGE_KEY = 'dzieciol_theme';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {

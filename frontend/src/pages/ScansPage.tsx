@@ -72,6 +72,7 @@ import type {
   TargetEstimate,
   TargetExclusion,
 } from '@/types/api';
+import { PeckLoader } from '@/components/Woodpecker';
 
 type ScansTab = 'runs' | 'profiles' | 'scopes' | 'ingest' | 'agents';
 
@@ -596,7 +597,11 @@ export function ScansPage() {
         <TabsContent value="runs" className="pt-4">
           <Card size="sm" className="py-0">
             {scans.length === 0 ? (
-              <Empty icon={RiStackLine}>{loading ? 'Ładowanie…' : 'Brak przebiegów'}</Empty>
+              loading ? (
+                <PeckLoader />
+              ) : (
+                <Empty bird>Dzięcioł jeszcze nie stukał · brak przebiegów</Empty>
+              )
             ) : (
               <Table>
                 <TableHeader>
@@ -843,7 +848,7 @@ export function ScansPage() {
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             <Card size="sm" className={cn('py-0', canWriteScans ? 'xl:col-span-7' : 'xl:col-span-12')}>
               {loading ? (
-                <Empty>Ładowanie…</Empty>
+                <PeckLoader />
               ) : profiles.length === 0 ? (
                 <Empty>Brak profili</Empty>
               ) : (

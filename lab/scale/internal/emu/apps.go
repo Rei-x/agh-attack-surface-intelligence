@@ -15,7 +15,7 @@ import (
 
 // The HTTP personalities below are modelled on what the real products put on
 // the wire (headers, cookies, titles, redirect behaviour, paths). They are not
-// derived from — and must not be tuned to — AegisASI's fingerprinter.
+// derived from — and must not be tuned to — Dzięcioł's fingerprinter.
 
 type reqCtx struct {
 	w      http.ResponseWriter

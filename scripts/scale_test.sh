@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
-# AegisASI scale test: two full scans of the scale lab (/18 by default) through
-# the AegisASI API, a scenario switch in between, exports, and an accuracy report.
+# Dzięcioł scale test: two full scans of the scale lab (/18 by default) through
+# the Dzięcioł API, a scenario switch in between, exports, and an accuracy report.
 #
 # Local Docker (lab container + running app stack from docker-compose.yml):
 #   scripts/scale_test.sh
@@ -11,14 +11,14 @@
 #
 # Environment knobs (defaults in brackets):
 #   MODE        docker | remote                                   [docker]
-#   API         AegisASI base URL                                 [http://localhost:8080]
+#   API         Dzięcioł base URL                                 [http://localhost:8080]
 #   LAB         scale-lab control API                             [http://localhost:19900]
 #   LAB_CURL    command prefix used to reach LAB (e.g. "ssh root@host curl") [curl]
 #   SCALE_CIDR  scope to scan                                     [10.66.0.0/18]
 #   PORTS       comma list of ports to scan                       [all lab ports from /stats]
 #   RATE        max_rate_pps for the scan profile                 [1500]
 #   CONCURRENCY profile concurrency                               [64]
-#   ASI_USER / ASI_PASS                                           [admin / Admin123!]
+#   DZIECIOL_USER / DZIECIOL_PASS                                           [admin / Admin123!]
 #   RUNS        1 or 2 (2 = switch to scenario B and rescan)      [2]
 #   SCAN_TIMEOUT seconds per scan before giving up                [10800]
 #   OUT         output directory                                  [lab/scale/out/<timestamp>]
@@ -33,8 +33,8 @@ LAB_CURL="${LAB_CURL:-curl}"
 SCALE_CIDR="${SCALE_CIDR:-10.66.0.0/18}"
 RATE="${RATE:-1500}"
 CONCURRENCY="${CONCURRENCY:-64}"
-ASI_USER="${ASI_USER:-admin}"
-ASI_PASS="${ASI_PASS:-Admin123!}"
+DZIECIOL_USER="${DZIECIOL_USER:-admin}"
+DZIECIOL_PASS="${DZIECIOL_PASS:-Admin123!}"
 RUNS="${RUNS:-2}"
 SCAN_TIMEOUT="${SCAN_TIMEOUT:-10800}"
 POLL="${POLL:-10}"
@@ -70,7 +70,7 @@ if [[ "$MODE" == "docker" ]]; then
   log "building + starting scale lab container"
   docker compose -f "$ROOT/docker-compose.scale.yml" up -d --build >>"$OUT/driver.log" 2>&1 || die "compose up failed"
   for i in $(seq 1 60); do lab GET /health >/dev/null 2>&1 && break; sleep 2; done
-  APP_CT="${APP_CT:-aegis-asi-app}"
+  APP_CT="${APP_CT:-dzieciol-app}"
   if docker inspect "$APP_CT" >/dev/null 2>&1; then
     log "adding route $SCALE_CIDR via 172.28.0.66 inside $APP_CT"
     docker exec "$APP_CT" ip route replace "$SCALE_CIDR" via 172.28.0.66 || die "could not add route in $APP_CT (needs NET_ADMIN)"
@@ -89,10 +89,10 @@ log "ports: $PORTS"
 # ---------------------------------------------------------------- 2. login
 curl -fsS "$API/api/v1/health" >"$OUT/app-health.json" || die "API $API not reachable"
 TOKEN="$(curl -fsS -X POST -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg u "$ASI_USER" --arg p "$ASI_PASS" '{username:$u,password:$p}')" \
+  -d "$(jq -nc --arg u "$DZIECIOL_USER" --arg p "$DZIECIOL_PASS" '{username:$u,password:$p}')" \
   "$API/api/v1/auth/login" | jq -r .token)"
 [[ -n "$TOKEN" && "$TOKEN" != null ]] || die "login failed"
-log "logged in as $ASI_USER; app: $(jq -c . "$OUT/app-health.json")"
+log "logged in as $DZIECIOL_USER; app: $(jq -c . "$OUT/app-health.json")"
 
 META="$OUT/meta.json"
 echo '{}' >"$META"
@@ -173,7 +173,7 @@ if command -v go >/dev/null; then
 elif command -v scorer >/dev/null; then
   scorer "${ARGS[@]}"
 elif command -v docker >/dev/null; then
-  docker run --rm -v "$OUT:$OUT" --entrypoint scorer aegis-asi-scalelab:local "${ARGS[@]}"
+  docker run --rm -v "$OUT:$OUT" --entrypoint scorer dzieciol-scalelab:local "${ARGS[@]}"
 else
   die "no way to run the scorer (need go, scorer binary or docker)"
 fi

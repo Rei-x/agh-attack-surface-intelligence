@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# AegisASI — End-to-End Automated Verification & Demo Script
+# Dzięcioł — End-to-End Automated Verification & Demo Script
 #
 # Verifies all core HackNation / CBI AGH criteria against a running stack:
 #   1. Healthcheck & active AES-256-GCM encryption
@@ -21,7 +21,7 @@ API_URL="${API_URL:-http://localhost:8080}"
 LAB_CTRL_URL="${LAB_CTRL_URL:-http://localhost:19999}"
 DD_INTERNAL_URL="${DD_INTERNAL_URL:-http://172.28.0.20:8000}"
 DD_HOST_URL="${DD_HOST_URL:-http://localhost:18000}"
-DD_TOKEN="${DD_TOKEN:-aegis-agh-demo-token}"
+DD_TOKEN="${DD_TOKEN:-dzieciol-agh-demo-token}"
 SCAN_TIMEOUT_SEC="${SCAN_TIMEOUT_SEC:-120}"
 
 for bin in curl jq; do
@@ -55,7 +55,7 @@ trap cleanup EXIT
 
 api_status() {
   local method="$1" path="$2" token="${3:-}" body="${4:-}"
-  local args=(-sS -o /tmp/aegis_resp.json -w "%{http_code}" -X "$method" "${API_URL}${path}")
+  local args=(-sS -o /tmp/dzieciol_resp.json -w "%{http_code}" -X "$method" "${API_URL}${path}")
   if [[ -n "$token" ]]; then
     args+=(-H "Authorization: Bearer ${token}")
   fi
@@ -69,8 +69,8 @@ login_role() {
   local user="$1" pass_str="$2"
   local code
   code="$(api_status POST "/api/v1/auth/login" "" "{\"username\":\"${user}\",\"password\":\"${pass_str}\"}")"
-  [[ "$code" == "200" ]] || fail "Login failed for ${user} (HTTP ${code}): $(cat /tmp/aegis_resp.json)"
-  jq -r '.token // empty' /tmp/aegis_resp.json
+  [[ "$code" == "200" ]] || fail "Login failed for ${user} (HTTP ${code}): $(cat /tmp/dzieciol_resp.json)"
+  jq -r '.token // empty' /tmp/dzieciol_resp.json
 }
 
 wait_for_scan() {
@@ -81,12 +81,12 @@ wait_for_scan() {
     local code
     code="$(api_status GET "/api/v1/scans/${scan_id}" "$token")"
     [[ "$code" == "200" ]] || fail "Failed polling scan ${scan_id} (HTTP ${code})"
-    status="$(jq -r '.status // .scan.status // empty' /tmp/aegis_resp.json)"
+    status="$(jq -r '.status // .scan.status // empty' /tmp/dzieciol_resp.json)"
     if [[ "$status" == "COMPLETED" ]]; then
       return 0
     fi
     if [[ "$status" == "FAILED" || "$status" == "STOPPED" ]]; then
-      fail "Scan ${scan_id} ended with status ${status}: $(cat /tmp/aegis_resp.json)"
+      fail "Scan ${scan_id} ended with status ${status}: $(cat /tmp/dzieciol_resp.json)"
     fi
     sleep 2
   done
@@ -98,8 +98,8 @@ step "1/10 Healthcheck & Encryption Status"
 # =============================================================================
 CODE="$(api_status GET "/api/v1/health")"
 [[ "$CODE" == "200" ]] || fail "Health endpoint returned HTTP ${CODE}"
-ENC_ACTIVE="$(jq -r '.encryption_active // false' /tmp/aegis_resp.json)"
-KEY_VER="$(jq -r '.key_version // "unknown"' /tmp/aegis_resp.json)"
+ENC_ACTIVE="$(jq -r '.encryption_active // false' /tmp/dzieciol_resp.json)"
+KEY_VER="$(jq -r '.key_version // "unknown"' /tmp/dzieciol_resp.json)"
 [[ "$ENC_ACTIVE" == "true" ]] || fail "Expected encryption_active=true, got ${ENC_ACTIVE}"
 pass "API healthy, encryption_active=true (key_version=${KEY_VER})"
 
@@ -141,11 +141,11 @@ step "3/10 Large-Scale Target Estimate (10.0.0.0/18 = 16,384 IPs)"
 # =============================================================================
 EST_REQ='{"targets":["10.0.0.0/18"],"exclusions":["10.0.0.0/24"],"ports":"22,80,443,8080","max_rate_pps":500,"concurrency":64}'
 CODE="$(api_status POST "/api/v1/targets/estimate" "$OPERATOR_TOKEN" "$EST_REQ")"
-[[ "$CODE" == "200" ]] || fail "Target estimate failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
-TOTAL_IPS="$(jq -r '.total_ips' /tmp/aegis_resp.json)"
-EXCL_IPS="$(jq -r '.excluded_ips' /tmp/aegis_resp.json)"
-EFF_IPS="$(jq -r '.effective_ips' /tmp/aegis_resp.json)"
-CHUNKS="$(jq -r '.chunk_count' /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "Target estimate failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
+TOTAL_IPS="$(jq -r '.total_ips' /tmp/dzieciol_resp.json)"
+EXCL_IPS="$(jq -r '.excluded_ips' /tmp/dzieciol_resp.json)"
+EFF_IPS="$(jq -r '.effective_ips' /tmp/dzieciol_resp.json)"
+CHUNKS="$(jq -r '.chunk_count' /tmp/dzieciol_resp.json)"
 [[ "$TOTAL_IPS" == "16384" ]] || fail "Expected total_ips=16384, got ${TOTAL_IPS}"
 [[ "$EXCL_IPS" == "256" ]] || fail "Expected excluded_ips=256, got ${EXCL_IPS}"
 [[ "$EFF_IPS" == "16128" ]] || fail "Expected effective_ips=16128, got ${EFF_IPS}"
@@ -181,19 +181,19 @@ MANUAL_REQ='{
   ]
 }'
 CODE="$(api_status POST "/api/v1/ingest/manual" "$OPERATOR_TOKEN" "$MANUAL_REQ")"
-[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "Manual ingest failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "Manual ingest failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "Manual ingest accepted (HTTP ${CODE})"
 
-CODE="$(curl -sS -o /tmp/aegis_resp.json -w "%{http_code}" \
+CODE="$(curl -sS -o /tmp/dzieciol_resp.json -w "%{http_code}" \
   -X POST "${API_URL}/api/v1/ingest/import" \
   -H "Authorization: Bearer ${OPERATOR_TOKEN}" \
   -F "format=csv" \
   -F "scan_name=E2E CSV Import" \
   -F "file=@${SCRIPT_DIR}/sample_import.csv")"
-[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "CSV import failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "CSV import failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "CSV import processed through unified pipeline (HTTP ${CODE})"
 
-CODE="$(curl -sS -o /tmp/aegis_resp.json -w "%{http_code}" \
+CODE="$(curl -sS -o /tmp/dzieciol_resp.json -w "%{http_code}" \
   -X POST "${API_URL}/api/v1/ingest/import" \
   -H "Authorization: Bearer ${OPERATOR_TOKEN}" \
   -F "format=json" \
@@ -203,7 +203,7 @@ if [[ "$CODE" != "200" && "$CODE" != "201" ]]; then
   # Fallback to direct JSON body if endpoint expects raw application/json
   CODE="$(api_status POST "/api/v1/ingest/import" "$OPERATOR_TOKEN" "$(jq '{format:"json", scan_name:.scan_name, observations:.observations}' "${SCRIPT_DIR}/sample_import.json")")"
 fi
-[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "JSON import failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "JSON import failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "JSON import processed through unified pipeline (HTTP ${CODE})"
 
 # =============================================================================
@@ -230,13 +230,13 @@ PROFILE_REQ='{
   "enabled": true
 }'
 CODE="$(api_status POST "/api/v1/profiles" "$OPERATOR_TOKEN" "$PROFILE_REQ")"
-[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "Create profile failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
-PROFILE_ID="$(jq -r '.id // .profile.id // empty' /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "Create profile failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
+PROFILE_ID="$(jq -r '.id // .profile.id // empty' /tmp/dzieciol_resp.json)"
 [[ -n "$PROFILE_ID" ]] || fail "Missing profile_id in response"
 
 CODE="$(api_status POST "/api/v1/scans" "$OPERATOR_TOKEN" "{\"profile_id\":\"${PROFILE_ID}\",\"name\":\"Lab Baseline Scan 1\"}")"
-[[ "$CODE" == "200" || "$CODE" == "201" || "$CODE" == "202" ]] || fail "Start Scan 1 failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
-SCAN1_ID="$(jq -r '.id // .scan.id // empty' /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" || "$CODE" == "201" || "$CODE" == "202" ]] || fail "Start Scan 1 failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
+SCAN1_ID="$(jq -r '.id // .scan.id // empty' /tmp/dzieciol_resp.json)"
 [[ -n "$SCAN1_ID" ]] || fail "Missing scan1_id"
 wait_for_scan "$SCAN1_ID" "$OPERATOR_TOKEN"
 pass "Scan 1 (${SCAN1_ID}) completed against lab hosts 172.28.0.10-14"
@@ -246,8 +246,8 @@ step "6/10 Analyst Override on 172.28.0.14 + Scan Metadata Edit"
 # =============================================================================
 CODE="$(api_status GET "/api/v1/hosts?q=172.28.0.14" "$ANALYST_TOKEN")"
 [[ "$CODE" == "200" ]] || fail "GET /hosts failed (HTTP ${CODE})"
-FLAPPING_HOST_ID="$(jq -r '(.hosts // .items // .) | map(select(.ip == "172.28.0.14")) | .[0].id // empty' /tmp/aegis_resp.json)"
-[[ -n "$FLAPPING_HOST_ID" ]] || fail "Host 172.28.0.14 not found after Scan 1: $(cat /tmp/aegis_resp.json)"
+FLAPPING_HOST_ID="$(jq -r '(.hosts // .items // .) | map(select(.ip == "172.28.0.14")) | .[0].id // empty' /tmp/dzieciol_resp.json)"
+[[ -n "$FLAPPING_HOST_ID" ]] || fail "Host 172.28.0.14 not found after Scan 1: $(cat /tmp/dzieciol_resp.json)"
 
 OVERRIDE_REQ='{
   "owner": "CBI AGH E-Learning Team",
@@ -256,11 +256,11 @@ OVERRIDE_REQ='{
   "tags": ["moodle", "pinned-override"]
 }'
 CODE="$(api_status PATCH "/api/v1/hosts/${FLAPPING_HOST_ID}/overrides" "$ANALYST_TOKEN" "$OVERRIDE_REQ")"
-[[ "$CODE" == "200" ]] || fail "PATCH host overrides failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "PATCH host overrides failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "Analyst override applied on host ${FLAPPING_HOST_ID} (172.28.0.14)"
 
 CODE="$(api_status PUT "/api/v1/scans/${SCAN1_ID}" "$ANALYST_TOKEN" '{"name":"Lab Baseline Scan 1 (Curated)","notes":"Baseline curated by SOC analyst"}')"
-[[ "$CODE" == "200" ]] || fail "PUT /scans/${SCAN1_ID} failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "PUT /scans/${SCAN1_ID} failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "Scan 1 metadata edited after completion"
 
 # =============================================================================
@@ -271,8 +271,8 @@ curl -fsS -X POST "${LAB_CTRL_URL}/control?mode=changed" >/dev/null \
 pass "lab-flapping mutated to mode=changed (title, banner, X-Staging-Debug, /admin 200 OK)"
 
 CODE="$(api_status POST "/api/v1/scans" "$OPERATOR_TOKEN" "{\"profile_id\":\"${PROFILE_ID}\",\"name\":\"Lab Post-Mutation Scan 2\"}")"
-[[ "$CODE" == "200" || "$CODE" == "201" || "$CODE" == "202" ]] || fail "Start Scan 2 failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
-SCAN2_ID="$(jq -r '.id // .scan.id // empty' /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" || "$CODE" == "201" || "$CODE" == "202" ]] || fail "Start Scan 2 failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
+SCAN2_ID="$(jq -r '.id // .scan.id // empty' /tmp/dzieciol_resp.json)"
 wait_for_scan "$SCAN2_ID" "$OPERATOR_TOKEN"
 pass "Scan 2 (${SCAN2_ID}) completed"
 
@@ -280,15 +280,15 @@ pass "Scan 2 (${SCAN2_ID}) completed"
 step "8/10 Diff Verification & Override Preservation Proof"
 # =============================================================================
 CODE="$(api_status GET "/api/v1/scans/diff?from=${SCAN1_ID}&to=${SCAN2_ID}" "$ANALYST_TOKEN")"
-[[ "$CODE" == "200" ]] || fail "GET /scans/diff failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
-CHANGED_CNT="$(jq -r '((.changed_services // []) | length) + ((.new_services // []) | length)' /tmp/aegis_resp.json)"
-(( CHANGED_CNT >= 1 )) || fail "Expected >=1 detected change between Scan 1 and Scan 2, got: $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "GET /scans/diff failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
+CHANGED_CNT="$(jq -r '((.changed_services // []) | length) + ((.new_services // []) | length)' /tmp/dzieciol_resp.json)"
+(( CHANGED_CNT >= 1 )) || fail "Expected >=1 detected change between Scan 1 and Scan 2, got: $(cat /tmp/dzieciol_resp.json)"
 pass "Scan Diff detected ${CHANGED_CNT} service change(s) between Scan 1 and Scan 2"
 
 CODE="$(api_status GET "/api/v1/hosts/${FLAPPING_HOST_ID}" "$ANALYST_TOKEN")"
 [[ "$CODE" == "200" ]] || fail "GET /hosts/${FLAPPING_HOST_ID} failed (HTTP ${CODE})"
-CUR_OWNER="$(jq -r '.owner // .host.owner // empty' /tmp/aegis_resp.json)"
-CUR_NOTES="$(jq -r '.notes // .host.notes // empty' /tmp/aegis_resp.json)"
+CUR_OWNER="$(jq -r '.owner // .host.owner // empty' /tmp/dzieciol_resp.json)"
+CUR_NOTES="$(jq -r '.notes // .host.notes // empty' /tmp/dzieciol_resp.json)"
 [[ "$CUR_OWNER" == "CBI AGH E-Learning Team" ]] || fail "Analyst override 'owner' was overwritten! Got: '${CUR_OWNER}'"
 [[ "$CUR_NOTES" == *"must survive rescans"* ]] || fail "Analyst override 'notes' was overwritten! Got: '${CUR_NOTES}'"
 pass "Analyst overrides (owner & notes) preserved intact across Scan 2"
@@ -305,7 +305,7 @@ UNSAFE_SIG='{
   "interesting_points": 50
 }'
 CODE="$(api_status POST "/api/v1/signatures/validate" "$ANALYST_TOKEN" "$UNSAFE_SIG")"
-VALID_FLAG="$(jq -r 'if has("valid") then .valid else false end' /tmp/aegis_resp.json 2>/dev/null || echo false)"
+VALID_FLAG="$(jq -r 'if has("valid") then .valid else false end' /tmp/dzieciol_resp.json 2>/dev/null || echo false)"
 if [[ "$CODE" == "200" && "$VALID_FLAG" == "true" ]]; then
   fail "Safety validator unexpectedly accepted path traversal signature!"
 fi
@@ -313,11 +313,11 @@ pass "Safety Validator blocked unsafe path traversal signature (HTTP ${CODE}, va
 
 VALID_SIG="$(jq '.[0]' "${SCRIPT_DIR}/sample_signatures.json")"
 CODE="$(api_status POST "/api/v1/signatures/validate" "$ANALYST_TOKEN" "$VALID_SIG")"
-[[ "$CODE" == "200" ]] || fail "Valid custom signature validation failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "Valid custom signature validation failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 
 CODE="$(api_status POST "/api/v1/signatures/test" "$ANALYST_TOKEN" "$VALID_SIG")"
-[[ "$CODE" == "200" ]] || fail "Retroactive signature test failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
-MATCH_CNT="$(jq -r '(.matches // .matched_services // .) | length' /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "Retroactive signature test failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
+MATCH_CNT="$(jq -r '(.matches // .matched_services // .) | length' /tmp/dzieciol_resp.json)"
 (( MATCH_CNT >= 1 )) || fail "Retroactive Playground expected >=1 match against stored lab observations, got 0"
 pass "Retroactive Playground matched ${MATCH_CNT} stored service(s) without rescanning"
 
@@ -326,10 +326,10 @@ step "10/10 DefectDojo API v2 Integration (Test + Nmap XML + Finding Push)"
 # =============================================================================
 DD_CFG="{\"url\":\"${DD_INTERNAL_URL}\",\"api_token\":\"${DD_TOKEN}\",\"product_id\":1,\"engagement_id\":1,\"verify_tls\":false,\"auto_push_nmap\":false}"
 CODE="$(api_status PUT "/api/v1/integrations/defectdojo" "$ADMIN_TOKEN" "$DD_CFG")"
-[[ "$CODE" == "200" ]] || fail "PUT DefectDojo config failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "PUT DefectDojo config failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 
 CODE="$(api_status POST "/api/v1/integrations/defectdojo/test" "$ADMIN_TOKEN" "{}")"
-[[ "$CODE" == "200" ]] || fail "DefectDojo connection test failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" ]] || fail "DefectDojo connection test failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "DefectDojo API v2 connection test succeeded against ${DD_INTERNAL_URL}"
 
 # Push Nmap XML if available on Scan 2
@@ -343,11 +343,11 @@ fi
 # Find a service ID from 172.28.0.14 or 172.28.0.12 to push as a Finding
 CODE="$(api_status GET "/api/v1/services" "$OPERATOR_TOKEN")"
 [[ "$CODE" == "200" ]] || fail "GET /services failed (HTTP ${CODE})"
-SVC_ID="$(jq -r '(.services // .items // .) | .[0].id // empty' /tmp/aegis_resp.json)"
+SVC_ID="$(jq -r '(.services // .items // .) | .[0].id // empty' /tmp/dzieciol_resp.json)"
 [[ -n "$SVC_ID" ]] || fail "No services found to push to DefectDojo"
 
 CODE="$(api_status POST "/api/v1/integrations/defectdojo/push-findings" "$OPERATOR_TOKEN" "{\"service_ids\":[\"${SVC_ID}\"],\"engagement_id\":1,\"severity\":\"High\"}")"
-[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "Push findings to DefectDojo failed (HTTP ${CODE}): $(cat /tmp/aegis_resp.json)"
+[[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "Push findings to DefectDojo failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "Finding pushed to DefectDojo API v2 for service ${SVC_ID}"
 
 # Confirm arrival on mock receiver

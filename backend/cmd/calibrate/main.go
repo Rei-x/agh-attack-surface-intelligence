@@ -2,7 +2,7 @@
 // calibrated against the scale lab ground truth (lab/scale, GET /truth).
 //
 // Collect (must run where the lab's 10.66.0.0/18 is routable, e.g. a container
-// on aegis-asi-net with the route installed):
+// on dzieciol-net with the route installed):
 //
 //	calibrate -truth http://172.28.0.66:9900/truth -dump obs.jsonl
 //

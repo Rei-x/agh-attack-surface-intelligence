@@ -324,6 +324,6 @@ func (s *Server) handleScanNmapXML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-run-%s-nmap.xml"`, run.ID))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="dzieciol-run-%s-nmap.xml"`, run.ID))
 	_, _ = io.WriteString(w, run.RawNmapXML)
 }

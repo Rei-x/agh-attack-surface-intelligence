@@ -10,7 +10,7 @@ type DefaultRoleSpec struct {
 	Permissions []string
 }
 
-// DemoAccount describes a seeded demo account exposed via /api/v1/auth/demo-accounts when ASI_SEED_DEMO=true.
+// DemoAccount describes a seeded demo account exposed via /api/v1/auth/demo-accounts when DZIECIOL_SEED_DEMO=true.
 type DemoAccount struct {
 	Username    string `json:"username"`
 	Password    string `json:"password"`
@@ -78,7 +78,7 @@ var DefaultRoles = []DefaultRoleSpec{
 	},
 }
 
-// DemoAccounts lists the 4 seeded accounts when ASI_SEED_DEMO=true.
+// DemoAccounts lists the 4 seeded accounts when DZIECIOL_SEED_DEMO=true.
 var DemoAccounts = []DemoAccount{
 	{
 		Username:    "admin",

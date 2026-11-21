@@ -10,11 +10,11 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// Opt-in: ASI_TEST_DATABASE_URL=postgres://... go test ./internal/db -run Postgres
+// Opt-in: DZIECIOL_TEST_DATABASE_URL=postgres://... go test ./internal/db -run Postgres
 func TestPostgresScheduleStateAndChunkCommandsRoundTrip(t *testing.T) {
-	url := os.Getenv("ASI_TEST_DATABASE_URL")
+	url := os.Getenv("DZIECIOL_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("set ASI_TEST_DATABASE_URL to run against PostgreSQL")
+		t.Skip("set DZIECIOL_TEST_DATABASE_URL to run against PostgreSQL")
 	}
 	ctx := context.Background()
 	vault, err := crypto.NewVault("")

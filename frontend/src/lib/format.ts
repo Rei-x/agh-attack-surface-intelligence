@@ -71,7 +71,7 @@ export function formatNumber(n?: number | null): string {
 export const TONE = {
   neutral: 'bg-muted text-muted-foreground border-border',
   info: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25',
-  primary: 'bg-primary/10 text-primary dark:text-blue-300 border-primary/25',
+  primary: 'bg-primary/10 text-primary dark:text-red-300 border-primary/25',
   success: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25',
   warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
   orange: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/25',

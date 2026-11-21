@@ -175,7 +175,7 @@ func BuildPayload(run *domain.ScanRun, events []domain.ChangeEvent, title string
 		"text":     text,
 		"content":  content,
 		"username": "Dzięcioł",
-		"source":   "aegis-asi",
+		"source":   "dzieciol",
 		"events":   structured,
 	}
 	if run != nil {

@@ -51,7 +51,7 @@ func (r *NmapRunner) dialFunc(timeout time.Duration) func(ctx context.Context, n
 	return d.DialContext
 }
 
-// NewNmapRunner returns a runner configured with safe timeouts and ASI_NMAP_* option overrides.
+// NewNmapRunner returns a runner configured with safe timeouts and DZIECIOL_NMAP_* option overrides.
 func NewNmapRunner(useNmap bool) *NmapRunner {
 	bin, err := exec.LookPath("nmap")
 	if err != nil {
@@ -102,7 +102,7 @@ func (r *NmapRunner) DiscoverHostsDetailed(ctx context.Context, ips []string, pr
 		r.warnFallback(fallbackReason)
 	}
 	alive, err := r.discoverPureGo(ctx, ips, probePorts, gov)
-	desc := fmt.Sprintf("aegis-go-fallback discovery tcp-connect ports=%s targets=%s (%s)",
+	desc := fmt.Sprintf("dzieciol-go-fallback discovery tcp-connect ports=%s targets=%s (%s)",
 		joinPorts(discoveryFallbackPorts(probePorts)), strings.Join(CompactIPv4Targets(ips), " "), fallbackReason)
 	return alive, desc, err
 }
@@ -252,7 +252,7 @@ func (r *NmapRunner) ScanServicesDetailed(ctx context.Context, activeIPs []strin
 		r.warnFallback(fallbackReason)
 	}
 	res, xmlStr, err := r.ScanServicesPureGo(ctx, activeIPs, ports, gov)
-	desc := fmt.Sprintf("aegis-go-fallback service tcp-connect+passive-banner ports=%s targets=%s (%s)",
+	desc := fmt.Sprintf("dzieciol-go-fallback service tcp-connect+passive-banner ports=%s targets=%s (%s)",
 		joinPorts(ports), strings.Join(CompactIPv4Targets(activeIPs), " "), fallbackReason)
 	return res, xmlStr, desc, err
 }
@@ -387,7 +387,7 @@ func (r *NmapRunner) ScanServicesPureGo(ctx context.Context, activeIPs []string,
 	for i, p := range ports {
 		portStrs[i] = strconv.Itoa(p)
 	}
-	args := fmt.Sprintf("aegis-scanner -sT -sV -p %s", strings.Join(portStrs, ","))
+	args := fmt.Sprintf("dzieciol-scanner -sT -sV -p %s", strings.Join(portStrs, ","))
 	xmlStr := GenerateNmapXML(observedHosts, args, startedAt, time.Now().UTC())
 	return out, xmlStr, ctx.Err()
 }

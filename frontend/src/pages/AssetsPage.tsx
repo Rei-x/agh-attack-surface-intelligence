@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { Host, ServiceCluster } from '@/types/api';
+import { PeckLoader } from '@/components/Woodpecker';
 
 const ALL = '__all__';
 
@@ -336,13 +337,13 @@ export function AssetsPage() {
                 {loading && hosts.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={colCount}>
-                      <Empty>Ładowanie…</Empty>
+                      <PeckLoader />
                     </TableCell>
                   </TableRow>
                 ) : hosts.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={colCount}>
-                      <Empty>Brak hostów</Empty>
+                      <Empty bird>Dzięcioł jeszcze nic tu nie wystukał</Empty>
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -540,7 +541,7 @@ export function AssetsPage() {
                 {loading && clusters.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={6}>
-                      <Empty>Ładowanie…</Empty>
+                      <PeckLoader />
                     </TableCell>
                   </TableRow>
                 ) : clusters.length === 0 ? (

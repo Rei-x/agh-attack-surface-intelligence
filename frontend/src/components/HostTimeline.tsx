@@ -6,6 +6,7 @@ import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Empty, Pill } from '@/components/common';
 import { Input } from '@/components/ui/input';
+import { PeckLoader } from '@/components/Woodpecker';
 
 const SEVERITY_TONE: Record<string, 'danger' | 'warning' | 'info' | 'neutral'> = {
   high: 'danger',
@@ -67,7 +68,7 @@ export function HostTimeline({ hostId }: { hostId: string }) {
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
       {entries === null ? (
-        <Empty>Ładowanie…</Empty>
+        <PeckLoader />
       ) : entries.length === 0 ? (
         <Empty>Brak zdarzeń</Empty>
       ) : (

@@ -49,16 +49,15 @@ RUN apk add --no-cache nmap nmap-scripts ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=backend-builder /app/dzieciol /app/dzieciol
-# Kept for compatibility with deployments that set ASI_STATIC_DIR=/app/static;
+# Kept for compatibility with deployments that set DZIECIOL_STATIC_DIR=/app/static;
 # without it the UI embedded in the binary is served.
 COPY --from=frontend-builder /src/frontend/dist /app/static
-# Old names kept as symlinks so existing `docker exec ... /app/aegis ...` scripts keep working.
-RUN ln -s /app/dzieciol /app/aegis && ln -s /app/dzieciol /app/aegis-asi && mkdir -p /data && chmod 700 /data
+RUN mkdir -p /data && chmod 700 /data
 
 # DATABASE_URL set   -> PostgreSQL store (docker-compose.yml)
-# DATABASE_URL unset -> AES-256-GCM encrypted file store in $ASI_DATA_DIR (mount a volume on /data)
-ENV ASI_LISTEN_ADDR=:8080 \
-    ASI_DATA_DIR=/data \
+# DATABASE_URL unset -> AES-256-GCM encrypted file store in $DZIECIOL_DATA_DIR (mount a volume on /data)
+ENV DZIECIOL_LISTEN_ADDR=:8080 \
+    DZIECIOL_DATA_DIR=/data \
     TZ=Europe/Warsaw
 VOLUME ["/data"]
 

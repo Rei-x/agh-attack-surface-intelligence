@@ -3,10 +3,10 @@ bin/
 dist/
 *.exe
 *.out
-/aegis-asi
+/dzieciol
 /server
-/aegis
-/backend/aegis
+/dzieciol
+/backend/dzieciol
 /backend/server
 
 # Node / Frontend

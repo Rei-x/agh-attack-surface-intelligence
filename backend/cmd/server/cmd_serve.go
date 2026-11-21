@@ -26,18 +26,18 @@ const serveUsage = `Usage: dzieciol serve [flags]
 Starts the Dzięcioł SOC dashboard (embedded web UI) and REST API.
 Without DATABASE_URL, data is kept in an AES-256-GCM encrypted file in the data directory.
 
-Environment (all optional): ASI_LISTEN_ADDR, PORT, DATABASE_URL, ASI_MASTER_KEY,
-ASI_JWT_SECRET, ASI_SEED_DEMO (default true), ASI_STATIC_DIR, ASI_DATA_DIR.`
+Environment (all optional): DZIECIOL_LISTEN_ADDR, PORT, DATABASE_URL, DZIECIOL_MASTER_KEY,
+DZIECIOL_JWT_SECRET, DZIECIOL_SEED_DEMO (default true), DZIECIOL_STATIC_DIR, DZIECIOL_DATA_DIR.`
 
 func cmdServe(args []string) error {
-	defaultListen := strings.TrimSpace(os.Getenv("ASI_LISTEN_ADDR"))
+	defaultListen := strings.TrimSpace(os.Getenv("DZIECIOL_LISTEN_ADDR"))
 	if defaultListen == "" {
 		defaultListen = ":" + envOrDefault("PORT", "8080")
 	}
 	fs := newFlagSet("serve", serveUsage)
 	listen := fs.String("listen", defaultListen, "listen address (use 127.0.0.1:8080 to restrict to this machine)")
-	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol, env ASI_DATA_DIR)")
-	staticDir := fs.String("static-dir", os.Getenv("ASI_STATIC_DIR"), "serve the UI from this directory instead of the embedded build")
+	dataDir := fs.String("data-dir", "", "data directory (default ~/.dzieciol, env DZIECIOL_DATA_DIR)")
+	staticDir := fs.String("static-dir", os.Getenv("DZIECIOL_STATIC_DIR"), "serve the UI from this directory instead of the embedded build")
 	seedDemo := fs.Bool("seed-demo", seedDemoDefault(), "create demo accounts (admin/operator/analyst/viewer)")
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return err
@@ -74,7 +74,7 @@ func cmdServe(args []string) error {
 	// Remote scanning agents (dzieciol agent): runs of agent-bound profiles are queued for the
 	// agent and ingested through the same pipeline when it uploads results.
 	agents := agenthub.New(store, pipeline, hub.Publish, agenthub.Options{
-		OfflineAfter:   envDuration("ASI_AGENT_OFFLINE_AFTER", 90*time.Second),
+		OfflineAfter:   envDuration("DZIECIOL_AGENT_OFFLINE_AFTER", 90*time.Second),
 		OnRunCompleted: func(runID string) { runner.autoPushDefectDojo(context.Background(), runID) },
 		TrackedHosts:   runner.collectTrackedHostIPs,
 	})
@@ -85,13 +85,13 @@ func cmdServe(args []string) error {
 	scheduler.Start(ctx, store, dispatch) // recurring scans from ScanProfile.ScheduleCron
 
 	cfg := api.Config{
-		JWTSecret: vault.JWTSecret(os.Getenv("ASI_JWT_SECRET")),
+		JWTSecret: vault.JWTSecret(os.Getenv("DZIECIOL_JWT_SECRET")),
 		TokenTTL:  24 * time.Hour,
 		SeedDemo:  *seedDemo,
 		StaticDir: strings.TrimSpace(*staticDir),
 		// Comma-separated extra origins allowed to call the API cross-origin (default: none,
 		// the bundled UI is same-origin).
-		AllowedOrigin: os.Getenv("ASI_CORS_ORIGINS"),
+		AllowedOrigin: os.Getenv("DZIECIOL_CORS_ORIGINS"),
 		Agents:        agents,
 	}
 	uiSource := "embedded"
@@ -129,7 +129,7 @@ func cmdServe(args []string) error {
 	printServeBanner(rt, url, uiSource, *seedDemo)
 	log.Printf("[INFO] Dzięcioł v%s listening on %s (seed_demo=%v, ui=%s)", api.AppVersion, ln.Addr(), *seedDemo, uiSource)
 	if *seedDemo {
-		log.Printf("[WARN] DEMO MODE: demo accounts with publicly known passwords are enabled (set ASI_SEED_DEMO=false outside a lab demo)")
+		log.Printf("[WARN] DEMO MODE: demo accounts with publicly known passwords are enabled (set DZIECIOL_SEED_DEMO=false outside a lab demo)")
 	}
 
 	select {
@@ -181,7 +181,7 @@ func printServeBanner(rt *appRuntime, url, uiSource string, seedDemo bool) {
 		case localdata.KeyFromFile:
 			fmt.Fprintf(w, "  Key:      %s\n", rt.Dir.KeyPath())
 		default:
-			fmt.Fprintf(w, "  Key:      from ASI_MASTER_KEY\n")
+			fmt.Fprintf(w, "  Key:      from DZIECIOL_MASTER_KEY\n")
 		}
 	}
 	si := detectScanner()
@@ -191,13 +191,13 @@ func printServeBanner(rt *appRuntime, url, uiSource string, seedDemo bool) {
 		for _, a := range auth.DemoAccounts {
 			fmt.Fprintf(w, "    %-9s / %-14s %s\n", a.Username, a.Password, a.RoleName)
 		}
-		fmt.Fprintf(w, "  (disable with --seed-demo=false or ASI_SEED_DEMO=false)\n")
+		fmt.Fprintf(w, "  (disable with --seed-demo=false or DZIECIOL_SEED_DEMO=false)\n")
 	} else if seedDemo {
 		fmt.Fprintf(w, "  Login:    admin / Admin123! (demo accounts enabled)\n")
 	}
 	if seedDemo {
 		fmt.Fprintf(w, "\n  WARNING: DEMO MODE - accounts with publicly known passwords are active.\n")
-		fmt.Fprintf(w, "  For a lab demo only. For real use start with ASI_SEED_DEMO=false (or --seed-demo=false):\n")
+		fmt.Fprintf(w, "  For a lab demo only. For real use start with DZIECIOL_SEED_DEMO=false (or --seed-demo=false):\n")
 		fmt.Fprintf(w, "  demo accounts are then disabled and a random admin password is printed once.\n")
 	}
 	fmt.Fprintf(w, "\n  Press Ctrl+C to stop.\n\n")

@@ -26,7 +26,7 @@ import (
 
 // InstanceHeader identifies one agent installation (one data directory). A job's lease is
 // held by an instance, so a copied credential running elsewhere cannot steal a running job.
-const InstanceHeader = "X-Aegis-Agent-Instance"
+const InstanceHeader = "X-Dzieciol-Agent-Instance"
 
 // CredentialPrefix marks agent credentials ("agt.<agent-id>.<secret>"). User JWTs never start
 // with it, so the two token kinds can never be confused.

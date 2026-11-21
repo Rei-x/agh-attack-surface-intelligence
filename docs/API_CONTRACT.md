@@ -1,4 +1,4 @@
-# AegisASI — Kontrakt API & RBAC (v1)
+# Dzięcioł — Kontrakt API & RBAC (v1)
 
 Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/demo-accounts` wymagają nagłówka `Authorization: Bearer <jwt>` (lub tokenu `?token=` dla strumienia SSE `/api/v1/events/stream`).
 
@@ -10,7 +10,7 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 3. **`analyst` („Modyfikacja i odczyt”):** `dashboard:read`, `assets:read`, `assets:write`, `scans:read`, `scans:write`, `signatures:read`, `signatures:write`, `export:read`.
 4. **`viewer` („Odczyt”):** `dashboard:read`, `assets:read`, `scans:read`, `signatures:read`, `export:read`.
 
-### Konta demo (seedowane gdy `ASI_SEED_DEMO=true`)
+### Konta demo (seedowane gdy `DZIECIOL_SEED_DEMO=true`)
 - `admin` / `Admin123!` (Administracja)
 - `operator` / `Operator123!` (Dodawanie, usuwanie, modyfikacja)
 - `analyst` / `Analyst123!` (Modyfikacja i odczyt)
@@ -91,18 +91,18 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 
 ## 3. Konfiguracja silnika skanowania (zmienne środowiskowe)
 
-Równoległość: chunki Coverage Ledger przetwarza N workerów (każdy = osobny proces nmap). N = min(`ASI_CHUNK_WORKERS` (domyślnie 4), `concurrency` profilu, `max_rate_pps`/20, liczba oczekujących chunków). Każdy proces dostaje `--max-rate = max_rate_pps / N`, więc suma nigdy nie przekracza limitu profilu. Rozmiar chunków jest korygowany w trakcie skanu na podstawie zmierzonej przepustowości (cel: `chunk_target_sec` na chunk).
+Równoległość: chunki Coverage Ledger przetwarza N workerów (każdy = osobny proces nmap). N = min(`DZIECIOL_CHUNK_WORKERS` (domyślnie 4), `concurrency` profilu, `max_rate_pps`/20, liczba oczekujących chunków). Każdy proces dostaje `--max-rate = max_rate_pps / N`, więc suma nigdy nie przekracza limitu profilu. Rozmiar chunków jest korygowany w trakcie skanu na podstawie zmierzonej przepustowości (cel: `chunk_target_sec` na chunk).
 
 Flagi nmap (bez możliwości dodania `--script`/`-sC`/`-A`/`-O` — polityka bezpieczeństwa skanera):
 
 | Zmienna | Domyślnie | Znaczenie |
 |---|---|---|
-| `ASI_NMAP_PING_ICMP` | `true` | `-PE` w discovery |
-| `ASI_NMAP_PING_SYN_PORTS` | `21,22,23,25,80,443,445,3389,8080,8443` | `-PS…` (+ porty z profilu); pusty = wyłączone |
-| `ASI_NMAP_PING_ACK_PORTS` | `80,443` | `-PA…`; pusty = wyłączone |
-| `ASI_NMAP_DISCOVERY_MAX_RETRIES` / `ASI_NMAP_DISCOVERY_HOST_TIMEOUT` | `1` / `20s` | `--max-retries` / `--host-timeout` dla `-sn` |
-| `ASI_NMAP_MAX_RETRIES` / `ASI_NMAP_HOST_TIMEOUT` | `2` / `3m` | `--max-retries` / `--host-timeout` dla `-sT -sV` |
-| `ASI_NMAP_VERSION_INTENSITY` | `5` | `--version-intensity` (0–9) |
-| `ASI_NMAP_TIMING` | auto | `-T0…5`; auto = `-T4` gdy udział workera ≥ 200 pps, inaczej `-T3` |
+| `DZIECIOL_NMAP_PING_ICMP` | `true` | `-PE` w discovery |
+| `DZIECIOL_NMAP_PING_SYN_PORTS` | `21,22,23,25,80,443,445,3389,8080,8443` | `-PS…` (+ porty z profilu); pusty = wyłączone |
+| `DZIECIOL_NMAP_PING_ACK_PORTS` | `80,443` | `-PA…`; pusty = wyłączone |
+| `DZIECIOL_NMAP_DISCOVERY_MAX_RETRIES` / `DZIECIOL_NMAP_DISCOVERY_HOST_TIMEOUT` | `1` / `20s` | `--max-retries` / `--host-timeout` dla `-sn` |
+| `DZIECIOL_NMAP_MAX_RETRIES` / `DZIECIOL_NMAP_HOST_TIMEOUT` | `2` / `3m` | `--max-retries` / `--host-timeout` dla `-sT -sV` |
+| `DZIECIOL_NMAP_VERSION_INTENSITY` | `5` | `--version-intensity` (0–9) |
+| `DZIECIOL_NMAP_TIMING` | auto | `-T0…5`; auto = `-T4` gdy udział workera ≥ 200 pps, inaczej `-T3` |
 
 Bez roota nmap automatycznie zamienia sondy `-PS/-PA` na `connect()`; gdy nmap jest niedostępny lub zawiedzie, używany jest fallback pure-Go (TCP connect + pasywny banner), opisany w `nmap_commands` chunka.

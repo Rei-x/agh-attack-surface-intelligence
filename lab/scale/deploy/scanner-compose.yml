@@ -1,28 +1,28 @@
-# AegisASI backend for a dedicated Linux scanner host (e.g. Hetzner aegis-scanner).
+# Dzięcioł backend for a dedicated Linux scanner host (e.g. Hetzner dzieciol-scanner).
 # The app uses the HOST network namespace so nmap sends real raw SYN/ICMP probes
 # from the host's interfaces (no Docker NAT in the path).
 #
-#   docker compose -f lab/scale/deploy/scanner-compose.yml -p aegis-scanner up -d --build
+#   docker compose -f lab/scale/deploy/scanner-compose.yml -p dzieciol-scanner up -d --build
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: aegis_asi
-      POSTGRES_USER: aegis
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_dev_pass}
+      POSTGRES_DB: dzieciol
+      POSTGRES_USER: dzieciol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dzieciol_dev_pass}
       TZ: Europe/Warsaw
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis_asi"]
+      test: ["CMD-SHELL", "pg_isready -U dzieciol -d dzieciol"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  aegis-asi:
+  dzieciol:
     build:
       context: ../../..
       dockerfile: Dockerfile
@@ -32,12 +32,12 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://aegis:${POSTGRES_PASSWORD:-aegis_dev_pass}@127.0.0.1:5432/aegis_asi?sslmode=disable
-      ASI_MASTER_KEY: ${ASI_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
-      ASI_JWT_SECRET: ${ASI_JWT_SECRET:-aegis-asi-dev-jwt-secret-replace-in-production}
-      ASI_SEED_DEMO: "true"
-      ASI_STATIC_DIR: /app/static
-      ASI_LISTEN_ADDR: ":8080"
+      DATABASE_URL: postgres://dzieciol:${POSTGRES_PASSWORD:-dzieciol_dev_pass}@127.0.0.1:5432/dzieciol?sslmode=disable
+      DZIECIOL_MASTER_KEY: ${DZIECIOL_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      DZIECIOL_JWT_SECRET: ${DZIECIOL_JWT_SECRET:-dzieciol-dev-jwt-secret-replace-in-production}
+      DZIECIOL_SEED_DEMO: "true"
+      DZIECIOL_STATIC_DIR: /app/static
+      DZIECIOL_LISTEN_ADDR: ":8080"
       TZ: Europe/Warsaw
     cap_add:
       - NET_RAW

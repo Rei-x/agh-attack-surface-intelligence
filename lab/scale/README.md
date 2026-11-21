@@ -1,6 +1,6 @@
-# AegisASI scale lab
+# Dzięcioł scale lab
 
-A realistic, local, **large-network** test range for AegisASI: a whole
+A realistic, local, **large-network** test range for Dzięcioł: a whole
 `10.66.0.0/18` (16,384 IPs) with ~1,500 live hosts, served by one Go binary on
 one Linux box or container, plus a ground-truth API and an accuracy scorer.
 It exists so we can prove the scanner at 10k+ IPs, with two scan runs and
@@ -10,7 +10,7 @@ Nothing here touches real networks: the address space lives on a dummy
 interface and dead addresses are blackholed.
 
 ```
- scanner (nmap / AegisASI)                      scale lab (Linux netns or host)
+ scanner (nmap / Dzięcioł)                      scale lab (Linux netns or host)
  ───────────────────────────    route 10.66/18  ─────────────────────────────────────────
   nmap -sn / -sT -sV  ───────────────────────▶  uplink (eth0 / enp7s0)  [tc netem: delay, jitter, loss]
   HTTP fingerprinting                           iptables SCALELAB: ICMP-blocking + firewalled (DROP) hosts
@@ -25,12 +25,12 @@ interface and dead addresses are blackholed.
 | Path | What |
 |---|---|
 | `cmd/scalelab` | emulator + control API (single static binary) |
-| `cmd/scorer` | compares AegisASI JSON exports to ground truth, prints markdown |
+| `cmd/scorer` | compares Dzięcioł JSON exports to ground truth, prints markdown |
 | `internal/plan` | deterministic population generator (seeded) and scenario B mutations |
 | `internal/emu` | HTTP personalities (`apps.go`), wire protocols (`protocols.go`), TLS certs, runtime, truth builder |
 | `internal/netcfg` | `ip` / `tc` / `iptables` plumbing, degrades gracefully |
 | `deploy/` | systemd unit + env for a native Linux host, compose file for a scanner host |
-| `../../docker-compose.scale.yml` | local Docker lab on `aegis-asi-net` (172.28.0.66) + optional `scale-runner` |
+| `../../docker-compose.scale.yml` | local Docker lab on `dzieciol-net` (172.28.0.66) + optional `scale-runner` |
 | `../../scripts/scale_test.sh` | end-to-end driver: 2 scans via the API, scenario switch, exports, score |
 
 Separate Go module, standard library only; it does not touch `backend/go.mod`.
@@ -101,11 +101,11 @@ Truth HTTP data is produced by running the real handlers in-process, so it can't
 
 ## Running locally (Docker)
 
-Needs the app stack (`docker-compose.yml`) running so `aegis-asi-net` exists.
+Needs the app stack (`docker-compose.yml`) running so `dzieciol-net` exists.
 
 ```bash
 docker compose -f docker-compose.scale.yml up -d --build
-docker exec aegis-asi-app ip route replace 10.66.0.0/18 via 172.28.0.66   # app has NET_ADMIN
+docker exec dzieciol-app ip route replace 10.66.0.0/18 via 172.28.0.66   # app has NET_ADMIN
 curl -s localhost:19900/stats | jq
 # ad-hoc checks from the runner container (route preinstalled)
 docker compose -f docker-compose.scale.yml --profile runner run --rm scale-runner \

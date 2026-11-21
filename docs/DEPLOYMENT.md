@@ -1,4 +1,4 @@
-# AegisASI — Deployment, Lab & Production Hardening Guide
+# Dzięcioł — Deployment, Lab & Production Hardening Guide
 
 This guide covers the single-binary install (no Docker), quick-start deployment with Docker Compose, running the deterministic university test lab, verifying encryption and RBAC end-to-end, key rotation, and production hardening for **CBI AGH**.
 
@@ -6,30 +6,30 @@ This guide covers the single-binary install (no Docker), quick-start deployment 
 
 ## 0. Single Binary (no Docker, no database)
 
-The `aegis` binary contains the web UI (embedded with `go:embed`), the REST API, the scanner
+The `dzieciol` binary contains the web UI (embedded with `go:embed`), the REST API, the scanner
 and the CLI. It is a static `CGO_ENABLED=0` build for darwin/arm64, darwin/amd64,
 linux/amd64, linux/arm64 and windows/amd64.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sh
-aegis serve                                   # UI + API on :8080, prints demo logins on first run
-aegis scan 10.0.0.0/24 -p 22,80,443,8080      # headless scan, live progress, summary table
-aegis scan -f targets.txt --json -o report.json
-aegis import results.xml                      # nmap -oX, CSV or JSON
-aegis export --format csv -o inventory.csv
-aegis runs && aegis diff                      # list runs, compare the last two
+dzieciol serve                                # UI + API on :8080, prints demo logins on first run
+dzieciol scan 10.0.0.0/24 -p 22,80,443,8080   # headless scan, live progress, summary table
+dzieciol scan -f targets.txt --json -o report.json
+dzieciol import results.xml                   # nmap -oX, CSV or JSON
+dzieciol export --format csv -o inventory.csv
+dzieciol runs && dzieciol diff                   # list runs, compare the last two
 ```
 
 ### Storage without PostgreSQL
 
-When `DATABASE_URL` is empty, data lives in the data directory (`~/.aegis`, override with
-`--data-dir` or `ASI_DATA_DIR`):
+When `DATABASE_URL` is empty, data lives in the data directory (`~/.dzieciol`, override with
+`--data-dir` or `DZIECIOL_DATA_DIR`):
 
 | File | Purpose |
 | :--- | :--- |
-| `aegis-store.enc` | `AEGISDB1` magic + AES-256-GCM(gzip(JSON state)), key = HMAC-SHA256(KEK, `aegis-asi:file-blob:v1`), magic bound as AAD |
-| `master.key` | 256-bit KEK as 64 hex chars, created on first run with mode `0600` unless `ASI_MASTER_KEY` is set. Never logged. |
-| `aegis.lock` | OS-level exclusive lock (`flock` / `LockFileEx`) + JSON holder info (pid, command, URL) |
+| `dzieciol-store.enc` | `AEGISDB1` magic + AES-256-GCM(gzip(JSON state)), key = HMAC-SHA256(KEK, `aegis-asi:file-blob:v1`), magic bound as AAD (magic and KDF labels predate the rename and are kept on purpose) |
+| `master.key` | 256-bit KEK as 64 hex chars, created on first run with mode `0600` unless `DZIECIOL_MASTER_KEY` is set. Never logged. |
+| `dzieciol.lock` | OS-level exclusive lock (`flock` / `LockFileEx`) + JSON holder info (pid, command, URL) |
 
 The state inside the envelope is the same row model as the in-memory/PostgreSQL stores:
 IPs, hostnames, domains, OS guesses, banners, HTTP fingerprints, notes, e-mails, overrides,
@@ -42,7 +42,7 @@ Persistence: writes are debounced (1.5 s quiet period, at most 10 s under contin
 plus a 30 s safety tick and a final flush on shutdown (SIGINT/SIGTERM). Every save is atomic
 (temp file in the same directory, `fsync`, `rename`, directory `fsync`), so a crash leaves
 either the previous or the new snapshot, never a torn file. If `master.key` is missing while
-`aegis-store.enc` exists, `aegis` refuses to start instead of generating a new key.
+`dzieciol-store.enc` exists, `dzieciol` refuses to start instead of generating a new key.
 
 **Why a snapshot file, not embedded SQLite:** the `MemoryStore` already implements the full
 `db.Store` interface with field-level encryption and is what the API test-suite (including the
@@ -53,7 +53,7 @@ that the whole state is rewritten on save. Measured on an M-series Mac with 10,0
 20,000 services: 7.6 MB on disk, 0.10 s per save, 0.11 s to load.
 For bigger multi-user deployments use PostgreSQL (`DATABASE_URL`).
 
-**Single writer:** `aegis serve`, `aegis scan` and `aegis import` take the lock. If a server
+**Single writer:** `dzieciol serve`, `dzieciol scan` and `dzieciol import` take the lock. If a server
 is running, `scan` and `import` fail with a message naming the server's pid and URL. In that
 case start scans from the UI or with `POST /api/v1/scans`. `export`, `diff` and `runs` are
 read-only and work while the server runs (they read its last autosave). With `DATABASE_URL`
@@ -65,7 +65,7 @@ safety exclusion means a local test needs `--ignore-exclusions`.
 ### Scanner prerequisites
 
 nmap is optional. Without it, the pure-Go TCP connect scanner with banner grabbing is used, and
-`aegis scan` prints install hints (`brew install nmap`, `sudo apt install nmap`,
+`dzieciol scan` prints install hints (`brew install nmap`, `sudo apt install nmap`,
 `winget install Insecure.Nmap`). Root is never required: nmap runs as `-sT` (TCP connect).
 Unprivileged nmap on macOS cannot send ICMP echo, so host discovery uses TCP probes.
 
@@ -73,23 +73,23 @@ Unprivileged nmap on macOS cannot send ICMP echo, so host discovery uses TCP pro
 
 ```bash
 make ui         # pnpm build + copy frontend/dist into backend/internal/webui/ui (go:embed)
-make build      # ui + bin/aegis (version ldflags from git describe)
-make release    # ui + dist/aegis-<os>-<arch>[.exe] for 5 targets + dist/checksums.txt
+make build      # ui + bin/dzieciol (version ldflags from git describe)
+make release    # ui + dist/dzieciol-<os>-<arch>[.exe] for 5 targets + dist/checksums.txt
 ```
 
 `backend/internal/webui/ui/` is git-ignored except for `.gitkeep`, so a plain `go build ./...`
-works without a frontend build and serves a placeholder page. `ASI_STATIC_DIR` (or
+works without a frontend build and serves a placeholder page. `DZIECIOL_STATIC_DIR` (or
 `--static-dir`) overrides the embedded UI. Pushing a `v*` tag runs
 `.github/workflows/release.yml`, which tests, cross-compiles, smoke-tests the linux binary and
 publishes the binaries, `checksums.txt` and `install.sh` as a GitHub Release.
 
 ---
 
-## 0a. Zdalni agenci skanujący (`aegis agent`)
+## 0a. Zdalni agenci skanujący (`dzieciol agent`)
 
 Agent to ten sam plik binarny uruchomiony jako lekki demon wewnątrz innego segmentu sieci
 (VLAN innego wydziału, inna uczelnia, sieć za NAT-em). Łączy się **wyłącznie wychodząco** do
-centralnego serwera AegisASI, pobiera zadania skanowania, skanuje lokalnie tym samym silnikiem
+centralnego serwera Dzięcioł, pobiera zadania skanowania, skanuje lokalnie tym samym silnikiem
 (chunki, limity PPS, okna czasowe, wykluczenia) i odsyła wyniki. Serwer nigdy nie łączy się z
 agentem, agent nie otwiera żadnego portu.
 
@@ -98,7 +98,7 @@ agentem, agent nie otwiera żadnego portu.
 ```
    Segment B (VLAN 120, za NAT)                     Sieć CBI AGH
   +-------------------------------+               +--------------------------------+
-  |  aegis agent  (systemd,       |  HTTPS 443    |  aegis serve (UI + API)         |
+  |  dzieciol agent  (systemd,       |  HTTPS 443    |  dzieciol serve (UI + API)         |
   |  DynamicUser, bez uprawnień)  | ------------> |  /api/v1/agent/*                |
   |   - enroll (token 1x)         |  tylko        |   - rejestr agentów, tokeny     |
   |   - heartbeat co 15 s         |  wychodząco   |   - kolejka zadań (long-poll)   |
@@ -129,15 +129,15 @@ Sekwencja wywołań (JSON, `Authorization: Bearer <poświadczenie agenta>`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh \
-  | sudo sh -s -- --agent --server https://aegis.cbi.agh.edu.pl --token aet_... \
+  | sudo sh -s -- --agent --server https://dzieciol.cbi.agh.edu.pl --token aet_... \
       --name wydzial-eaiib --allow-cidr 10.20.0.0/16
 ```
 
 `install.sh --agent` instaluje binarkę do `/usr/local/bin`, zapisuje ustawienia do
-`/etc/aegis-agent.env` (0600) i włącza `aegis-agent.service` (plik: `deploy/aegis-agent.service`).
-To samo bez skryptu: `sudo aegis agent install --server ... --token ...`. Ręcznie (dowolny system):
-`aegis agent --server https://... --token aet_... [--data-dir DIR] [--ca-file ca.pem] [--allow-cidr ...]`.
-Kolejne uruchomienia nie potrzebują tokenu. Logi: `journalctl -u aegis-agent -f`.
+`/etc/dzieciol-agent.env` (0600) i włącza `dzieciol-agent.service` (plik: `deploy/dzieciol-agent.service`).
+To samo bez skryptu: `sudo dzieciol agent install --server ... --token ...`. Ręcznie (dowolny system):
+`dzieciol agent --server https://... --token aet_... [--data-dir DIR] [--ca-file ca.pem] [--allow-cidr ...]`.
+Kolejne uruchomienia nie potrzebują tokenu. Logi: `journalctl -u dzieciol-agent -f`.
 
 3. W profilu skanowania wybierz pole **Skanuje: Agent: ...**. Harmonogram, „Uruchom teraz”,
 pauza/wznowienie/stop działają jak dla skanów lokalnych; profil nadal nie może mieć dwóch
@@ -147,7 +147,7 @@ aktywnych przebiegów.
 
 - Agent -> serwer: **tylko wychodzący TCP 443** (HTTPS; obsługiwany `HTTPS_PROXY`). Żadnych portów przychodzących.
 - Agent -> skanowane hosty: jak dla zwykłego skanu (nmap `-sT`, bez roota).
-- Serwer: wystawiony pod HTTPS (reverse proxy / tunel). `ASI_PUBLIC_URL` ustala adres podawany w komendzie instalacji.
+- Serwer: wystawiony pod HTTPS (reverse proxy / tunel). `DZIECIOL_PUBLIC_URL` ustala adres podawany w komendzie instalacji.
 
 ### Model bezpieczeństwa
 
@@ -156,12 +156,12 @@ aktywnych przebiegów.
 - **TLS**: certyfikat serwera weryfikowany domyślnie; `--ca-file` dla wewnętrznego CA; `--insecure` tylko w laboratorium. Zwykły HTTP jest odrzucany poza adresem lokalnym.
 - **Lokalna allowlista** (`--allow-cidr`): agent odmawia (`refused`, z notatką w skanie) każdego zadania, którego cel lub chunk wychodzi poza dozwolone sieci – przejęty serwer nie zmusi agenta do skanowania dowolnych sieci.
 - **Unit systemd**: `DynamicUser`, `NoNewPrivileges`, `ProtectSystem=strict`, puste `CapabilityBoundingSet` – agent działa bez uprawnień.
-- Stan agentów (rejestr, tokeny, zadania) leży w zaszyfrowanych dokumentach `app_settings` (plik `aegis-store.enc` lub PostgreSQL), jak reszta danych.
+- Stan agentów (rejestr, tokeny, zadania) leży w zaszyfrowanych dokumentach `app_settings` (plik `dzieciol-store.enc` lub PostgreSQL), jak reszta danych.
 
 ### Odporność
 
 - Wyniki każdego chunku trafiają najpierw do `outbox/` (fsync), dopiero potem są wysyłane – utrata sieci lub restart agenta niczego nie gubi; wysyłka z wykładniczym backoffem.
-- Agent milczący dłużej niż `ASI_AGENT_OFFLINE_AFTER` (domyślnie 90 s) jest oznaczany offline, a jego skan przechodzi w `PAUSED_WINDOW` z notatką; po powrocie agent dostaje ten sam skan i wznawia od punktu kontrolnego (chunki DONE są pomijane).
+- Agent milczący dłużej niż `DZIECIOL_AGENT_OFFLINE_AFTER` (domyślnie 90 s) jest oznaczany offline, a jego skan przechodzi w `PAUSED_WINDOW` z notatką; po powrocie agent dostaje ten sam skan i wznawia od punktu kontrolnego (chunki DONE są pomijane).
 - Restart serwera nie przerywa skanów agentów (lokalny mechanizm odzyskiwania je pomija).
 
 ### Porównanie
@@ -183,7 +183,7 @@ aktywnych przebiegów.
 ## 2. Quick Start (Application + PostgreSQL)
 
 ```bash
-# 1. Start PostgreSQL 17 and AegisASI (multi-stage build: React UI + Go binary + nmap)
+# 1. Start PostgreSQL 17 and Dzięcioł (multi-stage build: React UI + Go binary + nmap)
 docker compose up -d --build
 
 # 2. Verify health & active AES-256-GCM encryption
@@ -192,7 +192,7 @@ curl -s http://localhost:8080/api/v1/health | jq .
 
 Open the SOC Dashboard at **http://localhost:8080**.
 
-### Seeded Demo Accounts (`ASI_SEED_DEMO=true`)
+### Seeded Demo Accounts (`DZIECIOL_SEED_DEMO=true`)
 
 | Username | Password | Role (Polish) | Key Capabilities |
 | :--- | :--- | :--- | :--- |
@@ -201,16 +201,16 @@ Open the SOC Dashboard at **http://localhost:8080**.
 | `analyst` | `Analyst123!` | Modyfikacja i odczyt | Curate hosts/services (preserved overrides), edit scan notes, test signatures, export |
 | `viewer` | `Viewer123!` | Odczyt | Read-only dashboard, graph, assets, diff, signatures, export (`403` on all writes) |
 
-> **Production Note:** Set `ASI_SEED_DEMO=false` before exposing AegisASI on a production network and provision real operator accounts via the Admin panel.
+> **Production Note:** Set `DZIECIOL_SEED_DEMO=false` before exposing Dzięcioł on a production network and provision real operator accounts via the Admin panel.
 
 ---
 
 ## 3. Running the Deterministic University Test Lab
 
-The test lab (`docker-compose.lab.yml`) spins up 6 ultra-lightweight Python stdlib containers (<100 MB RAM total, <5 s startup, zero external pip installs) on subnet `172.28.0.0/24` sharing `aegis-asi-net`:
+The test lab (`docker-compose.lab.yml`) spins up 6 ultra-lightweight Python stdlib containers (<100 MB RAM total, <5 s startup, zero external pip installs) on subnet `172.28.0.0/24` sharing `dzieciol-net`:
 
 ```bash
-# Start AegisASI + PostgreSQL + full deterministic test lab + DefectDojo v2 mock
+# Start Dzięcioł + PostgreSQL + full deterministic test lab + DefectDojo v2 mock
 docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d --build
 ```
 
@@ -269,20 +269,20 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 
 | Variable | Required | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `DATABASE_URL` | Yes (prod) | *(encrypted file store in `ASI_DATA_DIR` if empty)* | PostgreSQL connection URI (`postgres://user:pass@host:5432/db?sslmode=require`) |
-| `ASI_MASTER_KEY` | **Yes (prod)** | Dev default in compose; otherwise `$ASI_DATA_DIR/master.key` (auto-generated, `0600`) | 256-bit Key Encryption Key (64 hex chars or 32-byte base64). Generate via `openssl rand -hex 32`. |
-| `ASI_DATA_DIR` | No | `~/.aegis` (`/data` in the Docker image) | Data directory for the encrypted file store, `master.key` and the lock. Same as `--data-dir`. |
-| `ASI_JWT_SECRET` | Recommended | Derived from `ASI_MASTER_KEY` | Secret for HS256 JWT signing. Rotate independently of data encryption keys. |
-| `ASI_SEED_DEMO` | No | `true` in compose | Seeds 4 demo accounts (`admin`, `operator`, `analyst`, `viewer`). **Set `false` in production.** |
-| `ASI_STATIC_DIR` | No | *(embedded UI)*; compose sets `/app/static` | Serve the React SPA from this directory instead of the UI embedded in the binary. |
-| `ASI_LISTEN_ADDR` | No | `:8080` | HTTP bind address (same as `aegis serve --listen`; `PORT` is honoured when unset). |
-| `ASI_PORT` | No | `8080` | Host port mapped to container `:8080`. |
-| `ASI_PUBLIC_URL` | No | *(scheme/host of the admin's request)* | Server URL put into the agent install command (e.g. `https://aegis.cbi.agh.edu.pl`). |
-| `ASI_AGENT_OFFLINE_AFTER` | No | `90s` | Silence after which a remote agent is marked offline and its running scan is parked (resumed when it returns). |
+| `DATABASE_URL` | Yes (prod) | *(encrypted file store in `DZIECIOL_DATA_DIR` if empty)* | PostgreSQL connection URI (`postgres://user:pass@host:5432/db?sslmode=require`) |
+| `DZIECIOL_MASTER_KEY` | **Yes (prod)** | Dev default in compose; otherwise `$DZIECIOL_DATA_DIR/master.key` (auto-generated, `0600`) | 256-bit Key Encryption Key (64 hex chars or 32-byte base64). Generate via `openssl rand -hex 32`. |
+| `DZIECIOL_DATA_DIR` | No | `~/.dzieciol` (`/data` in the Docker image) | Data directory for the encrypted file store, `master.key` and the lock. Same as `--data-dir`. |
+| `DZIECIOL_JWT_SECRET` | Recommended | Derived from `DZIECIOL_MASTER_KEY` | Secret for HS256 JWT signing. Rotate independently of data encryption keys. |
+| `DZIECIOL_SEED_DEMO` | No | `true` in compose | Seeds 4 demo accounts (`admin`, `operator`, `analyst`, `viewer`). **Set `false` in production.** |
+| `DZIECIOL_STATIC_DIR` | No | *(embedded UI)*; compose sets `/app/static` | Serve the React SPA from this directory instead of the UI embedded in the binary. |
+| `DZIECIOL_LISTEN_ADDR` | No | `:8080` | HTTP bind address (same as `dzieciol serve --listen`; `PORT` is honoured when unset). |
+| `DZIECIOL_PORT` | No | `8080` | Host port mapped to container `:8080`. |
+| `DZIECIOL_PUBLIC_URL` | No | *(scheme/host of the admin's request)* | Server URL put into the agent install command (e.g. `https://dzieciol.cbi.agh.edu.pl`). |
+| `DZIECIOL_AGENT_OFFLINE_AFTER` | No | `90s` | Silence after which a remote agent is marked offline and its running scan is parked (resumed when it returns). |
 | `TZ` | No | `Europe/Warsaw` | Default timezone for scan windows and logs. |
-| `ASI_DEFECTDOJO_PRODUCT_TYPE_NAME` / `_PRODUCT_NAME` / `_ENGAGEMENT_NAME` | No | `AegisASI` / `AGH Attack Surface` / `AegisASI continuous discovery` | DefectDojo context names used when no product/engagement is pinned by ID (same levels as the secureCodeBox DefectDojo hook annotations, see `docs/SECURECODEBOX.md`). |
-| `ASI_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | No | `false` | Sends `deduplication_on_engagement=true` when DefectDojo auto-creates the engagement. |
-| `ASI_DEFECTDOJO_MINIMUM_SEVERITY` | No | `Info` | `minimum_severity` for reimports (`Info`, `Low`, `Medium`, `High`, `Critical`). |
+| `DZIECIOL_DEFECTDOJO_PRODUCT_TYPE_NAME` / `_PRODUCT_NAME` / `_ENGAGEMENT_NAME` | No | `Dzięcioł` / `AGH Attack Surface` / `Dzięcioł continuous discovery` | DefectDojo context names used when no product/engagement is pinned by ID (same levels as the secureCodeBox DefectDojo hook annotations, see `docs/SECURECODEBOX.md`). |
+| `DZIECIOL_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | No | `false` | Sends `deduplication_on_engagement=true` when DefectDojo auto-creates the engagement. |
+| `DZIECIOL_DEFECTDOJO_MINIMUM_SEVERITY` | No | `Info` | `minimum_severity` for reimports (`Info`, `Low`, `Medium`, `High`, `Critical`). |
 
 ---
 
@@ -294,18 +294,18 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 openssl rand -hex 32
 ```
 
-Store `ASI_MASTER_KEY` in a dedicated secret manager (HashiCorp Vault, Kubernetes SealedSecrets, or systemd `LoadCredential=`) — **never commit it to Git** or bake it into container images.
+Store `DZIECIOL_MASTER_KEY` in a dedicated secret manager (HashiCorp Vault, Kubernetes SealedSecrets, or systemd `LoadCredential=`) — **never commit it to Git** or bake it into container images.
 
 ### Rotating the Data Encryption Key (DEK)
 
-AegisASI supports zero-downtime DEK rotation via the Admin UI (**Admin → Encryption At Rest → Rotate DEK**) or REST API:
+Dzięcioł supports zero-downtime DEK rotation via the Admin UI (**Admin → Encryption At Rest → Rotate DEK**) or REST API:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/admin/crypto/rotate \
   -H "Authorization: Bearer ${ADMIN_JWT}"
 ```
 
-1. Generates a fresh 256-bit DEK (`dek-v(N+1)`) and wraps it under `ASI_MASTER_KEY` (`wrap:v1:dek-v(N+1):...`).
+1. Generates a fresh 256-bit DEK (`dek-v(N+1)`) and wraps it under `DZIECIOL_MASTER_KEY` (`wrap:v1:dek-v(N+1):...`).
 2. Activates the new DEK for all new writes while retaining previous wrapped DEKs for decryption.
 3. Re-encrypts existing sensitive rows in PostgreSQL under `dek-v(N+1)` verifying every `table:record_id:column` AAD tag.
 
@@ -313,10 +313,10 @@ curl -X POST http://localhost:8080/api/v1/admin/crypto/rotate \
 
 ## 7. Production Hardening Checklist for CBI AGH
 
-1. **TLS Termination:** Place AegisASI behind CBI AGH's reverse proxy (Nginx / Traefik / HAProxy) with TLS 1.3, HSTS, and SSE proxy buffering disabled (`proxy_buffering off;` on `/api/v1/events/stream`).
+1. **TLS Termination:** Place Dzięcioł behind CBI AGH's reverse proxy (Nginx / Traefik / HAProxy) with TLS 1.3, HSTS, and SSE proxy buffering disabled (`proxy_buffering off;` on `/api/v1/events/stream`).
 2. **Database TLS & Least Privilege:** Enable `sslmode=verify-full` in `DATABASE_URL`, bind PostgreSQL to internal VLAN/loopback only, and use a dedicated non-superuser PostgreSQL role.
-3. **Disable Demo Accounts:** Set `ASI_SEED_DEMO=false` and enforce strong unique passwords for all SOC personnel.
+3. **Disable Demo Accounts:** Set `DZIECIOL_SEED_DEMO=false` and enforce strong unique passwords for all SOC personnel.
 4. **Network Capabilities:** The container requests only `NET_RAW` and `NET_ADMIN` so `nmap` can perform fast SYN/ICMP host discovery; drop all other Linux capabilities (`cap_drop: [ALL]`, `cap_add: [NET_RAW, NET_ADMIN]`, `security_opt: [no-new-privileges:true]`) in production.
 5. **Scope/Deny Gate Governance:** Immediately configure permanent `TargetExclusion` rules for sensitive medical/SCADA/safety-critical subnets and core routing infrastructure before scheduling recurring scans.
 6. **Maintenance Windows & Rate Limits:** Configure `window_enabled: true` (e.g., `22:00–06:00` `Europe/Warsaw`) and conservative `max_rate_pps` / `http_rps` values for production campus `/16` sweeps.
-7. **Automated Backups:** Back up both PostgreSQL (`pg_dump`) and `ASI_MASTER_KEY` separately; without `ASI_MASTER_KEY`, database backups remain cryptographically unreadable.
+7. **Automated Backups:** Back up both PostgreSQL (`pg_dump`) and `DZIECIOL_MASTER_KEY` separately; without `DZIECIOL_MASTER_KEY`, database backups remain cryptographically unreadable.

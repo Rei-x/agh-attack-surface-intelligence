@@ -27,7 +27,7 @@ INDEX_HTML = """<!DOCTYPE html>
   <main>
     <article>
       <h2>Ogłoszenia semestralne 2026</h2>
-      <p>Witamy na testowym portalu CMS przygotowanym dla laboratorium AegisASI (CBI AGH).</p>
+      <p>Witamy na testowym portalu CMS przygotowanym dla laboratorium Dzięcioł (CBI AGH).</p>
     </article>
   </main>
   <footer>

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Pill } from '@/components/common';
 import { LiveDot } from '@/components/LiveIndicator';
+import { PeckSpinner } from '@/components/Woodpecker';
 import type { ScanRun } from '@/types/api';
 
 interface Props {
@@ -128,7 +129,7 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
     <div className="relative bg-card ring-1 ring-foreground/5">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <LiveDot live={isRunning} />
+          {isRunning ? <PeckSpinner className="h-4" /> : <LiveDot live={false} />}
           <Pill className={meta.badge}>{meta.label}</Pill>
           <span className="max-w-48 truncate text-sm font-medium">{name}</span>
           {throttled && <Pill tone="warning">Governor</Pill>}
@@ -183,7 +184,7 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
       </div>
 
       {/* Progress rail */}
-      <div className="h-0.5 w-full bg-muted">
+      <div className="relative h-0.5 w-full bg-muted">
         <div
           className={cn(
             'h-full transition-[width] duration-700 ease-out',
@@ -191,6 +192,17 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
           )}
           style={{ width: `${Math.max(pct, isRunning ? 1 : 0)}%` }}
         />
+        {/* stuk stuk: a red ripple where the scan is knocking right now */}
+        {isRunning && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 transition-[left] duration-700 ease-out"
+            style={{ left: `${Math.max(pct, 1)}%` }}
+          >
+            <span className="wp-knock absolute inset-0 rounded-full bg-brand" />
+            <span className="absolute inset-0 rounded-full bg-brand" />
+          </span>
+        )}
       </div>
     </div>
   );

@@ -10,11 +10,11 @@ import (
 
 // Names follow the secureCodeBox DefectDojo hook levels and can be overridden like its annotations.
 func TestDefectDojoNamingOverridesLikeSCBAnnotations(t *testing.T) {
-	t.Setenv("ASI_DEFECTDOJO_PRODUCT_TYPE_NAME", "CBI AGH")
-	t.Setenv("ASI_DEFECTDOJO_PRODUCT_NAME", "Sieć kampusowa")
-	t.Setenv("ASI_DEFECTDOJO_ENGAGEMENT_NAME", "Discovery 2026")
-	t.Setenv("ASI_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT", "true")
-	t.Setenv("ASI_DEFECTDOJO_MINIMUM_SEVERITY", "low")
+	t.Setenv("DZIECIOL_DEFECTDOJO_PRODUCT_TYPE_NAME", "CBI AGH")
+	t.Setenv("DZIECIOL_DEFECTDOJO_PRODUCT_NAME", "Sieć kampusowa")
+	t.Setenv("DZIECIOL_DEFECTDOJO_ENGAGEMENT_NAME", "Discovery 2026")
+	t.Setenv("DZIECIOL_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT", "true")
+	t.Setenv("DZIECIOL_DEFECTDOJO_MINIMUM_SEVERITY", "low")
 
 	fd := newFakeDojo(t)
 	srv := httptest.NewServer(fd)

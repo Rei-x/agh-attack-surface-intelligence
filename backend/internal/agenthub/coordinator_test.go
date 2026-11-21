@@ -427,7 +427,7 @@ func TestAgentStateInEncryptedFileSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "aegis-store.enc")
+	path := filepath.Join(t.TempDir(), "dzieciol-store.enc")
 	fs1, err := db.OpenFileStore(path, vault, db.FileStoreOptions{})
 	if err != nil {
 		t.Fatal(err)

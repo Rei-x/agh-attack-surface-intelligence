@@ -155,7 +155,7 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 		if h.OSGuess != "" {
 			host["os"] = map[string]any{"full": h.OSGuess}
 		}
-		hostAegis := map[string]any{
+		hostDz := map[string]any{
 			"host_id":         h.ID,
 			"lifecycle_state": h.LifecycleState,
 			"host_score":      h.Interestingness,
@@ -163,10 +163,10 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 			"first_seen":      h.FirstSeen.UTC().Format(time.RFC3339),
 		}
 		if h.Environment != "" {
-			hostAegis["environment"] = h.Environment
+			hostDz["environment"] = h.Environment
 		}
 		if h.Owner != "" {
-			hostAegis["owner"] = h.Owner
+			hostDz["owner"] = h.Owner
 		}
 		ts := h.LastSeen
 		if ts.IsZero() {
@@ -180,8 +180,8 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 					"kind":     "state",
 					"category": []string{"host", "network"},
 					"type":     []string{"info"},
-					"dataset":  "aegis.asset",
-					"module":   "aegis",
+					"dataset":  "dzieciol.asset",
+					"module":   "dzieciol",
 					"ingested": ingested,
 				},
 				"observer": map[string]any{"vendor": "CBI AGH", "product": "Dzięcioł", "type": "scanner"},
@@ -191,7 +191,7 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 		if len(h.Services) == 0 {
 			doc := base()
 			doc["tags"] = nonNilStrings(h.Tags)
-			doc["aegis"] = hostAegis
+			doc["dzieciol"] = hostDz
 			if err := enc.Encode(doc); err != nil {
 				return err
 			}
@@ -210,7 +210,7 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 			doc["network"] = network
 			doc["destination"] = map[string]any{"ip": h.IP, "port": s.Port}
 			doc["server"] = map[string]any{"ip": h.IP, "port": s.Port}
-			svcAegis := map[string]any{
+			svcDz := map[string]any{
 				"service_id":         s.ID,
 				"state":              s.State,
 				"service_score":      s.Interestingness,
@@ -223,16 +223,16 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 				"matched_signatures": nonNilStrings(s.MatchedSignatures),
 			}
 			if s.Product != "" {
-				svcAegis["product"] = s.Product
+				svcDz["product"] = s.Product
 			}
 			if s.Version != "" {
-				svcAegis["version"] = s.Version
+				svcDz["version"] = s.Version
 			}
 			if s.CPE != "" {
-				svcAegis["cpe"] = s.CPE
+				svcDz["cpe"] = s.CPE
 			}
 			if s.Banner != "" {
-				svcAegis["banner"] = s.Banner
+				svcDz["banner"] = s.Banner
 			}
 			techs := make([]string, 0, len(s.Technologies))
 			for _, t := range s.Technologies {
@@ -242,7 +242,7 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 				}
 				techs = append(techs, label)
 			}
-			svcAegis["technologies"] = techs
+			svcDz["technologies"] = techs
 			if u := ServiceURL(h, s); u != "" {
 				doc["url"] = map[string]any{"full": u, "scheme": strings.SplitN(u, "://", 2)[0], "port": s.Port}
 			}
@@ -255,17 +255,17 @@ func ExportECS(w io.Writer, hosts []domain.Host) error {
 					doc["http"] = map[string]any{"response": resp}
 				}
 				if s.HTTP.ServerHeader != "" {
-					svcAegis["server_header"] = s.HTTP.ServerHeader
+					svcDz["server_header"] = s.HTTP.ServerHeader
 				}
 				if s.HTTP.Title != "" {
-					svcAegis["http_title"] = s.HTTP.Title
+					svcDz["http_title"] = s.HTTP.Title
 				}
 				if s.HTTP.FaviconMMH3 != "" {
-					svcAegis["favicon_mmh3"] = s.HTTP.FaviconMMH3
+					svcDz["favicon_mmh3"] = s.HTTP.FaviconMMH3
 				}
 			}
 			doc["tags"] = appendUnique(append([]string{}, h.Tags...), s.Tags...)
-			doc["aegis"] = map[string]any{"host": hostAegis, "service": svcAegis}
+			doc["dzieciol"] = map[string]any{"host": hostDz, "service": svcDz}
 			if err := enc.Encode(doc); err != nil {
 				return err
 			}

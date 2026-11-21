@@ -5,7 +5,7 @@ import type { ScanChunk } from '@/types/api';
 
 const FILL: Record<string, string> = {
   DONE: 'bg-emerald-500',
-  RUNNING: 'bg-primary animate-pulse',
+  RUNNING: 'bg-sky-500 animate-pulse',
   PAUSED: 'bg-amber-500',
   FAILED: 'bg-rose-500',
   PENDING: 'bg-muted-foreground/25',

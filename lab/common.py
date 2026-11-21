@@ -1,4 +1,4 @@
-"""Shared lightweight utilities for AegisASI deterministic test lab servers.
+"""Shared lightweight utilities for Dzięcioł deterministic test lab servers.
 
 Pure Python 3.12 standard library only (zero external dependencies).
 """
@@ -72,7 +72,7 @@ def make_deterministic_ico(rgb_bg: tuple[int, int, int], rgb_fg: tuple[int, int,
 class BaseLabHandler(BaseHTTPRequestHandler):
     """Base handler suppressing noisy default headers and allowing custom Server banners."""
 
-    server_banner: str = "AegisLab/1.0"
+    server_banner: str = "DzieciolLab/1.0"
 
     def version_string(self) -> str:
         return self.server_banner

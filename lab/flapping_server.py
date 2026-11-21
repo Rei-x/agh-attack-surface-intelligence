@@ -191,7 +191,7 @@ class ServiceHandler(BaseLabHandler):
 
 
 class ControlHandler(BaseLabHandler):
-    server_banner = "AegisLabControl/1.0"
+    server_banner = "DzieciolLabControl/1.0"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)

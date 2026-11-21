@@ -23,5 +23,5 @@ WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 License for the specific language governing permissions and limitations
 under the License.
 
-AegisASI uses it only as a test fixture for its secureCodeBox importer
+Dzięcioł uses it only as a test fixture for its secureCodeBox importer
 (see ../../scb_test.go).

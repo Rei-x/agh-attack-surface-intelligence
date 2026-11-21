@@ -15,10 +15,10 @@ import (
 )
 
 // TestRealNmapEngineAgainstLocalListeners runs the full engine with the real nmap binary
-// (unprivileged) against listeners on 127.0.0.1. Opt-in: AEGIS_REAL_NMAP=1 go test -run RealNmap -v
+// (unprivileged) against listeners on 127.0.0.1. Opt-in: DZIECIOL_REAL_NMAP=1 go test -run RealNmap -v
 func TestRealNmapEngineAgainstLocalListeners(t *testing.T) {
-	if os.Getenv("AEGIS_REAL_NMAP") != "1" {
-		t.Skip("set AEGIS_REAL_NMAP=1 to run against the real nmap binary")
+	if os.Getenv("DZIECIOL_REAL_NMAP") != "1" {
+		t.Skip("set DZIECIOL_REAL_NMAP=1 to run against the real nmap binary")
 	}
 	bin, err := exec.LookPath("nmap")
 	if err != nil {

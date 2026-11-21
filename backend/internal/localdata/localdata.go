@@ -1,9 +1,5 @@
-// Package localdata manages the single-binary data directory (default ~/.dzieciol, or
-// ~/.aegis when that pre-rename directory already exists): the master key file, the
-// encrypted store file and an exclusive instance lock.
-//
-// The file names below predate the Dzięcioł rename and stay as they are, so existing
-// data directories keep working unchanged.
+// Package localdata manages the single-binary data directory (default ~/.dzieciol):
+// the master key file, the encrypted store file and an exclusive instance lock.
 package localdata
 
 import (
@@ -20,24 +16,23 @@ import (
 )
 
 const (
-	StoreFileName     = "aegis-store.enc"
+	StoreFileName     = "dzieciol-store.enc"
 	MasterKeyFileName = "master.key"
-	LockFileName      = "aegis.lock"
+	LockFileName      = "dzieciol.lock"
 )
 
-// DefaultDir resolves the data directory: explicit flag > ASI_DATA_DIR > ~/.dzieciol
-// (or ~/.aegis if only that one exists, i.e. an installation from before the rename).
+// DefaultDir resolves the data directory: explicit flag > DZIECIOL_DATA_DIR > ~/.dzieciol.
 func DefaultDir(flagValue string) (string, error) {
 	dir := strings.TrimSpace(flagValue)
 	if dir == "" {
-		dir = strings.TrimSpace(os.Getenv("ASI_DATA_DIR"))
+		dir = strings.TrimSpace(os.Getenv("DZIECIOL_DATA_DIR"))
 	}
 	if dir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("cannot determine home directory (use --data-dir): %w", err)
 		}
-		dir = PreferExisting(filepath.Join(home, ".dzieciol"), filepath.Join(home, ".aegis"))
+		dir = filepath.Join(home, ".dzieciol")
 	}
 	if strings.HasPrefix(dir, "~"+string(os.PathSeparator)) || dir == "~" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -78,16 +73,16 @@ func (d *Dir) StoreExists() bool {
 type KeySource string
 
 const (
-	KeyFromEnv       KeySource = "ASI_MASTER_KEY"
+	KeyFromEnv       KeySource = "DZIECIOL_MASTER_KEY"
 	KeyFromFile      KeySource = "file"
 	KeyFileGenerated KeySource = "generated"
 )
 
-// MasterKey returns the master key: ASI_MASTER_KEY when set, otherwise <dir>/master.key,
+// MasterKey returns the master key: DZIECIOL_MASTER_KEY when set, otherwise <dir>/master.key,
 // generating a new random 256-bit key (0600) on first run. It refuses to generate a new key
 // if an encrypted store already exists, because that data would become unreadable.
 func (d *Dir) MasterKey() (string, KeySource, error) {
-	if env := strings.TrimSpace(os.Getenv("ASI_MASTER_KEY")); env != "" {
+	if env := strings.TrimSpace(os.Getenv("DZIECIOL_MASTER_KEY")); env != "" {
 		return env, KeyFromEnv, nil
 	}
 	raw, err := os.ReadFile(d.KeyPath())
@@ -105,8 +100,8 @@ func (d *Dir) MasterKey() (string, KeySource, error) {
 		return "", "", fmt.Errorf("read %s: %w", d.KeyPath(), err)
 	}
 	if d.StoreExists() {
-		return "", "", fmt.Errorf("encrypted store %s exists but %s is missing and ASI_MASTER_KEY is not set; "+
-			"restore the key file or set ASI_MASTER_KEY (refusing to generate a new key that could not decrypt existing data)",
+		return "", "", fmt.Errorf("encrypted store %s exists but %s is missing and DZIECIOL_MASTER_KEY is not set; "+
+			"restore the key file or set DZIECIOL_MASTER_KEY (refusing to generate a new key that could not decrypt existing data)",
 			d.StorePath(), d.KeyPath())
 	}
 	key, err := crypto.GenerateMasterKey()
@@ -146,18 +141,6 @@ type Lock struct {
 	path string
 }
 
-// PreferExisting returns dir, unless dir does not exist yet and legacy (the pre-rename
-// location) does: then legacy, so upgraded installations keep their data.
-func PreferExisting(dir, legacy string) string {
-	if _, err := os.Stat(dir); err == nil {
-		return dir
-	}
-	if fi, err := os.Stat(legacy); err == nil && fi.IsDir() {
-		return legacy
-	}
-	return dir
-}
-
 // ErrLocked is returned when another dzieciol process holds the data directory.
 type ErrLocked struct {
 	Path   string
@@ -181,7 +164,7 @@ func (d *Dir) Acquire(info LockInfo) (*Lock, error) {
 	f, err := os.OpenFile(d.LockPath(), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EROFS) {
-			return nil, fmt.Errorf("data directory %s is not writable (brak prawa zapisu do katalogu danych) - fix its permissions or choose another one with --data-dir / ASI_DATA_DIR: %w", d.Path, err)
+			return nil, fmt.Errorf("data directory %s is not writable (brak prawa zapisu do katalogu danych) - fix its permissions or choose another one with --data-dir / DZIECIOL_DATA_DIR: %w", d.Path, err)
 		}
 		return nil, fmt.Errorf("open lock file: %w", err)
 	}

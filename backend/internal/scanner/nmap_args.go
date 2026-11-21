@@ -95,33 +95,33 @@ func DefaultNmapOptions() NmapOptions {
 	}
 }
 
-// NmapOptionsFromEnv applies ASI_NMAP_* environment overrides on top of DefaultNmapOptions.
+// NmapOptionsFromEnv applies DZIECIOL_NMAP_* environment overrides on top of DefaultNmapOptions.
 // Invalid values are ignored (defaults kept) so a typo can never widen the scan.
 //
-//	ASI_NMAP_PING_ICMP=true|false
-//	ASI_NMAP_PING_SYN_PORTS=21,22,80,443     (empty string disables -PS)
-//	ASI_NMAP_PING_ACK_PORTS=80,443           (empty string disables -PA)
-//	ASI_NMAP_DISCOVERY_MAX_RETRIES=1
-//	ASI_NMAP_DISCOVERY_HOST_TIMEOUT=20s
-//	ASI_NMAP_MAX_RETRIES=2
-//	ASI_NMAP_HOST_TIMEOUT=3m
-//	ASI_NMAP_VERSION_INTENSITY=5
-//	ASI_NMAP_TIMING=3                         (unset/auto = derived from rate)
+//	DZIECIOL_NMAP_PING_ICMP=true|false
+//	DZIECIOL_NMAP_PING_SYN_PORTS=21,22,80,443     (empty string disables -PS)
+//	DZIECIOL_NMAP_PING_ACK_PORTS=80,443           (empty string disables -PA)
+//	DZIECIOL_NMAP_DISCOVERY_MAX_RETRIES=1
+//	DZIECIOL_NMAP_DISCOVERY_HOST_TIMEOUT=20s
+//	DZIECIOL_NMAP_MAX_RETRIES=2
+//	DZIECIOL_NMAP_HOST_TIMEOUT=3m
+//	DZIECIOL_NMAP_VERSION_INTENSITY=5
+//	DZIECIOL_NMAP_TIMING=3                         (unset/auto = derived from rate)
 func NmapOptionsFromEnv() NmapOptions {
 	o := DefaultNmapOptions()
-	if v, ok := os.LookupEnv("ASI_NMAP_PING_ICMP"); ok {
+	if v, ok := os.LookupEnv("DZIECIOL_NMAP_PING_ICMP"); ok {
 		if b, err := strconv.ParseBool(strings.TrimSpace(v)); err == nil {
 			o.PingICMPEcho = b
 		}
 	}
-	if v, ok := os.LookupEnv("ASI_NMAP_PING_SYN_PORTS"); ok {
+	if v, ok := os.LookupEnv("DZIECIOL_NMAP_PING_SYN_PORTS"); ok {
 		if strings.TrimSpace(v) == "" {
 			o.PingSYNPorts = nil
 		} else if ports, err := ParsePorts(v); err == nil {
 			o.PingSYNPorts = ports
 		}
 	}
-	if v, ok := os.LookupEnv("ASI_NMAP_PING_ACK_PORTS"); ok {
+	if v, ok := os.LookupEnv("DZIECIOL_NMAP_PING_ACK_PORTS"); ok {
 		if strings.TrimSpace(v) == "" {
 			o.PingACKPorts = nil
 		} else if ports, err := ParsePorts(v); err == nil {
@@ -142,13 +142,13 @@ func NmapOptionsFromEnv() NmapOptions {
 			}
 		}
 	}
-	envInt("ASI_NMAP_DISCOVERY_MAX_RETRIES", 0, 10, &o.DiscoveryMaxRetries)
-	envDur("ASI_NMAP_DISCOVERY_HOST_TIMEOUT", &o.DiscoveryHostTimeout)
-	envInt("ASI_NMAP_MAX_RETRIES", 0, 10, &o.ServiceMaxRetries)
-	envDur("ASI_NMAP_HOST_TIMEOUT", &o.ServiceHostTimeout)
-	envInt("ASI_NMAP_VERSION_INTENSITY", 0, 9, &o.VersionIntensity)
-	envInt("ASI_NMAP_TIMING", 0, 5, &o.Timing)
-	if v, ok := os.LookupEnv("ASI_NMAP_DISCOVERY"); ok {
+	envInt("DZIECIOL_NMAP_DISCOVERY_MAX_RETRIES", 0, 10, &o.DiscoveryMaxRetries)
+	envDur("DZIECIOL_NMAP_DISCOVERY_HOST_TIMEOUT", &o.DiscoveryHostTimeout)
+	envInt("DZIECIOL_NMAP_MAX_RETRIES", 0, 10, &o.ServiceMaxRetries)
+	envDur("DZIECIOL_NMAP_HOST_TIMEOUT", &o.ServiceHostTimeout)
+	envInt("DZIECIOL_NMAP_VERSION_INTENSITY", 0, 9, &o.VersionIntensity)
+	envInt("DZIECIOL_NMAP_TIMING", 0, 5, &o.Timing)
+	if v, ok := os.LookupEnv("DZIECIOL_NMAP_DISCOVERY"); ok {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case DiscoverySweep:
 			o.Discovery = DiscoverySweep
@@ -156,8 +156,8 @@ func NmapOptionsFromEnv() NmapOptions {
 			o.Discovery = DiscoveryPing
 		}
 	}
-	envInt("ASI_NMAP_SWEEP_MAX_RETRIES", 0, 3, &o.SweepMaxRetries)
-	envInt("ASI_NMAP_SWEEP_MIN_RATE_PCT", 0, 100, &o.SweepMinRatePct)
+	envInt("DZIECIOL_NMAP_SWEEP_MAX_RETRIES", 0, 3, &o.SweepMaxRetries)
+	envInt("DZIECIOL_NMAP_SWEEP_MIN_RATE_PCT", 0, 100, &o.SweepMinRatePct)
 	return o
 }
 

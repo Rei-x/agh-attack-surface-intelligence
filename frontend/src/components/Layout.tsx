@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Pill } from '@/components/common';
 import { LiveIndicator } from '@/components/LiveIndicator';
-import { AghEmblem } from '@/components/AghLogo';
+import { WoodpeckerMark } from '@/components/Woodpecker';
 import { QuickScanDialog } from '@/components/QuickScanDialog';
 import {
   DropdownMenu,
@@ -104,10 +104,12 @@ export function Layout() {
         )}
       >
         <div className={cn('flex h-14 items-center gap-2.5 border-b', collapsed ? 'justify-center px-0' : 'px-4')}>
-          <AghEmblem className="h-6" />
+          <WoodpeckerMark className="h-6" />
           {!collapsed && (
             <span className="flex min-w-0 flex-col leading-none">
-              <span className="truncate text-sm font-bold tracking-widest uppercase">AegisASI</span>
+              <span className="truncate text-base font-extrabold tracking-tight">
+                Dzięcioł<span className="text-brand">.</span>
+              </span>
               <span className="mt-1 truncate text-[9px] font-semibold tracking-[0.25em] text-muted-foreground uppercase">
                 CBI AGH
               </span>

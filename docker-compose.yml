@@ -1,54 +1,54 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: aegis-asi-postgres
+    container_name: dzieciol-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-aegis_asi}
-      POSTGRES_USER: ${POSTGRES_USER:-aegis}
+      POSTGRES_DB: ${POSTGRES_DB:-dzieciol}
+      POSTGRES_USER: ${POSTGRES_USER:-dzieciol}
       # PostgreSQL is not published on the host (internal network only); override for real use.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_dev_pass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dzieciol_dev_pass}
       TZ: ${TZ:-Europe/Warsaw}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aegis} -d ${POSTGRES_DB:-aegis_asi}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dzieciol} -d ${POSTGRES_DB:-dzieciol}"]
       interval: 5s
       timeout: 3s
       retries: 15
       start_period: 5s
     networks:
-      - aegis-net
+      - dzieciol-net
 
-  aegis-asi:
+  dzieciol:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aegis-asi-app
+    container_name: dzieciol-app
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${ASI_PORT:-8080}:8080"
+      - "${DZIECIOL_PORT:-8080}:8080"
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev_pass}@postgres:5432/${POSTGRES_DB:-aegis_asi}?sslmode=disable
-      # No built-in secrets: when ASI_MASTER_KEY is empty a random 256-bit key is generated on
-      # first start and kept in the aegis-data volume (/data/master.key) - back it up, without
+      DATABASE_URL: postgres://${POSTGRES_USER:-dzieciol}:${POSTGRES_PASSWORD:-dzieciol_dev_pass}@postgres:5432/${POSTGRES_DB:-dzieciol}?sslmode=disable
+      # No built-in secrets: when DZIECIOL_MASTER_KEY is empty a random 256-bit key is generated on
+      # first start and kept in the dzieciol-data volume (/data/master.key) - back it up, without
       # it the encrypted data cannot be read. The JWT signing key is derived from it unless
-      # ASI_JWT_SECRET is set.
-      ASI_MASTER_KEY: ${ASI_MASTER_KEY:-}
-      ASI_JWT_SECRET: ${ASI_JWT_SECRET:-}
-      # Demo accounts (admin/Admin123! ...) for a lab demo. ASI_SEED_DEMO=false disables them
-      # and creates 'admin' with ASI_ADMIN_PASSWORD (or a random password shown once in the logs).
-      ASI_SEED_DEMO: ${ASI_SEED_DEMO:-true}
-      ASI_ADMIN_PASSWORD: ${ASI_ADMIN_PASSWORD:-}
-      ASI_DATA_DIR: /data
-      ASI_STATIC_DIR: /app/static
-      ASI_LISTEN_ADDR: :8080
+      # DZIECIOL_JWT_SECRET is set.
+      DZIECIOL_MASTER_KEY: ${DZIECIOL_MASTER_KEY:-}
+      DZIECIOL_JWT_SECRET: ${DZIECIOL_JWT_SECRET:-}
+      # Demo accounts (admin/Admin123! ...) for a lab demo. DZIECIOL_SEED_DEMO=false disables them
+      # and creates 'admin' with DZIECIOL_ADMIN_PASSWORD (or a random password shown once in the logs).
+      DZIECIOL_SEED_DEMO: ${DZIECIOL_SEED_DEMO:-true}
+      DZIECIOL_ADMIN_PASSWORD: ${DZIECIOL_ADMIN_PASSWORD:-}
+      DZIECIOL_DATA_DIR: /data
+      DZIECIOL_STATIC_DIR: /app/static
+      DZIECIOL_LISTEN_ADDR: :8080
       TZ: ${TZ:-Europe/Warsaw}
     volumes:
-      - aegis-data:/data
+      - dzieciol-data:/data
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -62,15 +62,15 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - aegis-net
+      - dzieciol-net
 
 volumes:
   pgdata:
-  aegis-data:
+  dzieciol-data:
 
 networks:
-  aegis-net:
-    name: aegis-asi-net
+  dzieciol-net:
+    name: dzieciol-net
     driver: bridge
     ipam:
       driver: default
