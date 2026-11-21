@@ -13,6 +13,7 @@ import {
   RiRadarLine,
   RiServerLine,
   RiSettings3Line,
+  RiShieldCrossLine,
   RiSparklingLine,
   RiSunLine,
 } from '@remixicon/react';
@@ -52,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/assets', label: 'Zasoby', icon: RiServerLine, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/diff', label: 'Diff', icon: RiGitMergeLine, perms: [PERMISSIONS.SCANS_READ] },
   { to: '/scans', label: 'Skaner', icon: RiRadarLine, perms: [PERMISSIONS.SCANS_READ] },
+  { to: '/policies', label: 'Policies', icon: RiShieldCrossLine, perms: [PERMISSIONS.ASSETS_READ] },
   { to: '/signatures', label: 'Sygnatury', icon: RiSparklingLine, perms: [PERMISSIONS.SIGNATURES_READ] },
   {
     to: '/admin',

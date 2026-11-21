@@ -8,6 +8,7 @@ import {
   RiHourglassLine,
   RiLockUnlockLine,
   RiServerLine,
+  RiShieldCrossLine,
   RiShieldKeyholeLine,
   RiTerminalLine,
 } from '@remixicon/react';
@@ -29,7 +30,8 @@ export type CategoryKind =
   | 'cve'
   | 'db'
   | 'cert'
-  | 'cleartext';
+  | 'cleartext'
+  | 'policy';
 
 type Icon = React.ComponentType<{ className?: string }>;
 
@@ -94,6 +96,13 @@ export const CATEGORY_META: Record<
     query: 'iot:true',
     hint: 'Embedded device: camera, printer, router, NAS',
   },
+  policy: {
+    label: 'Policy violation',
+    icon: RiShieldCrossLine,
+    tone: 'text-foreground border-foreground/30 bg-foreground/5',
+    query: 'violation:true',
+    hint: 'Breaks the policy of its network zone',
+  },
   staging: {
     label: 'Staging / dev',
     icon: RiFlaskLine,
@@ -104,7 +113,7 @@ export const CATEGORY_META: Record<
 };
 
 /** Display order (most severe first). */
-export const CATEGORY_ORDER: CategoryKind[] = ['cve', 'eol', 'admin', 'db', 'cleartext', 'cert', 'bmc', 'iot', 'staging'];
+export const CATEGORY_ORDER: CategoryKind[] = ['policy', 'cve', 'eol', 'admin', 'db', 'cleartext', 'cert', 'bmc', 'iot', 'staging'];
 
 export interface CategoryFlag {
   kind: CategoryKind;
@@ -123,6 +132,8 @@ interface FlaggableService {
   matched_signatures?: string[];
   technologies?: Array<{ name: string }>;
   http?: { tls?: { is_expired?: boolean } | null; title?: string } | null;
+  /** Open zone policy violations (derived by the backend on read). */
+  policy_violations?: Array<{ zone_name: string; summary: string }>;
 }
 
 const DB_NAMES = new Set([
@@ -185,6 +196,7 @@ export function ageText(days: number): string {
 /** Risk categories of one service, most severe first. */
 export function serviceFlags(svc: FlaggableService): CategoryFlag[] {
   const out: CategoryFlag[] = [];
+  if (svc.policy_violations?.length) out.push({ kind: 'policy', detail: svc.policy_violations.map((p) => p.summary) });
   if (svc.known_vulns?.length) out.push({ kind: 'cve', detail: svc.known_vulns.map(vulnDetail) });
   if (svc.outdated?.length) out.push({ kind: 'eol', detail: svc.outdated.map(outdatedDetail) });
   if (svc.is_admin_panel) out.push({ kind: 'admin', detail: svc.http?.title ? [`“${svc.http.title}”`] : undefined });
