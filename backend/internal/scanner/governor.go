@@ -98,6 +98,9 @@ type Governor struct {
 	perHost          map[string]*tokenBucket
 	initialRate      float64
 	errorTimestamps  []time.Time
+	errorHosts       []string
+	errorReasons     []string
+	distress         float64
 	lastBackoff      time.Time
 	successStreak    int
 	throttleCount    int
@@ -153,6 +156,7 @@ func NewGovernor(cfg GovernorConfig) *Governor {
 		global:      newTokenBucket(cfg.GlobalRatePerSec, cfg.GlobalBurst, now),
 		perHost:     make(map[string]*tokenBucket),
 		initialRate: cfg.GlobalRatePerSec,
+		distress:    1,
 		nowFn:       nowFn,
 	}
 }
@@ -248,7 +252,7 @@ func (g *Governor) RecordSuccess(host string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	if g.global.rate >= g.initialRate {
+	if g.global.rate >= g.initialRate && g.distress >= 1 {
 		return
 	}
 	now := g.nowFn()
@@ -263,6 +267,9 @@ func (g *Governor) RecordSuccess(host string) {
 			newRate = g.initialRate
 		}
 		g.global.rate = newRate
+		if g.distress = g.distress * 1.15; g.distress > 1 {
+			g.distress = 1
+		}
 	}
 }
 
@@ -284,54 +291,121 @@ func (g *Governor) recordNoise(host, reason string, weight int) {
 
 	for i := 0; i < weight; i++ {
 		g.errorTimestamps = append(g.errorTimestamps, now)
+		g.errorHosts = append(g.errorHosts, host)
+		g.errorReasons = append(g.errorReasons, reason)
 	}
 
-	// Prune timestamps outside sliding window.
+	// Prune events outside the sliding window.
 	cutoff := now.Add(-g.cfg.ErrorWindow)
-	keep := g.errorTimestamps[:0]
-	for _, ts := range g.errorTimestamps {
+	k := 0
+	for i, ts := range g.errorTimestamps {
 		if !ts.Before(cutoff) {
-			keep = append(keep, ts)
+			g.errorTimestamps[k], g.errorHosts[k], g.errorReasons[k] = ts, g.errorHosts[i], g.errorReasons[i]
+			k++
 		}
 	}
-	g.errorTimestamps = keep
+	g.errorTimestamps, g.errorHosts, g.errorReasons = g.errorTimestamps[:k], g.errorHosts[:k], g.errorReasons[:k]
 
 	if len(g.errorTimestamps) >= g.cfg.ErrorThreshold {
-		oldRate := g.global.rate
-		newRate := oldRate * g.cfg.BackoffFactor
-		if newRate < g.cfg.MinRatePerSec {
-			newRate = g.cfg.MinRatePerSec
+		// Timeouts are a weak signal: one slow or silent host (a tarpit, a service that
+		// never answers HTTP) times out on every request. They slow the whole scan only
+		// when they come from several hosts at once (network or target-wide distress);
+		// otherwise only the offending host's bucket is backed off. Explicit signals
+		// (HTTP 429/503, reset bursts) back off globally even from a single host.
+		explicit := false
+		distinct := map[string]bool{}
+		for i := range g.errorHosts {
+			distinct[g.errorHosts[i]] = true
+			if g.errorReasons[i] != "timeout_burst" {
+				explicit = true
+			}
 		}
-		g.global.rate = newRate
-		g.lastBackoff = now
-		g.throttleCount++
+		minHosts := 3
+		if g.cfg.ErrorThreshold < minHosts {
+			minHosts = g.cfg.ErrorThreshold
+		}
 		errCount := len(g.errorTimestamps)
-		g.errorTimestamps = g.errorTimestamps[:0]
+		if explicit || len(distinct) >= minHosts {
+			oldRate := g.global.rate
+			newRate := oldRate * g.cfg.BackoffFactor
+			if newRate < g.cfg.MinRatePerSec {
+				newRate = g.cfg.MinRatePerSec
+			}
+			g.global.rate = newRate
+			g.lastBackoff = now
+			g.throttleCount++
+			if explicit {
+				g.distress *= g.cfg.BackoffFactor
+				if g.distress < minDistressFactor {
+					g.distress = minDistressFactor
+				}
+			}
+			g.clearErrorsLocked("")
 
-		// Also throttle the noisy host's per-host bucket.
-		if hb, ok := g.perHost[host]; ok {
+			if hb, ok := g.perHost[host]; ok {
+				hb.rate *= g.cfg.BackoffFactor
+				if hb.rate < 1.0 {
+					hb.rate = 1.0
+				}
+			}
+			e := ThrottleEvent{Timestamp: now, Host: host, Reason: reason, OldRate: oldRate, NewRate: newRate, ErrorCount: errCount}
+			evt = &e
+			cb = g.cfg.OnThrottle
+		} else if hostErrs := countHost(g.errorHosts, host); hostErrs >= g.cfg.ErrorThreshold {
+			hb := g.hostBucketLocked(host, now)
+			oldRate := hb.rate
 			hb.rate *= g.cfg.BackoffFactor
 			if hb.rate < 1.0 {
 				hb.rate = 1.0
 			}
+			g.clearErrorsLocked(host)
+			e := ThrottleEvent{Timestamp: now, Host: host, Reason: reason + "_host", OldRate: oldRate, NewRate: hb.rate, ErrorCount: hostErrs}
+			evt = &e
+			cb = g.cfg.OnThrottle
 		}
-
-		e := ThrottleEvent{
-			Timestamp:  now,
-			Host:       host,
-			Reason:     reason,
-			OldRate:    oldRate,
-			NewRate:    newRate,
-			ErrorCount: errCount,
-		}
-		evt = &e
-		cb = g.cfg.OnThrottle
 	}
 	g.mu.Unlock()
 
 	if evt != nil && cb != nil {
 		cb(*evt)
 	}
+}
+
+// minDistressFactor bounds how far explicit target distress can slow nmap shares.
+const minDistressFactor = 0.1
+
+func countHost(hosts []string, host string) int {
+	n := 0
+	for _, h := range hosts {
+		if h == host {
+			n++
+		}
+	}
+	return n
+}
+
+// clearErrorsLocked drops windowed error events (all of them when host == "").
+func (g *Governor) clearErrorsLocked(host string) {
+	if host == "" {
+		g.errorTimestamps, g.errorHosts, g.errorReasons = g.errorTimestamps[:0], g.errorHosts[:0], g.errorReasons[:0]
+		return
+	}
+	k := 0
+	for i := range g.errorHosts {
+		if g.errorHosts[i] != host {
+			g.errorTimestamps[k], g.errorHosts[k], g.errorReasons[k] = g.errorTimestamps[i], g.errorHosts[i], g.errorReasons[i]
+			k++
+		}
+	}
+	g.errorTimestamps, g.errorHosts, g.errorReasons = g.errorTimestamps[:k], g.errorHosts[:k], g.errorReasons[:k]
+}
+
+// DistressFactor (0.1..1) reflects only explicit target distress (HTTP 429/503, reset
+// bursts). nmap shares are scaled by it: timeouts alone never slow the nmap processes.
+func (g *Governor) DistressFactor() float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.distress
 }
 
 // CurrentRate returns the active global requests/packets per second limit.

@@ -169,6 +169,16 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		}
 	}
 
+	// Previous host state comes from one inventory read instead of one lookup per scanned IP
+	// (a /18 is 16k lookups, almost all of them for dead IPs).
+	var known map[string]*domain.Host
+	if existing, _, lerr := p.store.ListHosts(ctx, db.HostFilter{}); lerr == nil {
+		known = make(map[string]*domain.Host, len(existing))
+		for i := range existing {
+			known[existing[i].IP] = &existing[i]
+		}
+	}
+
 	for _, obs := range req.Observations {
 		ip := strings.TrimSpace(obs.IP)
 		if ip == "" {
@@ -178,13 +188,23 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		if obsAt.IsZero() {
 			obsAt = now
 		}
-		seenIPs[ip] = true
 		isAlive := obs.IsAlive || len(obs.Services) > 0
 
-		prevHost, err := p.store.GetHostByIP(ctx, ip)
-		if err != nil && !errors.Is(err, db.ErrNotFound) {
-			return nil, fmt.Errorf("lookup host %s: %w", ip, err)
+		// A repeated IP in the same batch re-reads the store so it sees the first write.
+		var prevHost *domain.Host
+		if known != nil && !seenIPs[ip] {
+			prevHost = known[ip]
+		} else {
+			var err error
+			prevHost, err = p.store.GetHostByIP(ctx, ip)
+			if err != nil && !errors.Is(err, db.ErrNotFound) {
+				return nil, fmt.Errorf("lookup host %s: %w", ip, err)
+			}
+			if errors.Is(err, db.ErrNotFound) {
+				prevHost = nil
+			}
 		}
+		seenIPs[ip] = true
 		// A dead IP that was never seen before is not an asset: do not create a host record
 		// (otherwise scanning a mostly empty /16 would create ~65k phantom NEW hosts).
 		if !isAlive && prevHost == nil {

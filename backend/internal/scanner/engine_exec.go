@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strconv"
@@ -117,11 +118,39 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		chunkTargetSec = DefaultChunkTargetSec
 	}
 
+	// One honest global budget of maxRate probes/s, split into
+	//   - httpShare: HTTP fingerprinting requests (1 request = 1 new TCP connection, the
+	//     same unit nmap -sT counts), paced by the Governor;
+	//   - nmapPool: shared by every concurrently running nmap process via rateBudget.
+	// Without nmap (pure-Go fallback) everything goes through the Governor at maxRate.
+	useNmap := e.cfg.NmapRunner != nil && e.cfg.NmapRunner.UseNmap && e.cfg.NmapRunner.NmapBinary != "" &&
+		e.cfg.CustomDiscoveryFn == nil && e.cfg.CustomServiceScanFn == nil
+	httpShare := 0
+	if profile.EnableHTTPFingerprint {
+		httpShare = maxRate / 10
+		if httpShare < 1 {
+			httpShare = 1
+		}
+	}
+	nmapPool := maxRate - httpShare
+	if nmapPool < 1 {
+		nmapPool = 1
+	}
+	govRate := maxRate
+	if useNmap && httpShare > 0 {
+		govRate = httpShare
+	}
+
 	gov := NewGovernor(GovernorConfig{
-		GlobalRatePerSec:  float64(maxRate),
+		GlobalRatePerSec: float64(govRate),
+		// A tenth of a second's worth of burst (default would be a full second): on the
+		// Hetzner /18 run, HTTP bursts on top of fully paced nmap shares were the brief
+		// 1572..1598/s peaks against the 1500 cap.
+		GlobalBurst:       max(4, govRate/10),
 		PerHostRatePerSec: httpRPS,
-		MinRatePerSec:     math.Max(5, float64(maxRate)*0.1),
+		MinRatePerSec:     math.Min(float64(govRate), math.Max(5, float64(govRate)*0.1)),
 		OnThrottle: func(te ThrottleEvent) {
+			log.Printf("[INFO] scan %s governor throttle: host=%s reason=%s rate %.1f -> %.1f (%d events)", run.ID, te.Host, te.Reason, te.OldRate, te.NewRate, te.ErrorCount)
 			emit("governor.throttle", map[string]any{
 				"host": te.Host, "reason": te.Reason, "old_rate": te.OldRate, "new_rate": te.NewRate, "error_count": te.ErrorCount,
 			})
@@ -161,14 +190,47 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	}
 	segStart := e.cfg.Now()
 
-	workers, perWorkerRate := ChunkWorkerPlan(e.cfg.MaxChunkWorkers, profile.Concurrency, maxRate, pendingCount)
-	fpWorkers := concurrency / workers
-	if fpWorkers < 1 {
-		fpWorkers = 1
+	// Pipeline shape: `workers` discovery workers (one nmap sweep each), svcWorkers service
+	// workers (-sV runs are wait-bound, so several run side by side on small shares), and a
+	// global pool of `concurrency` HTTP fingerprint slots.
+	// Discovery is planned on the pool minus one service share, so a -sV process can always
+	// start even while every discovery worker holds its share (otherwise chunks waiting for
+	// Stage 2 could never finish and the pipeline would stall).
+	//
+	// -sV is wait-bound (silent services, probe chains), so it needs many concurrent
+	// processes on small shares rather than one big share: with a single 84 pps service share
+	// left beside 4x316 pps of sweeps, -sV queued behind discovery (120-140 s per chunk on
+	// the /20 bench). Reserve svcWorkers small shares (at most a quarter of the pool).
+	planWorkers, _ := ChunkWorkerPlan(e.cfg.MaxChunkWorkers, profile.Concurrency, nmapPool, pendingCount)
+	svcWorkers := 2 * planWorkers
+	if svcWorkers > 16 {
+		svcWorkers = 16
 	}
+	svcWant := nmapPool / 64
+	if svcWant < MinWorkerRatePPS {
+		svcWant = MinWorkerRatePPS
+	}
+	svcReserve := svcWorkers * svcWant
+	if svcReserve > nmapPool/4 {
+		svcReserve = nmapPool / 4
+		svcWant = svcReserve / svcWorkers
+	}
+	if svcWant < 1 {
+		svcWant, svcReserve = 1, svcWorkers
+	}
+	discPool := nmapPool - svcReserve
+	if discPool < 1 {
+		discPool = 1
+	}
+	workers, perWorkerRate := ChunkWorkerPlan(e.cfg.MaxChunkWorkers, profile.Concurrency, discPool, pendingCount)
+	budget := newRateBudget(nmapPool)
+	fpSem := make(chan struct{}, concurrency)
 	emit("scan.workers", map[string]any{
 		"chunk_workers":       workers,
+		"service_workers":     svcWorkers,
 		"per_worker_rate_pps": perWorkerRate,
+		"service_rate_pps":    svcWant,
+		"http_rate_rps":       httpShare,
 		"max_rate_pps":        maxRate,
 		"pending_chunks":      pendingCount,
 	})
@@ -199,6 +261,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		}()
 	}
 
+	stats := &stageStats{}
 	var mu sync.Mutex
 	nextIdx := 0
 	maxDispatched := -1
@@ -221,15 +284,16 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	}
 
 	// claim hands the next not-yet-done chunk to a worker, or reports that dispatching must stop.
-	claim := func(worker int) (int, []string, bool) {
+	claim := func(worker, rate int) (int, []string, bool) {
 		mu.Lock()
 		defer mu.Unlock()
 		if scanCtx.Err() != nil {
 			return -1, nil, false
 		}
 		if !windowGuard.IsOpen(e.cfg.Now()) {
+			// Stop dispatching. Chunks already in a later pipeline stage are interrupted by
+			// the window poller (within WindowPollInterval), not here.
 			windowClosed.Store(true)
-			cancelScan()
 			return -1, nil, false
 		}
 		for nextIdx < len(run.Chunks) {
@@ -245,7 +309,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 			ch.FinishedAt = nil
 			ch.Error = ""
 			ch.NmapCommands = nil
-			ch.MaxRatePPS = perWorkerRate
+			ch.MaxRatePPS = rate
 			ch.Worker = worker
 			if i > maxDispatched {
 				maxDispatched = i
@@ -255,14 +319,14 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 			}
 			emit("scan.chunk", map[string]any{
 				"chunk_id": ch.ID, "chunk_index": ch.ChunkIndex, "status": ch.Status, "ip_count": ch.IPCount,
-				"worker": worker, "max_rate_pps": perWorkerRate,
+				"worker": worker, "max_rate_pps": rate,
 			})
 			return i, append([]string(nil), ch.Targets...), true
 		}
 		return -1, nil, false
 	}
 
-	finish := func(i int, chunkStart time.Time, obs []domain.ObservedHost, chunkXML string, cmds []string, chunkErr error) {
+	finish := func(i int, chunkStart time.Time, obs []domain.ObservedHost, chunkXML string, cmds []string, sm chunkStageMs, chunkErr error) {
 		mu.Lock()
 		defer mu.Unlock()
 		ch := &run.Chunks[i]
@@ -325,9 +389,16 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		progressLocked()
 
 		chunkSnapshot := *ch
-		// Adaptive re-chunking from measured per-worker throughput.
+		// Adaptive re-chunking from measured per-worker discovery throughput. Only the
+		// discovery stage scales with chunk size; -sV and HTTP run pipelined and their latency
+		// is set by the slowest service, so feeding whole-chunk time back here used to shrink
+		// chunks (512 -> 96 IPs) and multiply that fixed latency.
 		if ch.Status == domain.ChunkStatusDone && !e.cfg.DisableAdaptiveChunking {
-			hps := float64(ch.IPCount) / (float64(durMs) / 1000.0)
+			discMs := sm.Discovery
+			if discMs <= 0 {
+				discMs = durMs
+			}
+			hps := float64(ch.IPCount) / (float64(discMs) / 1000.0)
 			if ewmaHPS == 0 {
 				ewmaHPS = hps
 			} else {
@@ -350,6 +421,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 			"chunk_id": chunkSnapshot.ID, "chunk_index": chunkSnapshot.ChunkIndex, "status": chunkSnapshot.Status,
 			"active_hosts": chunkSnapshot.ActiveHosts, "services": chunkSnapshot.Services, "duration_ms": chunkSnapshot.DurationMs,
 			"worker": chunkSnapshot.Worker, "nmap_commands": chunkSnapshot.NmapCommands,
+			"stage_ms": sm,
 		})
 		emit("scan.progress", map[string]any{
 			"scanned_ips": run.ScannedIPs, "total_ips": run.TotalIPs,
@@ -363,23 +435,142 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		}
 	}
 
-	var wg sync.WaitGroup
-	for w := 1; w <= workers; w++ {
-		wg.Add(1)
+	// Pipeline: discovery workers -> svcCh -> service workers -> HTTP fingerprint goroutines
+	// (bounded by fpSem). A chunk is checkpointed (finish) only when every stage is done, so
+	// the ledger semantics are unchanged: an interrupted chunk goes back to PENDING whatever
+	// stage it was in. inflight bounds how far discovery may run ahead of the later stages.
+	// A waiting chunk costs a few KB, so discovery may run up to 32 chunks ahead of the
+	// later stages: slow HTTP fingerprinting must not stall the rate-bound sweep (on the
+	// Hetzner run a 3*workers bound idled every sweep while chunks queued for HTTP).
+	inflight := make(chan struct{}, workers+svcWorkers+32)
+	svcCh := make(chan *chunkWork, svcWorkers)
+	complete := func(w *chunkWork, err error) {
+		var obs []domain.ObservedHost
+		if err == nil {
+			obs = e.buildObserved(w, ipToDomains)
+		}
+		finish(w.idx, w.start, obs, w.xml, w.cmds, w.sm, err)
+		<-inflight
+	}
+	minShare := perWorkerRate / 2
+	if minShare < MinWorkerRatePPS {
+		minShare = MinWorkerRatePPS
+	}
+	// throttled scales an nmap share by the Governor's distress factor, so explicit target
+	// distress (HTTP 429/503, reset bursts) also slows every nmap process launched afterwards.
+	// Timeouts deliberately don't: on the Hetzner /18 run, HTTP timeouts pushed the Governor
+	// to its floor and, through this coupling, cut every sweep to 29 pps (10x slower).
+	throttled := func(n int) int {
+		if f := gov.DistressFactor(); f < 1 {
+			n = int(float64(n) * f)
+		}
+		if n < 1 {
+			n = 1
+		}
+		return n
+	}
+	// svcShare sizes a -sV process's share. While chunks are still being dispatched it takes
+	// its small reserved share. Once every chunk is dispatched no new sweep will ask for
+	// budget, so -sV (whose port phase is rate-bound) may wait for a large share: the final
+	// chunks' -sV is the tail of the whole scan (100-150 s at 21 pps on the /20 bench).
+	allDispatched := func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return nextIdx >= len(run.Chunks)
+	}
+	svcShare := func() (int, int) {
+		want := svcWant
+		if allDispatched() {
+			if tail := nmapPool / svcWorkers; tail > want {
+				want = tail
+			}
+		}
+		want = throttled(want)
+		minGrant := want / 2
+		if minGrant > MinWorkerRatePPS && !allDispatched() {
+			minGrant = MinWorkerRatePPS
+		}
+		if minGrant < 1 {
+			minGrant = 1
+		}
+		return want, minGrant
+	}
+
+	var discWG sync.WaitGroup
+	for wk := 1; wk <= workers; wk++ {
+		discWG.Add(1)
 		go func(worker int) {
-			defer wg.Done()
+			defer discWG.Done()
 			for {
-				i, targets, ok := claim(worker)
-				if !ok {
+				select {
+				case inflight <- struct{}{}:
+				case <-scanCtx.Done():
 					return
 				}
-				chunkStart := e.cfg.Now()
-				obs, chunkXML, cmds, chunkErr := e.executeChunk(scanCtx, targets, ports, profile, perWorkerRate, fpWorkers, retryUnstable, gov, unstableSet, ipToDomains)
-				finish(i, chunkStart, obs, chunkXML, cmds, chunkErr)
+				rate, err := budget.acquire(scanCtx, throttled(perWorkerRate), min(minShare, throttled(perWorkerRate)))
+				if err != nil {
+					<-inflight
+					return
+				}
+				i, targets, ok := claim(worker, rate)
+				if !ok {
+					budget.release(rate)
+					<-inflight
+					return
+				}
+				w := &chunkWork{idx: i, start: e.cfg.Now(), targets: targets}
+				derr := e.discoverChunk(scanCtx, w, ports, rate, retryUnstable, gov, unstableSet, stats)
+				budget.release(rate)
+				if derr != nil || len(w.alive) == 0 {
+					complete(w, derr)
+					continue
+				}
+				select {
+				case svcCh <- w:
+				case <-scanCtx.Done():
+					complete(w, scanCtx.Err())
+				}
 			}
-		}(w)
+		}(wk)
 	}
-	wg.Wait()
+
+	var svcWG, fpWG sync.WaitGroup
+	for s := 0; s < svcWorkers; s++ {
+		svcWG.Add(1)
+		go func() {
+			defer svcWG.Done()
+			for w := range svcCh {
+				if scanCtx.Err() != nil {
+					complete(w, scanCtx.Err())
+					continue
+				}
+				if err := e.serviceChunk(scanCtx, w, ports, budget, svcShare, gov, stats); err != nil {
+					complete(w, err)
+					continue
+				}
+				if !profile.EnableHTTPFingerprint {
+					complete(w, nil)
+					continue
+				}
+				fpWG.Add(1)
+				go func(w *chunkWork) {
+					defer fpWG.Done()
+					t0 := time.Now()
+					e.fingerprintStage(scanCtx, w.alive, w.svcMap, w.guessed, profile, fpSem, gov, ipToDomains, stats)
+					d := time.Since(t0)
+					stats.fingerprintNs.Add(int64(d))
+					w.sm.Fingerprint += d.Milliseconds()
+					complete(w, scanCtx.Err())
+				}(w)
+			}
+		}()
+	}
+	discWG.Wait()
+	close(svcCh)
+	svcWG.Wait()
+	fpWG.Wait()
+	nmapPeak := budget.peakUsed()
+	emit("scan.budget", map[string]any{"nmap_pool_pps": nmapPool, "nmap_peak_granted_pps": nmapPeak, "http_rate_rps": httpShare, "max_rate_pps": maxRate})
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -396,6 +587,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		ScannedIPs:       segmentIPs,
 		ChunkWorkers:     workers,
 		PerWorkerRatePPS: perWorkerRate,
+		StageTimings:     stats.snapshot(),
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -447,6 +639,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	emit("scan.completed", map[string]any{
 		"total_ips": run.TotalIPs, "active_hosts": run.ActiveHosts, "services_found": run.ServicesFound,
 		"duration_ms": run.DurationMs, "has_nmap_xml": run.HasRawNmapXML, "chunk_workers": workers,
+		"stage_timings": stats.snapshot(),
 	})
 	if cb.OnCheckpoint != nil {
 		cb.OnCheckpoint(run)
@@ -493,120 +686,6 @@ func rechunkTail(run *domain.ScanRun, tailStart int, hostsPerSec float64, chunkT
 	run.Chunks = chunks
 	run.TotalChunks = len(chunks)
 	return cur, ideal, true
-}
-
-func (e *Engine) executeChunk(
-	ctx context.Context,
-	chunkIPs []string,
-	ports []int,
-	profile domain.ScanProfile,
-	ratePPS int,
-	fpWorkers int,
-	retryUnstable int,
-	gov *Governor,
-	unstableSet map[string]struct{},
-	ipToDomains map[string][]string,
-) ([]domain.ObservedHost, string, []string, error) {
-	var cmds []string
-	record := func(c string) {
-		if c != "" {
-			cmds = append(cmds, c)
-		}
-	}
-
-	// Stage 1: Host Discovery.
-	activeIPs, cmd, err := e.discoverStage(ctx, chunkIPs, ports, ratePPS, gov)
-	record(cmd)
-	if err != nil {
-		return nil, "", cmds, err
-	}
-
-	aliveSet := make(map[string]bool, len(activeIPs))
-	for _, ip := range activeIPs {
-		aliveSet[ip] = true
-	}
-
-	// Stage 4 (early verification): re-probe previously-seen hosts missed in Stage 1.
-	var toReprobe []string
-	for _, ip := range chunkIPs {
-		if !aliveSet[ip] {
-			if _, isTracked := unstableSet[ip]; isTracked {
-				toReprobe = append(toReprobe, ip)
-			}
-		}
-	}
-	for attempt := 0; attempt < retryUnstable && len(toReprobe) > 0; attempt++ {
-		if ctx.Err() != nil {
-			return nil, "", cmds, ctx.Err()
-		}
-		recovered, rcmd, rerr := e.discoverStage(ctx, toReprobe, ports, ratePPS, gov)
-		record(rcmd)
-		if rerr != nil {
-			if ctx.Err() != nil {
-				return nil, "", cmds, ctx.Err()
-			}
-			break
-		}
-		recSet := make(map[string]bool, len(recovered))
-		for _, ip := range recovered {
-			recSet[ip] = true
-			if !aliveSet[ip] {
-				aliveSet[ip] = true
-				activeIPs = append(activeIPs, ip)
-			}
-		}
-		var stillMissing []string
-		for _, ip := range toReprobe {
-			if !recSet[ip] {
-				stillMissing = append(stillMissing, ip)
-			}
-		}
-		toReprobe = stillMissing
-	}
-
-	// Stage 2: Service Detection strictly on active hosts & allowed ports.
-	var svcMap map[string][]domain.ObservedService
-	var chunkXML string
-	if len(activeIPs) > 0 {
-		var scmd string
-		svcMap, chunkXML, scmd, err = e.serviceScanStage(ctx, activeIPs, ports, ratePPS, gov)
-		record(scmd)
-		if err != nil {
-			return nil, "", cmds, err
-		}
-	}
-
-	// Stage 3: Safe HTTP/HTTPS/TLS Fingerprinting with bounded worker pool.
-	if profile.EnableHTTPFingerprint && len(activeIPs) > 0 {
-		e.fingerprintStage(ctx, activeIPs, svcMap, profile, fpWorkers, gov, ipToDomains)
-	}
-	if ctx.Err() != nil {
-		return nil, "", cmds, ctx.Err()
-	}
-
-	now := e.cfg.Now()
-	observed := make([]domain.ObservedHost, 0, len(chunkIPs))
-	for _, ip := range chunkIPs {
-		domains := ipToDomains[ip]
-		var hostname string
-		if len(domains) > 0 {
-			hostname = domains[0]
-		}
-		isAlive := aliveSet[ip]
-		svcs := svcMap[ip]
-		if len(svcs) > 0 {
-			isAlive = true
-		}
-		observed = append(observed, domain.ObservedHost{
-			IP:         ip,
-			Hostname:   hostname,
-			Domains:    append([]string(nil), domains...),
-			IsAlive:    isAlive,
-			ObservedAt: now,
-			Services:   svcs,
-		})
-	}
-	return observed, chunkXML, cmds, nil
 }
 
 func (e *Engine) discoverStage(ctx context.Context, ips []string, ports []int, ratePPS int, gov *Governor) ([]string, string, error) {

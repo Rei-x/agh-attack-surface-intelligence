@@ -41,7 +41,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
 # --- Stage 3: Minimal Production Runtime -------------------------------------
 FROM alpine:3.21 AS runtime
 
-RUN apk add --no-cache nmap ca-certificates tzdata
+# nmap-scripts is required by -sV: version detection always loads NSE (nse_main.lua and the
+# "version" category scripts). Without it Alpine's nmap aborts every -sV run ("could not
+# locate nse_main.lua") and the scanner silently fell back to plain TCP connect + banners.
+RUN apk add --no-cache nmap nmap-scripts ca-certificates tzdata
 
 WORKDIR /app
 

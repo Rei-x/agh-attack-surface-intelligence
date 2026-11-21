@@ -212,35 +212,55 @@ func TestConcurrentChunkWorkersHonorTotalRateCapWithRealExec(t *testing.T) {
 	if run.Status != domain.ScanStatusCompleted || run.CompletedChunks != 8 || doneUpdates != 8 {
 		t.Fatalf("status=%s completed=%d doneUpdates=%d", run.Status, run.CompletedChunks, doneUpdates)
 	}
-	if out.ChunkWorkers != 4 || out.PerWorkerRatePPS != 100 {
-		t.Fatalf("expected 4 workers x 100 pps, got %d x %d", out.ChunkWorkers, out.PerWorkerRatePPS)
+	// Pool 400 (no HTTP share): 8 service shares are reserved (capped at a quarter of the pool:
+	// 8 x 12), discovery workers split the remaining 300 -> 4 x 75.
+	if out.ChunkWorkers != 4 || out.PerWorkerRatePPS != 75 {
+		t.Fatalf("expected 4 workers x 75 pps, got %d x %d", out.ChunkWorkers, out.PerWorkerRatePPS)
 	}
 
 	calls := readFakeLog(t, logPath)
-	if len(calls) != 16 { // discovery + service per chunk
+	if len(calls) != 16 { // sweep + service per chunk (unprivileged: no ICMP pass)
 		t.Fatalf("expected 16 nmap invocations, got %d", len(calls))
 	}
 	maxSum, maxProcs := maxRateOverlap(calls)
 	if maxProcs < 2 {
 		t.Fatalf("chunks did not run concurrently (max overlap %d)", maxProcs)
 	}
-	if maxProcs > 4 || maxSum > profile.MaxRatePPS {
+	// Discovery and service processes overlap in the pipeline; the summed --max-rate of
+	// everything running at any instant must stay within the profile cap.
+	if maxSum > profile.MaxRatePPS {
 		t.Fatalf("concurrent nmap processes exceeded cap: procs=%d summed --max-rate=%d cap=%d", maxProcs, maxSum, profile.MaxRatePPS)
 	}
+	sweeps, services := 0, 0
 	for _, c := range calls {
 		joined := strings.Join(c.args, " ")
-		if argValue(c.args, "--max-rate") != "100" || !strings.Contains(joined, "--host-timeout") || !strings.Contains(joined, "--max-retries") {
+		if !strings.Contains(joined, "--max-retries") {
 			t.Fatalf("unexpected nmap argv: %s", joined)
 		}
-		if strings.Contains(joined, "-sn") && !strings.Contains(joined, "-PE -PS21,22,23,25,80,443,445,3389,8080,8081,8443 -PA80,443") {
-			t.Fatalf("discovery probes missing (profile port 8081 must be added to -PS): %s", joined)
+		if strings.Contains(joined, "-sV") {
+			services++
+			// 12 pps reserved share, up to 400/8 = 50 once every chunk is dispatched (tail).
+			if r, _ := strconv.Atoi(argValue(c.args, "--max-rate")); r < 1 || r > 50 || !strings.Contains(joined, "--host-timeout") {
+				t.Fatalf("service scan argv: %s", joined)
+			}
+		} else {
+			sweeps++
+			// A sweep gets its planned 75 pps (the service reserve keeps it from shrinking).
+			r, _ := strconv.Atoi(argValue(c.args, "--max-rate"))
+			mr, _ := strconv.Atoi(argValue(c.args, "--min-rate"))
+			if r < 37 || r > 75 || mr != r*90/100 || !strings.Contains(joined, "-sT -Pn -n -p 80,8081 --max-retries 0") {
+				t.Fatalf("sweep argv (every profile port, one probe each, paced): %s", joined)
+			}
 		}
 		if err := ValidateSafeNmapArgs(c.args); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if sweeps != 8 || services != 8 {
+		t.Fatalf("expected 8 sweeps + 8 service scans, got %d + %d", sweeps, services)
+	}
 	for _, ch := range run.Chunks {
-		if len(ch.NmapCommands) != 2 || !strings.HasPrefix(ch.NmapCommands[0], self) || ch.MaxRatePPS != 100 || ch.Worker < 1 || ch.Worker > 4 {
+		if len(ch.NmapCommands) != 2 || !strings.HasPrefix(ch.NmapCommands[0], self) || ch.MaxRatePPS < 37 || ch.MaxRatePPS > 75 || ch.Worker < 1 || ch.Worker > 4 {
 			t.Fatalf("chunk %d missing transparency data: %+v", ch.ChunkIndex, ch)
 		}
 	}
@@ -466,7 +486,7 @@ func TestNmapOptionsFromEnv(t *testing.T) {
 	t.Setenv("ASI_NMAP_VERSION_INTENSITY", "12") // out of range -> ignored
 	t.Setenv("ASI_NMAP_TIMING", "2")
 	o := NmapOptionsFromEnv()
-	if o.PingICMPEcho || len(o.PingSYNPorts) != 2 || len(o.PingACKPorts) != 0 || o.ServiceHostTimeout != 90*time.Second || o.VersionIntensity != 5 || o.Timing != 2 {
+	if o.PingICMPEcho || len(o.PingSYNPorts) != 2 || len(o.PingACKPorts) != 0 || o.ServiceHostTimeout != 90*time.Second || o.VersionIntensity != DefaultNmapOptions().VersionIntensity || o.Timing != 2 {
 		t.Fatalf("env overrides not applied correctly: %+v", o)
 	}
 }

@@ -35,7 +35,31 @@ type NmapOptions struct {
 
 	// Timing is the -T template (0..5). <0 means "derive from the per-process rate".
 	Timing int
+
+	// Discovery selects the Stage 1 method:
+	//   "sweep" (default): -Pn port sweep of every profile port (+ ICMP echo pass when
+	//            privileged). One probe per (IP, port), no retransmissions; a host is alive if
+	//            any port answers (SYN-ACK or RST) or it answers ICMP echo. The sweep also
+	//            yields the open ports, so Stage 2 runs -sV only on hosts/ports known open.
+	//   "ping":  the classic nmap -sn ping scan (PingICMPEcho/PingSYNPorts/PingACKPorts).
+	// Measured on the 10.66.0.0/22 scale-lab slice: ping scan 50 probes/IP (it needs
+	// --max-retries 1; with 0 it sends ~2 probes/IP and misses 15% of hosts), sweep 27.4
+	// probes/IP with 100% host and open-port recall.
+	Discovery string
+	// SweepMaxRetries is --max-retries for the sweep (0: each (IP,port) probed once).
+	SweepMaxRetries int
+	// SweepMinRatePct sets --min-rate to this percentage of the process's --max-rate share.
+	// nmap's --max-rate is a long-run average: after an idle stretch it "catches up" with
+	// bursts (measured 610/s on a 375 pps share). Pacing with --min-rate close to --max-rate
+	// keeps every second under the cap (measured 1227..1402/s on a 1500 share). 0 disables.
+	SweepMinRatePct int
 }
+
+// Discovery modes.
+const (
+	DiscoverySweep = "sweep"
+	DiscoveryPing  = "ping"
+)
 
 // Default discovery probe set: ICMP echo + TCP SYN to common ports + TCP ACK to 80/443.
 // Catches hosts that drop ICMP (very common in university networks behind firewalls).
@@ -44,7 +68,9 @@ var (
 	defaultPingACKPorts = []int{80, 443}
 )
 
-const maxPingSYNPorts = 24
+// maxPingSYNPorts bounds -PS in ping mode. It was 24, which silently dropped the highest profile
+// ports (8443, 9090, 9100, 9200 on the 28-port scale lab) from discovery.
+const maxPingSYNPorts = 64
 
 // DefaultNmapOptions returns conservative defaults for large, partially hostile networks.
 func DefaultNmapOptions() NmapOptions {
@@ -57,8 +83,15 @@ func DefaultNmapOptions() NmapOptions {
 		DiscoveryHostTimeout:  20 * time.Second,
 		ServiceMaxRetries:     2,
 		ServiceHostTimeout:    3 * time.Minute,
-		VersionIntensity:      5,
-		Timing:                -1,
+		// -sV time is dominated by waiting for silent services (NULL probe 6 s, then probe
+		// chains), not by packets, and an nmap host group finishes with its slowest service.
+		// Intensity 2 (= --version-light) halved a 38-host group (94.8 s -> 49.7 s) with the
+		// same 64 versions identified.
+		VersionIntensity: 2,
+		Timing:           -1,
+		Discovery:        DiscoverySweep,
+		SweepMaxRetries:  0,
+		SweepMinRatePct:  90,
 	}
 }
 
@@ -115,7 +148,68 @@ func NmapOptionsFromEnv() NmapOptions {
 	envDur("ASI_NMAP_HOST_TIMEOUT", &o.ServiceHostTimeout)
 	envInt("ASI_NMAP_VERSION_INTENSITY", 0, 9, &o.VersionIntensity)
 	envInt("ASI_NMAP_TIMING", 0, 5, &o.Timing)
+	if v, ok := os.LookupEnv("ASI_NMAP_DISCOVERY"); ok {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case DiscoverySweep:
+			o.Discovery = DiscoverySweep
+		case DiscoveryPing:
+			o.Discovery = DiscoveryPing
+		}
+	}
+	envInt("ASI_NMAP_SWEEP_MAX_RETRIES", 0, 3, &o.SweepMaxRetries)
+	envInt("ASI_NMAP_SWEEP_MIN_RATE_PCT", 0, 100, &o.SweepMinRatePct)
 	return o
+}
+
+// BuildSweepArgs returns the nmap argv for the Stage 1 port sweep: every target, every
+// profile port, one probe each (-Pn: no ping phase; liveness is decided from the answers).
+// -sS needs raw sockets; unprivileged runs use -sT (connect), which nmap rate-limits the same way.
+func (o NmapOptions) BuildSweepArgs(targets []string, ports []int, ratePPS int, privileged bool) []string {
+	if ratePPS <= 0 {
+		ratePPS = 300
+	}
+	scan := "-sT"
+	if privileged {
+		scan = "-sS"
+	}
+	args := []string{scan, "-Pn", "-n", "-p", joinPorts(dedupeSortPorts(ports))}
+	retries := o.SweepMaxRetries
+	if retries < 0 {
+		retries = 0
+	}
+	args = append(args, "--max-retries", strconv.Itoa(retries), "-T"+strconv.Itoa(o.timingFor(ratePPS)), "--max-rate", strconv.Itoa(ratePPS))
+	args = o.appendPacing(args, ratePPS)
+	args = append(args, "-oX", "-")
+	return append(args, CompactIPv4Targets(targets)...)
+}
+
+// appendPacing adds --min-rate (SweepMinRatePct of the share) so nmap sends evenly instead of
+// catching up on its long-run --max-rate average with bursts.
+func (o NmapOptions) appendPacing(args []string, ratePPS int) []string {
+	if o.SweepMinRatePct > 0 {
+		if minRate := ratePPS * o.SweepMinRatePct / 100; minRate >= 1 {
+			args = append(args, "--min-rate", strconv.Itoa(minRate))
+		}
+	}
+	return args
+}
+
+// BuildICMPArgs returns the nmap argv for the ICMP echo liveness pass that complements the
+// sweep (hosts whose every port is filtered but that answer ping). Privileged only.
+func (o NmapOptions) BuildICMPArgs(targets []string, ratePPS int) []string {
+	if ratePPS <= 0 {
+		ratePPS = 300
+	}
+	args := []string{"-sn", "-n", "-PE", "--max-retries", "1"}
+	if o.DiscoveryHostTimeout > 0 {
+		args = append(args, "--host-timeout", nmapDuration(o.DiscoveryHostTimeout))
+	}
+	args = append(args, "-T"+strconv.Itoa(o.timingFor(ratePPS)), "--max-rate", strconv.Itoa(ratePPS))
+	// Paced like the sweep: unpaced, 4 ICMP passes starting together peaked at 1436/s
+	// against a 1264 pps summed share.
+	args = o.appendPacing(args, ratePPS)
+	args = append(args, "-oX", "-")
+	return append(args, CompactIPv4Targets(targets)...)
 }
 
 // timingFor picks the -T template. Explicit configuration wins; otherwise we pick
@@ -173,15 +267,24 @@ func (o NmapOptions) BuildDiscoveryArgs(targets []string, profilePorts []int, ra
 // BuildServiceArgs returns the exact nmap argv (without binary) for Stage 2 service detection.
 // -sT (connect scan) works unprivileged; -Pn because Stage 1 already proved liveness.
 func (o NmapOptions) BuildServiceArgs(targets []string, ports []int, ratePPS int) []string {
+	return o.BuildServiceArgsPriv(targets, ports, ratePPS, false)
+}
+
+// BuildServiceArgsPriv is BuildServiceArgs choosing -sS (raw SYN) when privileged.
+func (o NmapOptions) BuildServiceArgsPriv(targets []string, ports []int, ratePPS int, privileged bool) []string {
 	if ratePPS <= 0 {
 		ratePPS = 200
 	}
 	intensity := o.VersionIntensity
 	if intensity < 0 || intensity > 9 {
-		intensity = 5
+		intensity = 2
+	}
+	scan := "-sT"
+	if privileged {
+		scan = "-sS"
 	}
 	args := []string{
-		"-sT", "-sV",
+		scan, "-sV",
 		"--version-intensity", strconv.Itoa(intensity),
 		"-Pn", "-n",
 		"-p", joinPorts(ports),

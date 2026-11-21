@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -156,9 +157,9 @@ func TestNoiseGovernorDynamicBackoffAndThrottleCallback(t *testing.T) {
 		},
 	})
 
-	// Trigger timeout burst (4 timeouts -> rate halves from 100 -> 50).
+	// Trigger timeout burst from several hosts (4 timeouts -> rate halves from 100 -> 50).
 	for i := 0; i < 4; i++ {
-		gov.RecordTimeout("10.0.0.1")
+		gov.RecordTimeout(fmt.Sprintf("10.0.0.%d", i+1))
 	}
 	if got := gov.CurrentRate(); got != 50 {
 		t.Fatalf("after timeout burst rate = %.1f, want 50.0", got)

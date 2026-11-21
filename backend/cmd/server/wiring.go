@@ -566,6 +566,10 @@ func (r *LiveScanRunner) ingestSegment(ctx context.Context, run *domain.ScanRun,
 	if res == nil || r.pipeline == nil || (len(res.ObservedHosts) == 0 && res.RawNmapXML == "") {
 		return nil
 	}
+	ingestStart := time.Now()
+	defer func() {
+		log.Printf("[INFO] scan %s ingest: %d observations in %s", run.ID, len(res.ObservedHosts), time.Since(ingestStart).Round(time.Millisecond))
+	}()
 	if _, perr := r.pipeline.ProcessObservations(ctx, ingest.IngestRequest{
 		ScanRunID:        run.ID,
 		ProfileID:        profile.ID,
