@@ -106,7 +106,7 @@ export function ScreenshotPreview({ item, onClose }: { item: GalleryItem | null;
               {item.hostname ? ` · ${item.hostname}` : ''}
             </div>
           </div>
-          <CategoryBadges flags={serviceFlags(item.service)} link className="ml-auto" />
+          <CategoryBadges flags={serviceFlags(item.service)} className="ml-auto" />
         </div>
 
         <ScreenshotImage id={cur.id} alt={`${hostPort(item)} ${title}`} lazy={false} className="border border-border" />

@@ -69,6 +69,28 @@ nmap is optional. Without it, the pure-Go TCP connect scanner with banner grabbi
 `winget install Insecure.Nmap`). Root is never required: nmap runs as `-sT` (TCP connect).
 Unprivileged nmap on macOS cannot send ICMP echo, so host discovery uses TCP probes.
 
+### Web screenshots (Gallery)
+
+During HTTP fingerprinting every web service is rendered by a headless Chromium (1280x800,
+8 s per page, TLS errors ignored, dialogs dismissed, downloads denied) and shown in the
+Gallery and the host drawer. Each page load counts against the HTTP rate limit. No browser
+means no screenshots: the scan still runs and `dzieciol serve` / `scan` / `agent` print
+`screenshots unavailable (no Chromium)`. On the server or an agent host:
+
+```bash
+sudo apt install chromium                 # Debian/Ubuntu (or chromium-browser)
+# lighter, no GUI deps: npx @puppeteer/browsers install chrome-headless-shell@stable
+DZIECIOL_CHROME_PATH=/opt/chrome-headless-shell/chrome-headless-shell   # if not on PATH
+```
+
+An agent running as root starts Chromium with `--no-sandbox` (also forced by
+`DZIECIOL_CHROME_NO_SANDBOX=1`). Agents capture locally and upload the images with chunk
+results (gzip, capped at 24 MB of images per chunk). Images are stored encrypted in
+`<data dir>/screenshots/` (AES-256-GCM, deduplicated by content, last 5 per service); a
+visibly different page records a `screenshot_changed` change event. Per profile:
+"Capture screenshots" (default on). Host-wide: `DZIECIOL_SCREENSHOTS=false`,
+`DZIECIOL_SCREENSHOT_CONCURRENCY` (default 3 tabs), `DZIECIOL_SCREENSHOT_TIMEOUT` (default `8s`).
+
 ### Building and releasing
 
 ```bash
@@ -279,6 +301,7 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 | `DZIECIOL_PORT` | No | `8080` | Host port mapped to container `:8080`. |
 | `DZIECIOL_PUBLIC_URL` | No | *(scheme/host of the admin's request)* | Server URL put into the agent install command (e.g. `https://dzieciol.cbi.agh.edu.pl`). |
 | `DZIECIOL_AGENT_OFFLINE_AFTER` | No | `90s` | Silence after which a remote agent is marked offline and its running scan is parked (resumed when it returns). |
+| `DZIECIOL_CHROME_PATH` | No | *(auto: chrome-headless-shell, chromium, google-chrome on PATH)* | Browser used for web screenshots. `DZIECIOL_SCREENSHOTS=false` turns them off. |
 | `TZ` | No | `Europe/Warsaw` | Default timezone for scan windows and logs. |
 | `DZIECIOL_DEFECTDOJO_PRODUCT_TYPE_NAME` / `_PRODUCT_NAME` / `_ENGAGEMENT_NAME` | No | `Dzięcioł` / `AGH Attack Surface` / `Dzięcioł continuous discovery` | DefectDojo context names used when no product/engagement is pinned by ID (same levels as the secureCodeBox DefectDojo hook annotations, see `docs/SECURECODEBOX.md`). |
 | `DZIECIOL_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | No | `false` | Sends `deduplication_on_engagement=true` when DefectDojo auto-creates the engagement. |

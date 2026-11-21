@@ -158,7 +158,15 @@ export function useScreenshotImage<T extends Element>(id: string | undefined, la
       { rootMargin: '300px' }
     );
     io.observe(el);
-    return () => io.disconnect();
+    // Hidden or throttled tabs may never deliver observer callbacks: check geometry once.
+    const t = window.setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight + 300 && r.bottom > -300) setVisible(true);
+    }, 1200);
+    return () => {
+      io.disconnect();
+      window.clearTimeout(t);
+    };
   }, [lazy, visible]);
 
   useEffect(() => {
