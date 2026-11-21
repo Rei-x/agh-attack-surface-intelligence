@@ -49,7 +49,6 @@ func (e *Engine) handshake(ctx context.Context, hostPort, host string, cfg *tls.
 // (RC4, 3DES, CBC with RSA key exchange as offered by Go's insecure list) are accepted.
 func (e *Engine) tlsProtocols(ctx context.Context, hostPort, host string) (bool, string, string, error) {
 	var issues, tried []string
-	reachable := false
 	for _, v := range []struct {
 		ver  uint16
 		name string
@@ -57,7 +56,6 @@ func (e *Engine) tlsProtocols(ctx context.Context, hostPort, host string) (bool,
 		tried = append(tried, "ClientHello "+v.name+" only")
 		st, err := e.handshake(ctx, hostPort, host, &tls.Config{MinVersion: v.ver, MaxVersion: v.ver})
 		if err == nil {
-			reachable = true
 			issues = append(issues, fmt.Sprintf("%s accepted (negotiated %s)", v.name, tls.CipherSuiteName(st.CipherSuite)))
 		}
 	}
@@ -74,11 +72,9 @@ func (e *Engine) tlsProtocols(ctx context.Context, hostPort, host string) (bool,
 		tried = append(tried, "ClientHello TLS 1.2 offering only insecure cipher suites (RC4, 3DES, CBC-SHA256)")
 		st, err := e.handshake(ctx, hostPort, host, &tls.Config{MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12, CipherSuites: weak})
 		if err == nil {
-			reachable = true
 			issues = append(issues, "insecure cipher suite accepted: "+tls.CipherSuiteName(st.CipherSuite))
 		}
 	}
-	_ = reachable
 	if len(issues) == 0 {
 		return false, "", "", nil
 	}
