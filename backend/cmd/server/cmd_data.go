@@ -91,6 +91,7 @@ func cmdImport(args []string) error {
 		obs, err = ingest.ParseCSV(bytes.NewReader(data))
 	case "json", "scb":
 		if f == "scb" || ingest.LooksLikeSCBFindings(data) {
+			f = "scb"
 			obs, err = ingest.ParseSCBFindings(bytes.NewReader(data))
 		} else {
 			obs, err = ingest.ParseJSON(bytes.NewReader(data))
