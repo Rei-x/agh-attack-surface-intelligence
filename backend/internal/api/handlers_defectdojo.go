@@ -25,7 +25,7 @@ func (s *Server) handleGetDefectDojoConfig(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, safe)
 }
 
-const errDojoURL = "skonfiguruj adres DefectDojo jako pełny URL http(s), np. https://dojo.example:8443 / DefectDojo URL must be an absolute http(s) URL"
+const errDojoURL = "DefectDojo URL must be an absolute http(s) URL, e.g. https://dojo.example:8443"
 
 func isHTTPURL(raw string) bool {
 	u, err := url.Parse(raw)
@@ -44,7 +44,7 @@ func (s *Server) handleSaveDefectDojoConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if cfg.ProductID < 0 || cfg.EngagementID < 0 {
-		writeErr(w, http.StatusBadRequest, "product_id / engagement_id nie mogą być ujemne / must not be negative")
+		writeErr(w, http.StatusBadRequest, "product_id / engagement_id must not be negative")
 		return
 	}
 	if err := s.store.SaveDefectDojoConfig(r.Context(), &cfg); err != nil {

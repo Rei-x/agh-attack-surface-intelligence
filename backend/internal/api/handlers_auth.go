@@ -62,7 +62,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(req.Username) > 256 || len(req.Password) > 1024 {
-		writeErr(w, http.StatusBadRequest, "nazwa użytkownika lub hasło jest za długie / username or password too long")
+		writeErr(w, http.StatusBadRequest, "username or password too long")
 		return
 	}
 	keys := loginKeys(r, req.Username)
@@ -80,7 +80,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.store.GetUserByUsername(r.Context(), strings.TrimSpace(req.Username))
 	if err != nil && !errors.Is(err, db.ErrNotFound) {
-		writeErr(w, http.StatusServiceUnavailable, "baza danych jest niedostępna - spróbuj ponownie za chwilę / database unavailable")
+		writeErr(w, http.StatusServiceUnavailable, "database unavailable - try again in a moment")
 		return
 	}
 	ok := false

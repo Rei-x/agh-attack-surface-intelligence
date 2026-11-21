@@ -49,7 +49,7 @@ func (s *Server) handleCreateTarget(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(t.Label) > maxNameLen {
-		writeErr(w, http.StatusBadRequest, "etykieta za długa / label too long")
+		writeErr(w, http.StatusBadRequest, "label too long")
 		return
 	}
 	t.Enabled = true
@@ -125,7 +125,7 @@ func (s *Server) handleCreateExclusion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(ex.Reason) > maxNotesLen {
-		writeErr(w, http.StatusBadRequest, "uzasadnienie za długie / reason too long")
+		writeErr(w, http.StatusBadRequest, "reason too long")
 		return
 	}
 	ex.CreatedBy = currentUsername(r)
@@ -272,7 +272,7 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	profile := &domain.ScanProfile{
-		Name:                  nonEmptyStr(req.Name, "Szybki skan "+time.Now().UTC().Format("15:04")),
+		Name:                  nonEmptyStr(req.Name, "Quick scan "+time.Now().UTC().Format("15:04")),
 		Targets:               req.Targets,
 		AllowedPorts:          req.AllowedPorts,
 		MaxRatePPS:            req.MaxRatePPS,
@@ -293,7 +293,7 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(req.Notes) > maxNotesLen {
-		writeErr(w, http.StatusBadRequest, "notatki za długie / notes too long")
+		writeErr(w, http.StatusBadRequest, "notes too long")
 		return
 	}
 	applyProfileDefaults(profile)
