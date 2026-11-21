@@ -65,6 +65,19 @@ func (p *progressSnap) set(run *domain.ScanRun) {
 	p.chunks = append(p.chunks[:0:0], run.Chunks...)
 }
 
+// updateChunk records a chunk state change between checkpoints.
+func (p *progressSnap) updateChunk(ch domain.ScanChunk) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.chunks {
+		if p.chunks[i].ID == ch.ID {
+			p.chunks[i] = ch
+			p.version++
+			return
+		}
+	}
+}
+
 func (p *progressSnap) get() (agenthub.Timing, []domain.ScanChunk, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -234,6 +247,7 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 	var obsMu sync.Mutex
 	var pending []domain.ObservedHost
 	snap := &progressSnap{}
+	snap.set(run)
 	cb := scanner.RunCallbacks{
 		OnEvent: a.events.add,
 		OnHostObserved: func(o domain.ObservedHost) {
@@ -246,6 +260,7 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 		},
 		OnChunkUpdate: func(ch domain.ScanChunk) {
 			if ch.Status != domain.ChunkStatusDone && ch.Status != domain.ChunkStatusFailed {
+				snap.updateChunk(ch) // RUNNING / PAUSED shows up in the server's ledger
 				return
 			}
 			obsMu.Lock()
