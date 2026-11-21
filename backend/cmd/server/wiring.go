@@ -207,6 +207,10 @@ type LiveScanRunner struct {
 	// concurrent workers.
 	resumeMu sync.Mutex
 
+	// isRemoteRun reports runs executed by a remote agent (agenthub): boot recovery and the
+	// window watcher must leave those alone, the agent coordinator owns them.
+	isRemoteRun func(runID string) bool
+
 	// Test seams (nil in production): clock for window checks and engine config override.
 	nowFn        func() time.Time
 	engineConfig func(scanner.EngineConfig) scanner.EngineConfig
@@ -760,7 +764,7 @@ func (r *LiveScanRunner) RecoverInterrupted(ctx context.Context) (int, error) {
 		if run.RunType != "" && run.RunType != domain.ScanTypeActive {
 			continue
 		}
-		if r.IsScanActive(run.ID) {
+		if r.IsScanActive(run.ID) || (r.isRemoteRun != nil && r.isRemoteRun(run.ID)) {
 			continue
 		}
 		chunks, _ := r.store.GetScanChunks(ctx, run.ID)
@@ -818,6 +822,9 @@ func (r *LiveScanRunner) checkPausedWindowScans(ctx context.Context) {
 	for _, run := range runs {
 		if run.Status != domain.ScanStatusPausedWindow || run.ProfileID == "" {
 			continue
+		}
+		if r.isRemoteRun != nil && r.isRemoteRun(run.ID) {
+			continue // resumed by its agent (agenthub), never locally
 		}
 		r.mu.Lock()
 		_, alreadyRunning := r.active[run.ID]

@@ -316,3 +316,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value_enc TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Remote scanning agents: a profile may be routed to an enrolled agent (aegis agent).
+-- The agent registry, enrollment tokens and job leases live in app_settings (encrypted).
+ALTER TABLE scan_profiles ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT '';

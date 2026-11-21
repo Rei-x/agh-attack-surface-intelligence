@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/agenthub"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/auth"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
@@ -37,6 +38,9 @@ type Config struct {
 	// StaticFallback is served for "/" when neither StaticDir nor StaticFS has an index.html.
 	StaticFallback string
 	AllowedOrigin  string
+	// Agents is the remote scanning agent coordinator (nil: a private one is created, so the
+	// agent API always exists).
+	Agents *agenthub.Coordinator
 }
 
 // Server serves the complete AegisASI v1 REST API, SSE stream, and embedded/static SPA.
@@ -55,6 +59,7 @@ type Server struct {
 	localSched *scheduler.Scheduler
 
 	notifier *notify.Notifier // outbound alert webhook (fed by the ingest pipeline)
+	agents   *agenthub.Coordinator
 
 	routes []string      // registered mux patterns (see handle)
 	logins *loginLimiter // failed-login throttling
@@ -88,6 +93,14 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 		logins:   newLoginLimiter(),
 	}
 	s.authMW.IsNotFound = func(err error) bool { return errors.Is(err, db.ErrNotFound) }
+	s.agents = cfg.Agents
+	if ar, ok := runner.(*AgentAwareRunner); ok && s.agents == nil {
+		s.agents = ar.Agents
+	}
+	if s.agents == nil {
+		s.agents = agenthub.New(store, pipeline, hub.Publish, agenthub.Options{})
+	}
+	s.runner = NewAgentAwareRunner(runner, s.agents)
 	s.notifier = notify.New(store)
 	pipeline.SetNotifier(s.notifier)
 	s.registerRoutes()
@@ -205,6 +218,18 @@ func (s *Server) registerRoutes() {
 	s.handle("GET /api/v1/admin/crypto/status", mw.RequirePerm(domain.PermAdminSettings, s.handleCryptoStatus))
 	s.handle("POST /api/v1/admin/crypto/rotate", mw.RequirePerm(domain.PermAdminSettings, s.handleCryptoRotate))
 	s.handle("GET /api/v1/admin/audit", mw.RequirePerm(domain.PermAdminAudit, s.handleListAudit))
+
+	// Remote scanning agents: management (users) and the agent protocol (agent credentials
+	// only, see internal/agenthub). The two credential kinds never open each other's routes.
+	s.handle("GET /api/v1/agents", mw.RequirePerm(domain.PermScansRead, s.handleListAgents))
+	s.handle("PUT /api/v1/agents/{id}", mw.RequirePerm(domain.PermAdminSettings, s.handleUpdateAgent))
+	s.handle("DELETE /api/v1/agents/{id}", mw.RequirePerm(domain.PermAdminSettings, s.handleDeleteAgent))
+	s.handle("GET /api/v1/agents/tokens", mw.RequirePerm(domain.PermAdminSettings, s.handleListAgentTokens))
+	s.handle("POST /api/v1/agents/tokens", mw.RequirePerm(domain.PermAdminSettings, s.handleCreateAgentToken))
+	s.handle("DELETE /api/v1/agents/tokens/{id}", mw.RequirePerm(domain.PermAdminSettings, s.handleRevokeAgentToken))
+	for _, rt := range s.agents.Routes() {
+		s.handle(rt.Pattern, rt.Handler)
+	}
 
 	// Static SPA fallback
 	s.handle("/", s.handleSPA)

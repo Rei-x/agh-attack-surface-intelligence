@@ -638,7 +638,7 @@ func (s *PostgresStore) ListProfiles(ctx context.Context) ([]domain.ScanProfile,
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, name, description, targets, allowed_ports, max_rate_pps, http_rps, concurrency, chunk_target_sec,
 		       schedule_cron, window_enabled, window_start, window_end, timezone, missing_threshold, grace_period_hours,
-		       retry_unstable_count, enable_http_fingerprint, user_agent, enabled, created_at, updated_at
+		       retry_unstable_count, enable_http_fingerprint, user_agent, enabled, agent_id, created_at, updated_at
 		FROM scan_profiles ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, err
@@ -650,7 +650,7 @@ func (s *PostgresStore) ListProfiles(ctx context.Context) ([]domain.ScanProfile,
 		var targetsRaw []byte
 		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &targetsRaw, &p.AllowedPorts, &p.MaxRatePPS, &p.HTTPRPS, &p.Concurrency,
 			&p.ChunkTargetSec, &p.ScheduleCron, &p.WindowEnabled, &p.WindowStart, &p.WindowEnd, &p.Timezone, &p.MissingThreshold,
-			&p.GracePeriodHours, &p.RetryUnstableCount, &p.EnableHTTPFingerprint, &p.UserAgent, &p.Enabled, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.GracePeriodHours, &p.RetryUnstableCount, &p.EnableHTTPFingerprint, &p.UserAgent, &p.Enabled, &p.AgentID, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(targetsRaw, &p.Targets)
@@ -665,11 +665,11 @@ func (s *PostgresStore) GetProfile(ctx context.Context, id string) (*domain.Scan
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, name, description, targets, allowed_ports, max_rate_pps, http_rps, concurrency, chunk_target_sec,
 		       schedule_cron, window_enabled, window_start, window_end, timezone, missing_threshold, grace_period_hours,
-		       retry_unstable_count, enable_http_fingerprint, user_agent, enabled, created_at, updated_at
+		       retry_unstable_count, enable_http_fingerprint, user_agent, enabled, agent_id, created_at, updated_at
 		FROM scan_profiles WHERE id=$1`, id).
 		Scan(&p.ID, &p.Name, &p.Description, &targetsRaw, &p.AllowedPorts, &p.MaxRatePPS, &p.HTTPRPS, &p.Concurrency,
 			&p.ChunkTargetSec, &p.ScheduleCron, &p.WindowEnabled, &p.WindowStart, &p.WindowEnd, &p.Timezone, &p.MissingThreshold,
-			&p.GracePeriodHours, &p.RetryUnstableCount, &p.EnableHTTPFingerprint, &p.UserAgent, &p.Enabled, &p.CreatedAt, &p.UpdatedAt)
+			&p.GracePeriodHours, &p.RetryUnstableCount, &p.EnableHTTPFingerprint, &p.UserAgent, &p.Enabled, &p.AgentID, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -693,11 +693,11 @@ func (s *PostgresStore) CreateProfile(ctx context.Context, p *domain.ScanProfile
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO scan_profiles (id, name, description, targets, allowed_ports, max_rate_pps, http_rps, concurrency, chunk_target_sec,
 		       schedule_cron, window_enabled, window_start, window_end, timezone, missing_threshold, grace_period_hours,
-		       retry_unstable_count, enable_http_fingerprint, user_agent, enabled, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		       retry_unstable_count, enable_http_fingerprint, user_agent, enabled, created_at, updated_at, agent_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 		p.ID, p.Name, p.Description, targetsJSON, p.AllowedPorts, p.MaxRatePPS, p.HTTPRPS, p.Concurrency, p.ChunkTargetSec,
 		p.ScheduleCron, p.WindowEnabled, p.WindowStart, p.WindowEnd, p.Timezone, p.MissingThreshold, p.GracePeriodHours,
-		p.RetryUnstableCount, p.EnableHTTPFingerprint, p.UserAgent, p.Enabled, p.CreatedAt, p.UpdatedAt)
+		p.RetryUnstableCount, p.EnableHTTPFingerprint, p.UserAgent, p.Enabled, p.CreatedAt, p.UpdatedAt, p.AgentID)
 	return err
 }
 
@@ -708,11 +708,11 @@ func (s *PostgresStore) UpdateProfile(ctx context.Context, p *domain.ScanProfile
 		UPDATE scan_profiles SET name=$1, description=$2, targets=$3, allowed_ports=$4, max_rate_pps=$5, http_rps=$6,
 		       concurrency=$7, chunk_target_sec=$8, schedule_cron=$9, window_enabled=$10, window_start=$11, window_end=$12,
 		       timezone=$13, missing_threshold=$14, grace_period_hours=$15, retry_unstable_count=$16,
-		       enable_http_fingerprint=$17, user_agent=$18, enabled=$19, updated_at=$20
+		       enable_http_fingerprint=$17, user_agent=$18, enabled=$19, updated_at=$20, agent_id=$22
 		WHERE id=$21`,
 		p.Name, p.Description, targetsJSON, p.AllowedPorts, p.MaxRatePPS, p.HTTPRPS, p.Concurrency, p.ChunkTargetSec,
 		p.ScheduleCron, p.WindowEnabled, p.WindowStart, p.WindowEnd, p.Timezone, p.MissingThreshold, p.GracePeriodHours,
-		p.RetryUnstableCount, p.EnableHTTPFingerprint, p.UserAgent, p.Enabled, p.UpdatedAt, p.ID)
+		p.RetryUnstableCount, p.EnableHTTPFingerprint, p.UserAgent, p.Enabled, p.UpdatedAt, p.ID, p.AgentID)
 	if err != nil {
 		return err
 	}

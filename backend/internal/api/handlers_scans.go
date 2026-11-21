@@ -174,6 +174,10 @@ func (s *Server) handleCreateProfile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if msg := s.validateProfileAgent(r.Context(), &p); msg != "" {
+		writeErr(w, http.StatusBadRequest, msg)
+		return
+	}
 	if err := s.store.CreateProfile(r.Context(), &p); err != nil {
 		writeStoreErr(w, err)
 		return
@@ -195,6 +199,10 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	applyProfileDefaults(&p)
 	if err := validateProfileSchedule(&p); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if msg := s.validateProfileAgent(r.Context(), &p); msg != "" {
+		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
 	if err := s.store.UpdateProfile(r.Context(), &p); err != nil {
