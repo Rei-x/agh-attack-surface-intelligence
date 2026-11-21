@@ -146,7 +146,7 @@ func EstimateLiveness(host domain.Host, at time.Time, cfg LifecycleConfig) domai
 		for i := 0; i < k; i++ {
 			logL += math.Log((b + float64(i)) / (a + b + float64(i)))
 		}
-		parts = append(parts, fmt.Sprintf("%s %s: %d× (hist. dostępność %d%%)", slotNamePL(s.Slot), s.Slot, k, pct(a/(a+b))))
+		parts = append(parts, fmt.Sprintf("%s %s: %d× (hist. availability %d%%)", slotName(s.Slot), s.Slot, k, pct(a/(a+b))))
 	}
 
 	pi := cfg.PriorAlive
@@ -161,28 +161,28 @@ func EstimateLiveness(host domain.Host, at time.Time, cfg LifecycleConfig) domai
 		Slot:         slot,
 		StreakMisses: total,
 		Threshold:    cfg.InactiveProbability,
-		Model:        fmt.Sprintf("%s (H=%.0fh, prior Beta(%.1f,%.1f), P0(istnieje)=%.2f)", livenessModelName, cfg.HalfLifeHours, cfg.PriorUpAlpha, cfg.PriorUpBeta, cfg.PriorAlive),
+		Model:        fmt.Sprintf("%s (H=%.0fh, prior Beta(%.1f,%.1f), P0(exists)=%.2f)", livenessModelName, cfg.HalfLifeHours, cfg.PriorUpAlpha, cfg.PriorUpBeta, cfg.PriorAlive),
 	}
 	if total == 0 {
-		est.Reason = fmt.Sprintf("host odpowiada; oczekiwana dostępność w oknie %s %s: %d%%", slotNamePL(slot), slot, pct(pUpSlot))
+		est.Reason = fmt.Sprintf("host responds; expected availability in the %s %s: %d%%", slotName(slot), slot, pct(pUpSlot))
 	} else {
-		est.Reason = fmt.Sprintf("prawdopodobieństwo, że host nadal działa: %d%% po %d nieudanych próbach (%s)", pct(pAlive), total, strings.Join(parts, "; "))
+		est.Reason = fmt.Sprintf("probability the host is still up: %d%% after %d failed probes (%s)", pct(pAlive), total, strings.Join(parts, "; "))
 	}
 	return est
 }
 
-func slotNamePL(slot string) string {
+func slotName(slot string) string {
 	switch slot {
 	case domain.SlotNight:
-		return "okno nocne"
+		return "night window"
 	case domain.SlotMorning:
-		return "okno poranne"
+		return "morning window"
 	case domain.SlotAfternoon:
-		return "okno popołudniowe"
+		return "afternoon window"
 	case domain.SlotEvening:
-		return "okno wieczorne"
+		return "evening window"
 	}
-	return "okno"
+	return "window"
 }
 
 func pct(p float64) int {

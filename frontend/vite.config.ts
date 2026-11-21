@@ -28,7 +28,7 @@ export default defineConfig({
           'charts': ['recharts'],
           'icons': ['@remixicon/react'],
           'ui': ['@base-ui/react'],
-          'graph': ['@xyflow/react'],
+          // @xyflow/react is not listed: it stays in the lazily loaded GraphPage chunk.
         },
       },
     },

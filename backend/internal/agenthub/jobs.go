@@ -51,12 +51,12 @@ func (c *Coordinator) Enqueue(ctx context.Context, run *domain.ScanRun, profile 
 	a, ok := c.agents[profile.AgentID]
 	if !ok {
 		c.mu.Unlock()
-		run.Notes = appendNote(run.Notes, "Profil wskazuje agenta, który nie istnieje (usunięty?) - wybierz agenta w profilu. / Profile points at an unknown agent.")
+		run.Notes = appendNote(run.Notes, "The profile points at an agent that does not exist (deleted?) - pick an agent in the profile.")
 		return ErrUnknownAgent
 	}
 	if a.Disabled {
 		c.mu.Unlock()
-		run.Notes = appendNote(run.Notes, fmt.Sprintf("Agent %q jest wyłączony - skan nie został zlecony. / Agent disabled.", a.Name))
+		run.Notes = appendNote(run.Notes, fmt.Sprintf("Agent %q is disabled - the scan was not dispatched.", a.Name))
 		return ErrAgentOff
 	}
 	name, site, online := a.Name, a.Site, c.statusLocked(a, now) == domain.AgentStatusOnline
@@ -64,14 +64,14 @@ func (c *Coordinator) Enqueue(ctx context.Context, run *domain.ScanRun, profile 
 	c.saveJobsLocked(ctx)
 	c.mu.Unlock()
 
-	note := fmt.Sprintf("Zlecono agentowi %q", name)
+	note := fmt.Sprintf("Dispatched to agent %q", name)
 	if site != "" {
 		note += " (" + site + ")"
 	}
 	if !online {
-		note += " - agent jest teraz offline, skan ruszy po jego połączeniu"
+		note += " - the agent is offline now; the scan starts when it connects"
 	}
-	run.Notes = appendNote(run.Notes, note+". / Queued for remote agent.")
+	run.Notes = appendNote(run.Notes, note+".")
 	run.Status = domain.ScanStatusQueued
 	if err := c.store.UpdateScanRun(ctx, run); err != nil {
 		return err
@@ -378,7 +378,7 @@ func (c *Coordinator) claim(ctx context.Context, runID, agentID, instance string
 	}
 	run.FinishedAt = nil
 	if resumed {
-		run.Notes = appendNote(run.Notes, fmt.Sprintf("%s: agent %q wznowił skan od punktu kontrolnego (%d/%d fragmentów gotowych). / Resumed by agent from checkpoint.",
+		run.Notes = appendNote(run.Notes, fmt.Sprintf("%s: agent %q resumed the scan from its checkpoint (%d/%d chunks done).",
 			now.Format("2006-01-02 15:04"), agentName, run.CompletedChunks, run.TotalChunks))
 	}
 	run.RawNmapXML = ""
@@ -503,7 +503,7 @@ func (c *Coordinator) Start(ctx context.Context, agentID, instance, runID string
 // relayedEvents are the engine events an agent may forward to the SSE hub.
 var relayedEvents = map[string]bool{
 	"scan.workers": true, "scan.chunk": true, "scan.progress": true, "scan.rechunk": true,
-	"governor.throttle": true, "scan.host_discovered": true, "scan.paused_window": true, "scan.completed": true,
+	"governor.throttle": true, "scan.host_discovered": true, "scan.paused_window": true, "scan.completed": true, "scan.budget": true,
 }
 
 func (c *Coordinator) relay(runID string, events []domain.LiveEvent) {
@@ -562,7 +562,7 @@ func (c *Coordinator) Progress(ctx context.Context, agentID, instance, runID str
 		run.Status = domain.ScanStatusRunning
 	case run.Status == domain.ScanStatusPausedWindow && wasOffline:
 		run.Status = domain.ScanStatusRunning
-		run.Notes = appendNote(run.Notes, now.Format("2006-01-02 15:04")+": agent znów odpowiada - skan kontynuowany. / Agent back, scan continues.")
+		run.Notes = appendNote(run.Notes, now.Format("2006-01-02 15:04")+": agent is responding again - scan continues.")
 	}
 	if !isActive(run.Status) && control == "" {
 		control = ControlStop
@@ -657,7 +657,7 @@ func (c *Coordinator) UploadChunk(ctx context.Context, agentID, instance, runID 
 			}
 			run.Status = domain.ScanStatusFailed
 			run.FinishedAt = &now
-			run.Notes = appendNote(run.Notes, "zapis wyników nie powiódł się: "+perr.Error())
+			run.Notes = appendNote(run.Notes, "saving results failed: "+perr.Error())
 			run.RawNmapXML = ""
 			_ = c.store.UpdateScanRun(ctx, run)
 			c.mu.Lock()
@@ -791,9 +791,9 @@ func (c *Coordinator) Finish(ctx context.Context, agentID, instance, runID strin
 		if isActive(run.Status) {
 			var msg string
 			if req.Outcome == OutcomeRefused {
-				msg = fmt.Sprintf("agent %q odmówił wykonania (lokalna polityka bezpieczeństwa): %s / refused by agent safety policy", agentName, req.Error)
+				msg = fmt.Sprintf("agent %q refused the job (local safety policy): %s", agentName, req.Error)
 			} else {
-				msg = fmt.Sprintf("agent %q: skan nie powiódł się: %s", agentName, req.Error)
+				msg = fmt.Sprintf("agent %q: scan failed: %s", agentName, req.Error)
 			}
 			run.Status = domain.ScanStatusFailed
 			run.FinishedAt = &now
@@ -884,7 +884,7 @@ func (c *Coordinator) Pause(ctx context.Context, runID string) error {
 	switch run.Status {
 	case domain.ScanStatusQueued, domain.ScanStatusCalibrating, domain.ScanStatusRunning, domain.ScanStatusPausedWindow:
 	default:
-		return stateErr("nie można wstrzymać skanu w stanie %s / cannot pause a scan that is %s", run.Status, run.Status)
+		return stateErr("cannot pause a scan that is %s", run.Status)
 	}
 	c.mu.Lock()
 	if j, ok := c.jobs[runID]; ok {
@@ -914,7 +914,7 @@ func (c *Coordinator) Resume(ctx context.Context, runID string) error {
 		return err
 	}
 	if run.Status != domain.ScanStatusPausedUser && run.Status != domain.ScanStatusPausedWindow {
-		return stateErr("można wznowić tylko wstrzymany skan (stan: %s) / only a paused scan can be resumed", run.Status)
+		return stateErr("only a paused scan can be resumed (status: %s)", run.Status)
 	}
 	agentID := ""
 	c.mu.Lock()
@@ -954,7 +954,7 @@ func (c *Coordinator) Stop(ctx context.Context, runID string) error {
 		return err
 	}
 	if !isActive(run.Status) {
-		return stateErr("skan jest już zakończony (%s) / scan already finished", run.Status)
+		return stateErr("scan already finished (%s)", run.Status)
 	}
 	c.mu.Lock()
 	if j, ok := c.jobs[runID]; ok {
@@ -1071,7 +1071,7 @@ func (c *Coordinator) parkOffline(ctx context.Context, runID, agentName string, 
 	run.Status = domain.ScanStatusPausedWindow
 	run.FinishedAt = nil
 	run.Notes = appendNote(run.Notes, fmt.Sprintf(
-		"%s: agent %q przestał odpowiadać (offline) - skan wstrzymany po %d/%d fragmentach; zostanie wznowiony od punktu kontrolnego, gdy agent wróci. / Agent offline: scan paused, resumes from checkpoint when the agent returns.",
+		"%s: agent %q stopped responding (offline) - scan paused after %d/%d chunks; it resumes from the checkpoint when the agent returns.",
 		now.Format("2006-01-02 15:04"), agentName, run.CompletedChunks, run.TotalChunks))
 	run.RawNmapXML = ""
 	_ = c.store.UpdateScanRun(ctx, run)

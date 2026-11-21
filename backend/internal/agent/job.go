@@ -186,13 +186,13 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 	if !resumed {
 		prepared, res, err := engine.PrepareRun(jobCtx, spec.RunID, profile, spec.Exclusions)
 		if err != nil {
-			a.finishSegment(ctx, spec.RunID, agenthub.FinishRequest{Outcome: agenthub.OutcomeFailed, Error: "przygotowanie skanu: " + err.Error()})
+			a.finishSegment(ctx, spec.RunID, agenthub.FinishRequest{Outcome: agenthub.OutcomeFailed, Error: "preparing scan: " + err.Error()})
 			return
 		}
 		if prepared.TotalIPs == 0 {
-			reason := "brak adresów do skanowania"
+			reason := "no addresses to scan"
 			if res != nil {
-				reason = fmt.Sprintf("brak adresów do skanowania: %d wykluczonych przez listę wykluczeń, %d niepoprawnych wpisów (DNS agenta)",
+				reason = fmt.Sprintf("no addresses to scan: %d excluded by the exclusion list, %d invalid entries (agent DNS)",
 					res.ExcludedCount, len(res.InvalidEntries))
 			}
 			a.finishSegment(ctx, spec.RunID, agenthub.FinishRequest{Outcome: agenthub.OutcomeFailed, Error: reason})
@@ -201,7 +201,7 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 		if bad := a.outsideAllowlist(res.IPs); bad != "" {
 			a.logf("[WARN] REFUSING job %s: target %s is outside the local allowlist %v", spec.RunID, bad, a.caps.AllowCIDRs)
 			a.finishSegment(ctx, spec.RunID, agenthub.FinishRequest{Outcome: agenthub.OutcomeRefused,
-				Error: fmt.Sprintf("cel %s jest poza lokalną listą dozwolonych sieci agenta (--allow-cidr %s)", bad, strings.Join(a.caps.AllowCIDRs, ","))})
+				Error: fmt.Sprintf("target %s is outside the agent's local allowlist (--allow-cidr %s)", bad, strings.Join(a.caps.AllowCIDRs, ","))})
 			return
 		}
 		var resp agenthub.ControlResponse
@@ -234,7 +234,7 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 		if bad := a.outsideAllowlist(ips); bad != "" {
 			a.logf("[WARN] REFUSING job %s: chunk target %s is outside the local allowlist %v", spec.RunID, bad, a.caps.AllowCIDRs)
 			a.finishSegment(ctx, spec.RunID, agenthub.FinishRequest{Outcome: agenthub.OutcomeRefused,
-				Error: fmt.Sprintf("cel %s jest poza lokalną listą dozwolonych sieci agenta (--allow-cidr %s)", bad, strings.Join(a.caps.AllowCIDRs, ","))})
+				Error: fmt.Sprintf("target %s is outside the agent's local allowlist (--allow-cidr %s)", bad, strings.Join(a.caps.AllowCIDRs, ","))})
 			return
 		}
 		// Hostname -> IP mapping for HTTP Host headers, like a local resume.

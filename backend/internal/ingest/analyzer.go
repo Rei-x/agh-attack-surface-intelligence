@@ -183,7 +183,7 @@ func (a *DefaultAnalyzer) AnalyzeService(svc *domain.ObservedService, customSigs
 		if sig.Category == "staging" {
 			res.IsStagingEnv = true
 		}
-		if sig.Category == "iot" {
+		if sig.Category == "iot" || sig.Category == "bmc" {
 			res.IsIoT = true
 		}
 		if sig.InterestingPts > 0 {

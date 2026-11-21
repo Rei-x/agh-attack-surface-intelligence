@@ -21,6 +21,16 @@ export interface LiveChunk {
   duration_ms?: number;
 }
 
+export interface LiveThrottle {
+  scan_run_id?: string;
+  reason: string;
+  host?: string;
+  old_rate: number;
+  new_rate: number;
+  count: number;
+  at: string;
+}
+
 export interface ActiveScanLive {
   scan_run_id?: string;
   name?: string;
@@ -54,6 +64,8 @@ interface LiveEventsContextValue {
   recentIPs: Record<string, number>;
   dataVersion: number;
   throttled: boolean;
+  /** Last noise-governor backoff (reason, rates) and how many happened this session per run. */
+  lastThrottle: LiveThrottle | null;
   clearEvents: () => void;
 }
 
@@ -70,6 +82,7 @@ const LiveEventsContext = createContext<LiveEventsContextValue>({
   recentIPs: {},
   dataVersion: 0,
   throttled: false,
+  lastThrottle: null,
   clearEvents: () => {},
 });
 
@@ -129,6 +142,7 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
   const [recentIPs, setRecentIPs] = useState<Record<string, number>>({});
   const [dataVersion, setDataVersion] = useState(0);
   const [throttled, setThrottled] = useState(false);
+  const [lastThrottle, setLastThrottle] = useState<LiveThrottle | null>(null);
 
   const throttleTimer = useRef<number | null>(null);
   const dataTimer = useRef<number | null>(null);
@@ -264,6 +278,15 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
           break;
         case 'governor.throttle':
           setThrottled(true);
+          setLastThrottle((prev) => ({
+            scan_run_id: evt.scan_run_id,
+            reason: String(p.reason || ''),
+            host: p.host ? String(p.host) : undefined,
+            old_rate: num(p.old_rate),
+            new_rate: num(p.new_rate),
+            count: prev && prev.scan_run_id === evt.scan_run_id ? prev.count + 1 : 1,
+            at: evt.timestamp,
+          }));
           if (throttleTimer.current) window.clearTimeout(throttleTimer.current);
           throttleTimer.current = window.setTimeout(() => setThrottled(false), 15000);
           break;
@@ -286,7 +309,7 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
 
     const connect = () => {
       if (closed) return;
-      // Replayed events arrive on every (re)connect — reset feed to avoid duplicates.
+      // Replayed events arrive on every (re)connect: reset the feed to avoid duplicates.
       setLiveFeed([]);
       es = new EventSource(`/api/v1/events/stream?token=${encodeURIComponent(token)}`);
       es.onopen = () => {
@@ -331,9 +354,10 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
       recentIPs,
       dataVersion,
       throttled,
+      lastThrottle,
       clearEvents: () => setLiveFeed([]),
     }),
-    [connected, clients, lastEventAt, pulseTick, liveFeed, activeScan, liveChunks, recentIPs, dataVersion, throttled]
+    [connected, clients, lastEventAt, pulseTick, liveFeed, activeScan, liveChunks, recentIPs, dataVersion, throttled, lastThrottle]
   );
 
   return <LiveEventsContext.Provider value={value}>{children}</LiveEventsContext.Provider>;

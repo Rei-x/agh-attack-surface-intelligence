@@ -36,11 +36,11 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	if req.Username == "" || len(req.Password) < minPasswordLen {
-		writeErr(w, http.StatusBadRequest, "wymagana nazwa użytkownika i hasło (min. 8 znaków) / username and password (min 8 chars) are required")
+		writeErr(w, http.StatusBadRequest, "username and password (min 8 chars) are required")
 		return
 	}
 	if len(req.Username) > 64 || len(req.Password) > 1024 {
-		writeErr(w, http.StatusBadRequest, "nazwa użytkownika lub hasło za długie / username or password too long")
+		writeErr(w, http.StatusBadRequest, "username or password too long")
 		return
 	}
 
@@ -148,7 +148,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Password != "" && (len(req.Password) < minPasswordLen || len(req.Password) > 1024) {
-		writeErr(w, http.StatusBadRequest, "hasło musi mieć 8-1024 znaków / password must be 8-1024 characters")
+		writeErr(w, http.StatusBadRequest, "password must be 8-1024 characters")
 		return
 	}
 	if req.Password != "" {

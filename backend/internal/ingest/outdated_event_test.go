@@ -42,7 +42,7 @@ func TestOutdatedVersionEventScoreAndOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	ev := eventsOf(res, EventOutdatedVersion)
-	if len(ev) != 1 || !strings.Contains(ev[0].Summary, "nginx 1.14 – gałąź EOL od 2019-04") || ev[0].After["owner"] != "admin@wi.agh.edu.pl" {
+	if len(ev) != 1 || !strings.Contains(ev[0].Summary, "nginx 1.14: branch EOL since 2019-04") || ev[0].After["owner"] != "admin@wi.agh.edu.pl" {
 		t.Fatalf("OUTDATED_VERSION event: %+v", ev)
 	}
 	for _, e := range res.Changes {
@@ -56,7 +56,7 @@ func TestOutdatedVersionEventScoreAndOwner(t *testing.T) {
 	}
 	found := false
 	for _, f := range svcs[0].InterestingFactors {
-		found = found || strings.HasPrefix(f.Reason, "Wersja EOL: nginx 1.14")
+		found = found || strings.HasPrefix(f.Reason, "EOL version: nginx 1.14")
 	}
 	if !found {
 		t.Fatalf("EOL factor missing: %+v", svcs[0].InterestingFactors)
