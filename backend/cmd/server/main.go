@@ -20,7 +20,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	port := envOrDefault("PORT", "8080")
+	listenAddr := strings.TrimSpace(os.Getenv("ASI_LISTEN_ADDR"))
+	if listenAddr == "" {
+		listenAddr = ":" + envOrDefault("PORT", "8080")
+	}
 	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	masterKey := os.Getenv("ASI_MASTER_KEY")
 	jwtSecretOverride := os.Getenv("ASI_JWT_SECRET")
@@ -65,13 +68,13 @@ func main() {
 	}, store, vault, pipeline, runner, hub)
 
 	httpServer := &http.Server{
-		Addr:              ":" + port,
+		Addr:              listenAddr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 15 * time.Second,
 	}
 
 	go func() {
-		log.Printf("[INFO] AegisASI v%s listening on :%s (seed_demo=%v, static_dir=%q)", api.AppVersion, port, seedDemo, staticDir)
+		log.Printf("[INFO] AegisASI v%s listening on %s (seed_demo=%v, static_dir=%q)", api.AppVersion, listenAddr, seedDemo, staticDir)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("fatal: http server error: %v", err)
 		}

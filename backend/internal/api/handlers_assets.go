@@ -10,6 +10,17 @@ import (
 
 func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	limit := queryInt(r, "limit", 50)
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	page := queryInt(r, "page", 1)
+	if page < 1 {
+		page = 1
+	}
 	filter := db.HostFilter{
 		Query:    q.Get("q"),
 		State:    q.Get("state"),
@@ -17,18 +28,24 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 		MinScore: queryInt(r, "min_score", 0),
 		Env:      q.Get("env"),
 		HasAdmin: queryBool(r, "has_admin") || queryBool(r, "admin_only"),
-		Page:     queryInt(r, "page", 1),
-		Limit:    queryInt(r, "limit", 0),
+		Page:     page,
+		Limit:    limit,
 	}
 	hosts, total, err := s.store.ListHosts(r.Context(), filter)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
 	}
+	totalPages := (total + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"hosts": hosts,
-		"total": total,
-		"page":  filter.Page,
+		"hosts":       hosts,
+		"total":       total,
+		"page":        page,
+		"limit":       limit,
+		"total_pages": totalPages,
 	})
 }
 

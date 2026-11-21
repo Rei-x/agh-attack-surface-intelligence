@@ -449,9 +449,45 @@ export interface GraphEdge {
   label?: string;
 }
 
+export interface GraphSubnetSummary {
+  subnet: string;
+  host_count: number;
+  active_count: number;
+  high_risk_count: number;
+  max_score: number;
+}
+
+export type GraphMode = 'auto' | 'clustered' | 'detailed';
+
+export interface GraphQuery {
+  mode?: GraphMode;
+  limit?: number;
+  subnet?: string;
+  q?: string;
+  state?: string;
+  min_score?: number;
+  admin_only?: boolean;
+  staging_only?: boolean;
+}
+
 export interface GraphResponse {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  total_hosts: number;
+  matched_hosts: number;
+  shown_hosts: number;
+  clustered: boolean;
+  mode: GraphMode | string;
+  limit: number;
+  subnets: GraphSubnetSummary[];
+}
+
+export interface HostPage {
+  hosts: Host[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
 }
 
 export interface DashboardTimelinePoint {

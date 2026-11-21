@@ -1,32 +1,65 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Calculator,
-  CheckCircle2,
-  Clock,
-  Download,
-  Edit3,
-  FileUp,
-  Layers,
-  Pause,
-  Play,
-  Plus,
-  Radar,
-  Save,
-  ShieldBan,
-  Square,
-  Trash2,
-  Upload,
-} from 'lucide-react';
-import { api } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../context/ToastContext';
-import { PERMISSIONS } from '../lib/permissions';
+  RiAddLine,
+  RiArrowDownSLine,
+  RiArrowRightSLine,
+  RiCalculatorLine,
+  RiCheckLine,
+  RiDeleteBinLine,
+  RiDownload2Line,
+  RiEditLine,
+  RiFileUploadLine,
+  RiForbidLine,
+  RiPauseLine,
+  RiPlayLine,
+  RiSaveLine,
+  RiStackLine,
+  RiStopLine,
+  RiTimeLine,
+  RiUploadCloud2Line,
+} from '@remixicon/react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
+import { PERMISSIONS } from '@/lib/permissions';
 import {
+  TONE,
   formatDateTime,
   formatDurationSeconds,
   formatNumber,
   scanStatusMeta,
-} from '../lib/format';
+} from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { ChunkMatrix } from '@/components/ChunkMatrix';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Code,
+  Empty,
+  Field,
+  Notice,
+  PageHeader,
+  Pill,
+  SectionTitle,
+  SimpleSelect,
+  Stat,
+  StatStrip,
+} from '@/components/common';
 import type {
   ScanChunk,
   ScanProfile,
@@ -34,18 +67,23 @@ import type {
   Target,
   TargetEstimate,
   TargetExclusion,
-} from '../types/api';
+} from '@/types/api';
+
+type ScansTab = 'runs' | 'profiles' | 'scopes' | 'ingest';
+
+const ALL = '__all__';
 
 export function ScansPage() {
   const { can } = useAuth();
   const toast = useToast();
 
-  const [activeTab, setActiveTab] = useState<'profiles' | 'runs' | 'ingest'>('profiles');
+  const [activeTab, setActiveTab] = useState<ScansTab>('runs');
   const [targets, setTargets] = useState<Target[]>([]);
   const [exclusions, setExclusions] = useState<TargetExclusion[]>([]);
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
   const [scans, setScans] = useState<ScanRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [launchProfileId, setLaunchProfileId] = useState('');
 
   // Target & exclusion forms
   const [newTarget, setNewTarget] = useState('');
@@ -58,7 +96,7 @@ export function ScansPage() {
   const [estExclusions, setEstExclusions] = useState('10.0.0.1/32');
   const [estPorts, setEstPorts] = useState('22,80,443,8080,8443');
   const [estRate, setEstRate] = useState(500);
-  const [estConcurrency, setEstConcurrency] = useState(32);
+  const [estConcurrency] = useState(32);
   const [estWindowStart, setEstWindowStart] = useState('22:00');
   const [estWindowEnd, setEstWindowEnd] = useState('06:00');
   const [estimate, setEstimate] = useState<TargetEstimate | null>(null);
@@ -143,7 +181,7 @@ export function ScansPage() {
       setProfiles(pr);
       setScans(sc);
     } catch (err) {
-      toast.error('Błąd pobierania danych skanera', (err as Error).message);
+      toast.error('Błąd ładowania', (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -152,6 +190,24 @@ export function ScansPage() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Live: silently refresh runs + the open Coverage Ledger as SSE data arrives
+  const { liveChunks, activeScan: liveScan } = useLiveEvents();
+  const expandedRef = useRef(expandedScanId);
+  expandedRef.current = expandedScanId;
+  useLiveRefresh(async () => {
+    try {
+      const sc = await api.listScans();
+      setScans(sc);
+      const openId = expandedRef.current;
+      if (openId) {
+        const detail = await api.getScan(openId);
+        if (expandedRef.current === openId) setScanDetail(detail);
+      }
+    } catch {
+      // background refresh — ignore
+    }
+  });
 
   const handleEstimate = async () => {
     setEstimating(true);
@@ -176,7 +232,7 @@ export function ScansPage() {
       });
       setEstimate(res);
     } catch (err) {
-      toast.error('Błąd estymacji zakresu', (err as Error).message);
+      toast.error('Błąd estymacji', (err as Error).message);
     } finally {
       setEstimating(false);
     }
@@ -189,7 +245,7 @@ export function ScansPage() {
       await api.createTarget({ value: newTarget.trim(), label: newTargetLabel.trim(), enabled: true });
       setNewTarget('');
       setNewTargetLabel('');
-      toast.success('Dodano cel skanowania');
+      toast.success('Dodano cel');
       loadAll();
     } catch (err) {
       toast.error('Błąd dodawania celu', (err as Error).message);
@@ -206,7 +262,7 @@ export function ScansPage() {
       });
       setNewExclusion('');
       setNewExclusionReason('');
-      toast.success('Dodano wykluczenie (Scope Deny Gate)');
+      toast.success('Dodano wykluczenie');
       loadAll();
     } catch (err) {
       toast.error('Błąd dodawania wykluczenia', (err as Error).message);
@@ -240,7 +296,7 @@ export function ScansPage() {
         enabled: true,
       });
       setProfileForm((p) => ({ ...p, name: '', description: '' }));
-      toast.success('Utworzono profil skanowania');
+      toast.success('Utworzono profil');
       loadAll();
     } catch (err) {
       toast.error('Błąd tworzenia profilu', (err as Error).message);
@@ -253,11 +309,11 @@ export function ScansPage() {
         profile_id: profile.id,
         name: `${profile.name} — ${new Date().toLocaleTimeString('pl-PL')}`,
       });
-      toast.success('Uruchomiono skan', `Przebieg "${run.name}" jest w toku.`);
+      toast.success('Uruchomiono skan', run.name);
       setActiveTab('runs');
       loadAll();
     } catch (err) {
-      toast.error('Nie udało się uruchomić skanu', (err as Error).message);
+      toast.error('Błąd uruchomienia skanu', (err as Error).message);
     }
   };
 
@@ -272,18 +328,18 @@ export function ScansPage() {
       const detail = await api.getScan(scanId);
       setScanDetail(detail);
     } catch (err) {
-      toast.error('Błąd pobierania Coverage Ledger', (err as Error).message);
+      toast.error('Błąd Coverage Ledger', (err as Error).message);
     }
   };
 
   const handleSaveScanMeta = async (scanId: string) => {
     try {
       await api.updateScan(scanId, { name: editScanName, notes: editScanNotes });
-      toast.success('Zaktualizowano metadane skanu');
+      toast.success('Zapisano');
       setEditingScanId(null);
       loadAll();
     } catch (err) {
-      toast.error('Błąd zapisu metadanych skanu', (err as Error).message);
+      toast.error('Błąd zapisu', (err as Error).message);
     }
   };
 
@@ -293,13 +349,13 @@ export function ScansPage() {
       else if (action === 'resume') await api.resumeScan(scanId);
       else if (action === 'stop') await api.stopScan(scanId);
       else if (action === 'delete') {
-        if (!window.confirm('Usunąć wybrany przebieg skanu?')) return;
+        if (!window.confirm('Usunąć przebieg skanu?')) return;
         await api.deleteScan(scanId);
       }
-      toast.success('Wykonano akcję na skanie');
+      toast.success('Wykonano');
       loadAll();
     } catch (err) {
-      toast.error('Błąd akcji na skanie', (err as Error).message);
+      toast.error('Błąd akcji', (err as Error).message);
     }
   };
 
@@ -369,10 +425,7 @@ export function ScansPage() {
         ],
       });
 
-      toast.success(
-        'Dodano obserwację przez zunifikowany pipeline',
-        `Host ${manualForm.ip} przeszedł detekcję sygnatur, scoring, diff i szyfrowanie at rest.`
-      );
+      toast.success('Dodano host', manualForm.ip);
       setManualForm((m) => ({ ...m, ip: '', hostname: '', http_title: '', notes: '' }));
       loadAll();
     } catch (err) {
@@ -409,1050 +462,1014 @@ export function ScansPage() {
         importFormat,
         importScanName.trim() || `Import ${importFormat.toUpperCase()}: ${importFile.name}`
       );
-      toast.success(
-        'Zaimportowano plik przez zunifikowany pipeline',
-        `Plik "${importFile.name}" został przeanalizowany i zaszyfrowany.`
-      );
+      toast.success('Zaimportowano', importFile.name);
       setImportFile(null);
       setImportPreview('');
       setImportScanName('');
       loadAll();
     } catch (err) {
-      toast.error('Błąd importu pliku', (err as Error).message);
+      toast.error('Błąd importu', (err as Error).message);
     } finally {
       setImporting(false);
     }
   };
 
-  const chunkColor = (status: string) => {
+  const chunkTone = (status: string) => {
     switch (status) {
       case 'DONE':
-        return 'bg-emerald-500/25 border-emerald-500/50 text-emerald-300';
+        return TONE.success;
       case 'RUNNING':
-        return 'bg-cyan-500/25 border-cyan-400 text-cyan-200 animate-pulse';
+        return cn(TONE.primary, 'animate-pulse');
       case 'PAUSED':
-        return 'bg-amber-500/25 border-amber-500/50 text-amber-300';
+        return TONE.warning;
       case 'FAILED':
-        return 'bg-rose-500/25 border-rose-500/50 text-rose-300';
+        return TONE.danger;
       default:
-        return 'bg-bg-elevated border-border-subtle text-text-muted';
+        return TONE.neutral;
     }
   };
 
+  const launchProfile = profiles.find((p) => p.id === launchProfileId) || profiles[0];
+
+  const runExport = (format: 'csv' | 'json') =>
+    api.exportData({
+      format,
+      scan_id: exportScanId || undefined,
+      state: exportState || undefined,
+      tag: exportTag || undefined,
+    });
+
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
-            <Radar className="h-5 w-5 text-cyan-400" />
-            Skaner, Okna Czasowe, Coverage Ledger i Import/Eksport
-          </h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            Adaptacyjny chunking dla sieci 10 000–65 536+ IP, twarde okna czasowe i zunifikowany
-            pipeline ingestu
-          </p>
-        </div>
-
-        <div className="inline-flex rounded-lg border border-border-subtle bg-bg-card p-0.5">
-          {[
-            { id: 'profiles', label: 'Profile, Zakres & Estymator' },
-            { id: 'runs', label: `Przebiegi & Coverage Ledger (${scans.length})` },
-            { id: 'ingest', label: 'Import / Wpis Ręczny / Eksport' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-cyan-500/15 text-cyan-400'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* TAB 1: PROFILES, SCOPE & TARGET ESTIMATOR */}
-      {activeTab === 'profiles' && (
-        <div className="space-y-5">
-          {/* Live Target Estimator */}
-          <div className="rounded-xl border border-cyan-500/30 bg-bg-card p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                  <Calculator className="h-4 w-4 text-cyan-400" />
-                  Estymator Zakresu i Okna Czasowego (Target Estimator)
-                </h2>
-                <p className="text-xs text-text-muted">
-                  Oblicz dokładną liczbę IP po wykluczeniach, rozmiar chunka, ETA oraz dopasowanie
-                  do okna czasowego (np. 22:00–06:00)
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={estimating}
-                onClick={handleEstimate}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50"
+    <div className="space-y-6">
+      <PageHeader
+        title="Skaner"
+        meta={`${scans.length} przebiegów · ${profiles.length} profili`}
+        actions={
+          canRunScans && profiles.length > 0 ? (
+            <>
+              <SimpleSelect
+                value={launchProfile?.id ?? ''}
+                onValueChange={setLaunchProfileId}
+                options={profiles.map((p) => ({ value: p.id, label: p.name }))}
+                placeholder="Profil"
+                size="sm"
+                className="w-56"
+              />
+              <Button
+                size="sm"
+                disabled={!launchProfile}
+                onClick={() => launchProfile && handleStartProfileScan(launchProfile)}
               >
-                <Calculator className="h-3.5 w-3.5" />
-                {estimating ? 'Obliczanie...' : 'Oblicz estymację'}
-              </button>
-            </div>
+                <RiPlayLine data-icon="inline-start" />
+                Uruchom skan
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-4">
-                <label className="block text-xs text-text-muted mb-1">
-                  Zakresy (IP, CIDR /16+, zakres a-b, domeny)
-                </label>
-                <textarea
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ScansTab)}>
+        <TabsList variant="line">
+          <TabsTrigger value="runs">Skany ({scans.length})</TabsTrigger>
+          <TabsTrigger value="profiles">Profile ({profiles.length})</TabsTrigger>
+          <TabsTrigger value="scopes">Zakresy</TabsTrigger>
+          <TabsTrigger value="ingest">Import / Eksport</TabsTrigger>
+        </TabsList>
+
+        {/* ───────────── RUNS & COVERAGE LEDGER ───────────── */}
+        <TabsContent value="runs" className="pt-4">
+          <Card size="sm" className="py-0">
+            {scans.length === 0 ? (
+              <Empty icon={RiStackLine}>{loading ? 'Ładowanie…' : 'Brak przebiegów'}</Empty>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nazwa</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-40">Chunki</TableHead>
+                    <TableHead className="text-right">IP</TableHead>
+                    <TableHead className="text-right">Hosty</TableHead>
+                    <TableHead className="text-right">Usługi</TableHead>
+                    <TableHead className="text-right">Zmiany</TableHead>
+                    <TableHead>Start</TableHead>
+                    <TableHead className="text-right" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {scans.map((scan) => {
+                    const meta = scanStatusMeta(scan.status);
+                    const isExpanded = expandedScanId === scan.id;
+                    const isEditing = editingScanId === scan.id;
+                    const chunks: ScanChunk[] = isExpanded
+                      ? scanDetail?.chunks || scan.chunks || []
+                      : [];
+                    const pct =
+                      scan.total_chunks > 0
+                        ? Math.round((scan.completed_chunks / scan.total_chunks) * 100)
+                        : scan.status === 'COMPLETED'
+                          ? 100
+                          : 0;
+                    const isActive =
+                      scan.status === 'RUNNING' ||
+                      scan.status === 'PAUSED_USER' ||
+                      scan.status === 'PAUSED_WINDOW';
+                    const isPaused =
+                      scan.status === 'PAUSED_USER' || scan.status === 'PAUSED_WINDOW';
+
+                    return (
+                      <React.Fragment key={scan.id}>
+                        <TableRow className={cn((isExpanded || isEditing) && 'border-b-0 bg-muted/30')}>
+                          <TableCell className="max-w-[320px]">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleScanDetail(scan.id)}
+                              className="flex min-w-0 items-center gap-1.5 text-left"
+                            >
+                              {isExpanded ? (
+                                <RiArrowDownSLine className="size-4 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <RiArrowRightSLine className="size-4 shrink-0 text-muted-foreground" />
+                              )}
+                              <span className="truncate text-sm font-medium">{scan.name}</span>
+                              <Pill tone="neutral">{scan.run_type}</Pill>
+                            </button>
+                            {scan.notes && (
+                              <div className="mt-1 truncate pl-5.5 text-xs text-muted-foreground">
+                                {scan.notes}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Pill className={meta.badge} dot pulse={meta.pulse}>
+                              {meta.label}
+                            </Pill>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1.5">
+                              <span className="font-mono text-[11px] text-muted-foreground">
+                                {scan.completed_chunks}/{scan.total_chunks || 1} · {pct}%
+                              </span>
+                              <Progress value={pct} />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {scan.scanned_ips}/{scan.total_ips}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {scan.active_hosts}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {scan.services_found}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {scan.changes_detected}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {formatDateTime(scan.started_at)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-0.5">
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label="Coverage Ledger"
+                                title="Coverage Ledger"
+                                onClick={() => handleToggleScanDetail(scan.id)}
+                              >
+                                <RiStackLine />
+                              </Button>
+                              {canWriteScans && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Edytuj"
+                                  title="Edytuj"
+                                  onClick={() => {
+                                    setEditingScanId(isEditing ? null : scan.id);
+                                    setEditScanName(scan.name);
+                                    setEditScanNotes(scan.notes || '');
+                                  }}
+                                >
+                                  <RiEditLine />
+                                </Button>
+                              )}
+                              {canRunScans && scan.status === 'RUNNING' && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Pause"
+                                  title="Pause"
+                                  onClick={() => handleScanControl(scan.id, 'pause')}
+                                >
+                                  <RiPauseLine />
+                                </Button>
+                              )}
+                              {canRunScans && isPaused && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Resume"
+                                  title="Resume"
+                                  onClick={() => handleScanControl(scan.id, 'resume')}
+                                >
+                                  <RiPlayLine />
+                                </Button>
+                              )}
+                              {canRunScans && isActive && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Stop"
+                                  title="Stop"
+                                  onClick={() => handleScanControl(scan.id, 'stop')}
+                                >
+                                  <RiStopLine />
+                                </Button>
+                              )}
+                              {canDeleteScans && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Usuń"
+                                  title="Usuń"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={() => handleScanControl(scan.id, 'delete')}
+                                >
+                                  <RiDeleteBinLine />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Inline metadata editor (any status) */}
+                        {isEditing && canWriteScans && (
+                          <TableRow
+                            className={cn('bg-muted/30 hover:bg-muted/30', isExpanded && 'border-b-0')}
+                          >
+                            <TableCell colSpan={9} className="whitespace-normal">
+                              <div className="flex flex-col items-end gap-4 px-5.5 pb-2 sm:flex-row">
+                                <Field label="Nazwa" className="w-full sm:flex-1">
+                                  <Input
+                                    value={editScanName}
+                                    onChange={(e) => setEditScanName(e.target.value)}
+                                  />
+                                </Field>
+                                <Field label="Notatki" className="w-full sm:flex-[2]">
+                                  <Input
+                                    value={editScanNotes}
+                                    onChange={(e) => setEditScanNotes(e.target.value)}
+                                  />
+                                </Field>
+                                <div className="flex shrink-0 gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setEditingScanId(null)}
+                                  >
+                                    Anuluj
+                                  </Button>
+                                  <Button size="sm" onClick={() => handleSaveScanMeta(scan.id)}>
+                                    <RiSaveLine data-icon="inline-start" /> Zapisz
+                                  </Button>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {/* Coverage Ledger chunk grid */}
+                        {isExpanded && (
+                          <TableRow className="bg-muted/30 hover:bg-muted/30">
+                            <TableCell colSpan={9} className="whitespace-normal">
+                              <div className="space-y-3 px-5.5 pb-2">
+                                <SectionTitle>Coverage Ledger · {chunks.length}</SectionTitle>
+
+                                {chunks.length === 0 ? (
+                                  <Empty className="py-4">Brak chunków</Empty>
+                                ) : (
+                                  <ChunkMatrix
+                                    chunks={chunks.map((raw) => {
+                                      const lc =
+                                        (raw.id && liveChunks[raw.id]) ||
+                                        (liveScan?.scan_run_id === scan.id
+                                          ? liveChunks[`#${raw.chunk_index}`]
+                                          : undefined);
+                                      const ch: ScanChunk = lc
+                                        ? {
+                                            ...raw,
+                                            status: lc.status || raw.status,
+                                            active_hosts: lc.active_hosts ?? raw.active_hosts,
+                                            services_found: lc.services ?? raw.services_found,
+                                          }
+                                        : raw;
+                                      return ch;
+                                    })}
+                                  />
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+
+        {/* ───────────── PROFILES ───────────── */}
+        <TabsContent value="profiles" className="pt-4">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+            <Card size="sm" className={cn('py-0', canWriteScans ? 'xl:col-span-7' : 'xl:col-span-12')}>
+              {loading ? (
+                <Empty>Ładowanie…</Empty>
+              ) : profiles.length === 0 ? (
+                <Empty>Brak profili</Empty>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Profil</TableHead>
+                      <TableHead>Limity</TableHead>
+                      <TableHead className="text-right" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {profiles.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell className="max-w-[280px] whitespace-normal">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium">{p.name}</span>
+                            {p.window_enabled && (
+                              <Pill tone="warning">
+                                <RiTimeLine className="size-3" />
+                                {p.window_start}–{p.window_end}
+                              </Pill>
+                            )}
+                          </div>
+                          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                            {(p.targets || []).join(', ') || 'zakres globalny'}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          <div>{p.allowed_ports}</div>
+                          <div>
+                            {p.max_rate_pps} PPS · HTTP {p.http_rps} RPS · K={p.missing_threshold} T=
+                            {p.grace_period_hours}h
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1">
+                            {canRunScans && (
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                onClick={() => handleStartProfileScan(p)}
+                              >
+                                <RiPlayLine data-icon="inline-start" />
+                                Uruchom
+                              </Button>
+                            )}
+                            {canDeleteScans && (
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label="Usuń profil"
+                                title="Usuń profil"
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={async () => {
+                                  await api.deleteProfile(p.id);
+                                  toast.success('Usunięto profil');
+                                  loadAll();
+                                }}
+                              >
+                                <RiDeleteBinLine />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+
+            {canWriteScans && (
+              <Card size="sm" className="xl:col-span-5">
+                <form onSubmit={handleCreateProfile} className="flex flex-col gap-5">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Nowy profil</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <Field label="Nazwa" htmlFor="pf-name" className="sm:col-span-2">
+                      <Input
+                        id="pf-name"
+                        required
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
+                        placeholder="Skan nocny"
+                      />
+                    </Field>
+                    <Field label="Cele" htmlFor="pf-targets" className="sm:col-span-2">
+                      <Textarea
+                        id="pf-targets"
+                        rows={2}
+                        value={profileForm.targetsText}
+                        onChange={(e) =>
+                          setProfileForm((p) => ({ ...p, targetsText: e.target.value }))
+                        }
+                        className="font-mono text-xs"
+                      />
+                    </Field>
+                    <Field label="Porty" htmlFor="pf-ports" className="sm:col-span-2">
+                      <Input
+                        id="pf-ports"
+                        value={profileForm.allowed_ports}
+                        onChange={(e) =>
+                          setProfileForm((p) => ({ ...p, allowed_ports: e.target.value }))
+                        }
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="Max PPS" htmlFor="pf-pps">
+                      <Input
+                        id="pf-pps"
+                        type="number"
+                        value={profileForm.max_rate_pps}
+                        onChange={(e) =>
+                          setProfileForm((p) => ({ ...p, max_rate_pps: Number(e.target.value) }))
+                        }
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="HTTP RPS" htmlFor="pf-rps">
+                      <Input
+                        id="pf-rps"
+                        type="number"
+                        value={profileForm.http_rps}
+                        onChange={(e) =>
+                          setProfileForm((p) => ({ ...p, http_rps: Number(e.target.value) }))
+                        }
+                        className="font-mono"
+                      />
+                    </Field>
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                      <Switch
+                        id="win_en"
+                        checked={profileForm.window_enabled}
+                        onCheckedChange={(checked) =>
+                          setProfileForm((p) => ({ ...p, window_enabled: checked }))
+                        }
+                      />
+                      <Label htmlFor="win_en" className="text-xs">
+                        Okno czasowe (Auto Pause/Resume)
+                      </Label>
+                    </div>
+                    {profileForm.window_enabled && (
+                      <>
+                        <Field label="Start (HH:MM)" htmlFor="pf-ws">
+                          <Input
+                            id="pf-ws"
+                            value={profileForm.window_start}
+                            onChange={(e) =>
+                              setProfileForm((p) => ({ ...p, window_start: e.target.value }))
+                            }
+                            className="font-mono"
+                          />
+                        </Field>
+                        <Field label="Koniec (HH:MM)" htmlFor="pf-we">
+                          <Input
+                            id="pf-we"
+                            value={profileForm.window_end}
+                            onChange={(e) =>
+                              setProfileForm((p) => ({ ...p, window_end: e.target.value }))
+                            }
+                            className="font-mono"
+                          />
+                        </Field>
+                      </>
+                    )}
+                  </CardContent>
+                  <CardFooter className="justify-end">
+                    <Button type="submit" size="sm">
+                      <RiSaveLine data-icon="inline-start" /> Zapisz profil
+                    </Button>
+                  </CardFooter>
+                </form>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ───────────── SCOPES: targets, exclusions, estimator ───────────── */}
+        <TabsContent value="scopes" className="space-y-6 pt-4">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Targets */}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="text-sm">Cele · {targets.length}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {canWriteScans && (
+                  <form onSubmit={handleAddTarget} className="flex items-end gap-3">
+                    <Input
+                      value={newTarget}
+                      onChange={(e) => setNewTarget(e.target.value)}
+                      placeholder="172.28.0.0/24 lub agh.edu.pl"
+                      aria-label="Cel"
+                      className="flex-1 font-mono"
+                    />
+                    <Input
+                      value={newTargetLabel}
+                      onChange={(e) => setNewTargetLabel(e.target.value)}
+                      placeholder="Etykieta"
+                      aria-label="Etykieta"
+                      className="w-32"
+                    />
+                    <Button type="submit" size="sm">
+                      <RiAddLine data-icon="inline-start" /> Dodaj
+                    </Button>
+                  </form>
+                )}
+                {targets.length === 0 ? (
+                  <Empty className="py-6">Brak celów</Empty>
+                ) : (
+                  <div className="max-h-64 divide-y divide-border overflow-y-auto border-y border-border">
+                    {targets.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between gap-2 py-2 text-xs">
+                        <div className="min-w-0 truncate">
+                          <span className="font-mono font-medium">{t.value}</span>
+                          {t.label && <span className="ml-2 text-muted-foreground">{t.label}</span>}
+                        </div>
+                        {canDeleteScans && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label="Usuń cel"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={async () => {
+                              await api.deleteTarget(t.id);
+                              loadAll();
+                            }}
+                          >
+                            <RiDeleteBinLine />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Exclusions */}
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <RiForbidLine className="size-4 text-destructive" />
+                  Wykluczenia · {exclusions.length}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {canWriteScans && (
+                  <form onSubmit={handleAddExclusion} className="flex items-end gap-3">
+                    <Input
+                      value={newExclusion}
+                      onChange={(e) => setNewExclusion(e.target.value)}
+                      placeholder="10.0.0.1/32"
+                      aria-label="Wykluczenie"
+                      className="flex-1 font-mono"
+                    />
+                    <Input
+                      value={newExclusionReason}
+                      onChange={(e) => setNewExclusionReason(e.target.value)}
+                      placeholder="Powód"
+                      aria-label="Powód"
+                      className="w-40"
+                    />
+                    <Button type="submit" size="sm" variant="destructive">
+                      <RiForbidLine data-icon="inline-start" /> Wyklucz
+                    </Button>
+                  </form>
+                )}
+                {exclusions.length === 0 ? (
+                  <Empty className="py-6">Brak wykluczeń</Empty>
+                ) : (
+                  <div className="max-h-64 divide-y divide-border overflow-y-auto border-y border-border">
+                    {exclusions.map((ex) => (
+                      <div key={ex.id} className="flex items-center justify-between gap-2 py-2 text-xs">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Pill tone="danger">{ex.value}</Pill>
+                          {ex.reason && (
+                            <span className="truncate text-muted-foreground">{ex.reason}</span>
+                          )}
+                        </div>
+                        {canDeleteScans && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label="Usuń wykluczenie"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={async () => {
+                              await api.deleteExclusion(ex.id);
+                              loadAll();
+                            }}
+                          >
+                            <RiDeleteBinLine />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Estimator */}
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <RiCalculatorLine className="size-4 text-muted-foreground" />
+                Estymator
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+              <Field label="Zakresy" htmlFor="est-targets" className="lg:col-span-4">
+                <Textarea
+                  id="est-targets"
                   rows={3}
                   value={estTargets}
                   onChange={(e) => setEstTargets(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg-elevated p-2.5 font-mono text-xs text-text-primary"
+                  className="font-mono text-xs"
                 />
-              </div>
-              <div className="lg:col-span-3">
-                <label className="block text-xs text-text-muted mb-1">
-                  Wykluczenia (Scope Deny Gate)
-                </label>
-                <textarea
+              </Field>
+              <Field label="Wykluczenia" htmlFor="est-excl" className="lg:col-span-3">
+                <Textarea
+                  id="est-excl"
                   rows={3}
                   value={estExclusions}
                   onChange={(e) => setEstExclusions(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg-elevated p-2.5 font-mono text-xs text-text-primary"
+                  className="font-mono text-xs"
                 />
-              </div>
-              <div className="lg:col-span-5 grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
-                <div className="col-span-2 sm:col-span-3">
-                  <label className="block text-text-muted mb-1">Dozwolone porty</label>
-                  <input
-                    type="text"
+              </Field>
+              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:col-span-5">
+                <Field label="Porty" htmlFor="est-ports" className="col-span-2 sm:col-span-3">
+                  <Input
+                    id="est-ports"
                     value={estPorts}
                     onChange={(e) => setEstPorts(e.target.value)}
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 font-mono text-text-primary"
+                    className="font-mono"
                   />
-                </div>
-                <div>
-                  <label className="block text-text-muted mb-1">Max PPS</label>
-                  <input
+                </Field>
+                <Field label="Max PPS" htmlFor="est-pps">
+                  <Input
+                    id="est-pps"
                     type="number"
                     value={estRate}
                     onChange={(e) => setEstRate(Number(e.target.value))}
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 font-mono text-text-primary"
+                    className="font-mono"
                   />
-                </div>
-                <div>
-                  <label className="block text-text-muted mb-1">Okno od</label>
-                  <input
-                    type="text"
+                </Field>
+                <Field label="Okno od" htmlFor="est-ws">
+                  <Input
+                    id="est-ws"
                     value={estWindowStart}
                     onChange={(e) => setEstWindowStart(e.target.value)}
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 font-mono text-text-primary"
+                    className="font-mono"
                   />
-                </div>
-                <div>
-                  <label className="block text-text-muted mb-1">Okno do</label>
-                  <input
-                    type="text"
+                </Field>
+                <Field label="Okno do" htmlFor="est-we">
+                  <Input
+                    id="est-we"
                     value={estWindowEnd}
                     onChange={(e) => setEstWindowEnd(e.target.value)}
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 font-mono text-text-primary"
+                    className="font-mono"
                   />
-                </div>
+                </Field>
               </div>
-            </div>
+            </CardContent>
+            <CardFooter className="justify-end">
+              <Button size="sm" disabled={estimating} onClick={handleEstimate}>
+                <RiCalculatorLine data-icon="inline-start" />
+                {estimating ? 'Liczenie…' : 'Oblicz'}
+              </Button>
+            </CardFooter>
+          </Card>
 
-            {estimate && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 pt-2 border-t border-border-subtle">
-                <div className="rounded-lg bg-bg-elevated p-3 border border-border-subtle">
-                  <div className="text-[11px] text-text-muted">Wszystkie IP</div>
-                  <div className="text-lg font-bold font-mono text-text-primary">
-                    {formatNumber(estimate.total_ips)}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-bg-elevated p-3 border border-border-subtle">
-                  <div className="text-[11px] text-text-muted">Wykluczone IP</div>
-                  <div className="text-lg font-bold font-mono text-rose-400">
-                    {formatNumber(estimate.excluded_ips)}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-bg-elevated p-3 border border-border-subtle">
-                  <div className="text-[11px] text-text-muted">Efektywne IP</div>
-                  <div className="text-lg font-bold font-mono text-cyan-400">
-                    {formatNumber(estimate.effective_ips)}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-bg-elevated p-3 border border-border-subtle">
-                  <div className="text-[11px] text-text-muted">Chunk Size / Liczba</div>
-                  <div className="text-lg font-bold font-mono text-text-primary">
-                    {estimate.recommended_chunk_size} / {estimate.chunk_count}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-bg-elevated p-3 border border-border-subtle">
-                  <div className="text-[11px] text-text-muted">Szacowane ETA</div>
-                  <div className="text-lg font-bold font-mono text-text-primary">
-                    {formatDurationSeconds(estimate.estimated_seconds)}
-                  </div>
-                </div>
-                <div
-                  className={`rounded-lg p-3 border ${
-                    estimate.fits_in_window
-                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                      : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                  }`}
-                >
-                  <div className="text-[11px] opacity-80">Okno czasowe</div>
-                  <div className="text-xs font-bold mt-1">
+          {estimate && (
+            <StatStrip>
+              <Stat label="Wszystkie IP" value={formatNumber(estimate.total_ips)} />
+              <Stat label="Wykluczone" value={formatNumber(estimate.excluded_ips)} tone="danger" />
+              <Stat label="Efektywne" value={formatNumber(estimate.effective_ips)} />
+              <Stat
+                label="Chunk / liczba"
+                value={`${estimate.recommended_chunk_size} / ${estimate.chunk_count}`}
+              />
+              <Stat label="ETA" value={formatDurationSeconds(estimate.estimated_seconds)} />
+              <Stat
+                label="Okno"
+                tone={estimate.fits_in_window ? 'success' : 'warning'}
+                value={
+                  <span className="text-sm">
                     {estimate.fits_in_window
-                      ? 'Mieści się w 1 oknie'
-                      : `Auto Pause/Resume (${estimate.estimated_windows || 2} okna)`}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+                      ? 'Mieści się'
+                      : `Pause/Resume · ${estimate.estimated_windows || 2} okna`}
+                  </span>
+                }
+              />
+            </StatStrip>
+          )}
+        </TabsContent>
 
-          {/* Scan Profiles List + Creator */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-            <div className="xl:col-span-7 rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-text-primary">
-                Profile Skanowania ({profiles.length})
-              </h2>
-              {loading ? (
-                <div className="py-6 text-center text-xs text-text-muted">Ładowanie...</div>
-              ) : profiles.length === 0 ? (
-                <div className="py-6 text-center text-xs text-text-muted">
-                  Brak zapisanych profili skanowania.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {profiles.map((p) => (
-                    <div
-                      key={p.id}
-                      className="rounded-lg border border-border-subtle bg-bg-elevated/70 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-sm text-text-primary">{p.name}</span>
-                          {p.window_enabled && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/35">
-                              <Clock className="h-3 w-3" /> {p.window_start}–{p.window_end} ({p.timezone})
-                            </span>
-                          )}
-                        </div>
-                        <div className="font-mono text-[11px] text-cyan-400">
-                          Cele: {(p.targets || []).join(', ') || 'ze skali globalnej'}
-                        </div>
-                        <div className="text-[11px] text-text-muted font-mono">
-                          Porty: {p.allowed_ports} · {p.max_rate_pps} PPS · HTTP {p.http_rps} RPS ·
-                          histereza K={p.missing_threshold}, T={p.grace_period_hours}h
-                        </div>
-                      </div>
+        {/* ───────────── IMPORT / EXPORT ───────────── */}
+        <TabsContent value="ingest" className="pt-4">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+            {/* Manual form */}
+            <Card size="sm" className="xl:col-span-7">
+              <form onSubmit={handleManualSubmit} className="flex flex-col gap-5">
+                <CardHeader>
+                  <CardTitle className="text-sm">Wpis ręczny</CardTitle>
+                </CardHeader>
+                {!canImport ? (
+                  <CardContent>
+                    <Notice tone="warning">
+                      Wymagane uprawnienie <Code>import:write</Code>
+                    </Notice>
+                  </CardContent>
+                ) : (
+                  <>
+                    <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                      <Field label="Nazwa przebiegu" htmlFor="m-name" className="sm:col-span-2">
+                        <Input
+                          id="m-name"
+                          value={manualForm.scan_name}
+                          onChange={(e) => setManualForm((m) => ({ ...m, scan_name: e.target.value }))}
+                        />
+                      </Field>
+                      <Field label="Środowisko">
+                        <SimpleSelect
+                          value={manualForm.environment}
+                          onValueChange={(v) => setManualForm((m) => ({ ...m, environment: v }))}
+                          options={['prod', 'staging', 'dev', 'test'].map((v) => ({
+                            value: v,
+                            label: v,
+                          }))}
+                        />
+                      </Field>
+                      <Field label="IP *" htmlFor="m-ip">
+                        <Input
+                          id="m-ip"
+                          required
+                          value={manualForm.ip}
+                          onChange={(e) => setManualForm((m) => ({ ...m, ip: e.target.value }))}
+                          placeholder="172.28.0.55"
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Hostname" htmlFor="m-host">
+                        <Input
+                          id="m-host"
+                          value={manualForm.hostname}
+                          onChange={(e) => setManualForm((m) => ({ ...m, hostname: e.target.value }))}
+                          placeholder="admin-dev.agh.edu.pl"
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Tagi" htmlFor="m-tags">
+                        <Input
+                          id="m-tags"
+                          value={manualForm.tags}
+                          onChange={(e) => setManualForm((m) => ({ ...m, tags: e.target.value }))}
+                        />
+                      </Field>
+                      <Field label="Port" htmlFor="m-port">
+                        <Input
+                          id="m-port"
+                          type="number"
+                          value={manualForm.port}
+                          onChange={(e) =>
+                            setManualForm((m) => ({ ...m, port: Number(e.target.value) }))
+                          }
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Produkt" htmlFor="m-product">
+                        <Input
+                          id="m-product"
+                          value={manualForm.product}
+                          onChange={(e) => setManualForm((m) => ({ ...m, product: e.target.value }))}
+                        />
+                      </Field>
+                      <Field label="Wersja" htmlFor="m-version">
+                        <Input
+                          id="m-version"
+                          value={manualForm.version}
+                          onChange={(e) => setManualForm((m) => ({ ...m, version: e.target.value }))}
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Tytuł HTTP" htmlFor="m-title" className="sm:col-span-2">
+                        <Input
+                          id="m-title"
+                          value={manualForm.http_title}
+                          onChange={(e) => setManualForm((m) => ({ ...m, http_title: e.target.value }))}
+                          placeholder="Staging Admin Console"
+                        />
+                      </Field>
+                      <Field label="Kod HTTP" htmlFor="m-code">
+                        <Input
+                          id="m-code"
+                          type="number"
+                          value={manualForm.status_code}
+                          onChange={(e) =>
+                            setManualForm((m) => ({ ...m, status_code: Number(e.target.value) }))
+                          }
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Nagłówki" htmlFor="m-headers" className="sm:col-span-3">
+                        <Textarea
+                          id="m-headers"
+                          rows={2}
+                          value={manualForm.headers_text}
+                          onChange={(e) =>
+                            setManualForm((m) => ({ ...m, headers_text: e.target.value }))
+                          }
+                          className="font-mono text-xs"
+                        />
+                      </Field>
+                      <Field label="Set-Cookie" htmlFor="m-cookies" className="sm:col-span-3">
+                        <Input
+                          id="m-cookies"
+                          value={manualForm.cookies_text}
+                          onChange={(e) =>
+                            setManualForm((m) => ({ ...m, cookies_text: e.target.value }))
+                          }
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Notatki" htmlFor="m-notes" className="sm:col-span-3">
+                        <Input
+                          id="m-notes"
+                          value={manualForm.notes}
+                          onChange={(e) => setManualForm((m) => ({ ...m, notes: e.target.value }))}
+                        />
+                      </Field>
+                    </CardContent>
+                    <CardFooter className="justify-end">
+                      <Button type="submit" size="sm" disabled={submittingManual}>
+                        <RiCheckLine data-icon="inline-start" />
+                        {submittingManual ? 'Przetwarzanie…' : 'Dodaj'}
+                      </Button>
+                    </CardFooter>
+                  </>
+                )}
+              </form>
+            </Card>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {canRunScans && (
-                          <button
-                            type="button"
-                            onClick={() => handleStartProfileScan(p)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white"
-                          >
-                            <Play className="h-3.5 w-3.5" />
-                            Uruchom skan
-                          </button>
-                        )}
-                        {canDeleteScans && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await api.deleteProfile(p.id);
-                              toast.success('Usunięto profil');
-                              loadAll();
-                            }}
-                            className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* New Profile Form */}
-            {canWriteScans && (
-              <form
-                onSubmit={handleCreateProfile}
-                className="xl:col-span-5 rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3"
-              >
-                <h2 className="text-sm font-semibold text-text-primary flex items-center gap-1.5">
-                  <Plus className="h-4 w-4 text-cyan-400" />
-                  Nowy Profil Skanowania
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="sm:col-span-2">
-                    <label className="block text-text-muted mb-1">Nazwa profilu</label>
-                    <input
-                      type="text"
-                      required
-                      value={profileForm.name}
-                      onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
-                      placeholder="np. Skan Nocny Kampus AGH"
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-text-muted mb-1">Cele (IP / CIDR / domeny)</label>
-                    <textarea
-                      rows={2}
-                      value={profileForm.targetsText}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({ ...p, targetsText: e.target.value }))
-                      }
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated p-2 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-text-muted mb-1">Dozwolone porty</label>
-                    <input
-                      type="text"
-                      value={profileForm.allowed_ports}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({ ...p, allowed_ports: e.target.value }))
-                      }
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Max Rate (PPS)</label>
-                    <input
-                      type="number"
-                      value={profileForm.max_rate_pps}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({ ...p, max_rate_pps: Number(e.target.value) }))
-                      }
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">HTTP RPS</label>
-                    <input
-                      type="number"
-                      value={profileForm.http_rps}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({ ...p, http_rps: Number(e.target.value) }))
-                      }
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div className="sm:col-span-2 flex items-center gap-2 pt-1">
-                    <input
-                      type="checkbox"
-                      id="win_en"
-                      checked={profileForm.window_enabled}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({ ...p, window_enabled: e.target.checked }))
-                      }
-                      className="accent-amber-500"
-                    />
-                    <label htmlFor="win_en" className="text-text-secondary font-medium">
-                      Wymuszaj twarde okno czasowe (Auto Pause/Resume)
-                    </label>
-                  </div>
-                  {profileForm.window_enabled && (
+            <div className="space-y-6 xl:col-span-5">
+              {/* File import */}
+              <Card size="sm">
+                <form onSubmit={handleImportSubmit} className="flex flex-col gap-5">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Import CSV / JSON</CardTitle>
+                  </CardHeader>
+                  {!canImport ? (
+                    <CardContent>
+                      <Notice tone="warning">
+                        Wymagane uprawnienie <Code>import:write</Code>
+                      </Notice>
+                    </CardContent>
+                  ) : (
                     <>
-                      <div>
-                        <label className="block text-text-muted mb-1">Start okna (HH:MM)</label>
-                        <input
-                          type="text"
-                          value={profileForm.window_start}
-                          onChange={(e) =>
-                            setProfileForm((p) => ({ ...p, window_start: e.target.value }))
-                          }
-                          className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-text-muted mb-1">Koniec okna (HH:MM)</label>
-                        <input
-                          type="text"
-                          value={profileForm.window_end}
-                          onChange={(e) =>
-                            setProfileForm((p) => ({ ...p, window_end: e.target.value }))
-                          }
-                          className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                        />
-                      </div>
+                      <CardContent className="space-y-5">
+                        <label
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            handleFileChange(e.dataTransfer.files?.[0] || null);
+                          }}
+                          className="flex cursor-pointer flex-col items-center gap-2 border border-dashed border-border px-4 py-6 text-center transition-colors hover:bg-muted/50"
+                        >
+                          <RiUploadCloud2Line className="size-5 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">
+                            {importFile ? importFile.name : 'Upuść plik .csv / .json'}
+                          </span>
+                          <input
+                            type="file"
+                            accept=".csv,.json,text/csv,application/json"
+                            onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+                            className="text-xs text-muted-foreground file:mr-2 file:border file:border-border file:bg-transparent file:px-3 file:py-1 file:text-[10px] file:font-semibold file:tracking-widest file:text-foreground file:uppercase hover:file:bg-muted"
+                          />
+                        </label>
+
+                        <div className="grid grid-cols-2 gap-5">
+                          <Field label="Format">
+                            <SimpleSelect
+                              value={importFormat}
+                              onValueChange={(v) => setImportFormat(v as 'csv' | 'json')}
+                              options={[
+                                { value: 'csv', label: 'CSV' },
+                                { value: 'json', label: 'JSON' },
+                              ]}
+                            />
+                          </Field>
+                          <Field label="Nazwa importu" htmlFor="imp-name">
+                            <Input
+                              id="imp-name"
+                              value={importScanName}
+                              onChange={(e) => setImportScanName(e.target.value)}
+                              placeholder="opcjonalnie"
+                            />
+                          </Field>
+                        </div>
+
+                        {importPreview && (
+                          <div className="border border-border bg-muted/40 p-3">
+                            <div className="mb-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                              Podgląd · {importFile?.name}
+                            </div>
+                            <pre className="max-h-36 overflow-auto font-mono text-[11px] text-foreground">
+                              {importPreview}
+                            </pre>
+                          </div>
+                        )}
+                      </CardContent>
+                      <CardFooter className="justify-end">
+                        <Button type="submit" size="sm" disabled={!importFile || importing}>
+                          <RiFileUploadLine data-icon="inline-start" />
+                          {importing ? 'Importowanie…' : 'Importuj'}
+                        </Button>
+                      </CardFooter>
                     </>
                   )}
-                </div>
-                <button
-                  type="submit"
-                  className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white"
-                >
-                  <Save className="h-3.5 w-3.5" /> Zapisz profil skanowania
-                </button>
-              </form>
-            )}
-          </div>
-
-          {/* Scope Targets & Hard Exclusions */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-text-primary">
-                Zakres Globalny (Targets: {targets.length})
-              </h3>
-              {canWriteScans && (
-                <form onSubmit={handleAddTarget} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newTarget}
-                    onChange={(e) => setNewTarget(e.target.value)}
-                    placeholder="np. 172.28.0.0/24 lub agh.edu.pl"
-                    className="flex-1 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-xs text-text-primary"
-                  />
-                  <input
-                    type="text"
-                    value={newTargetLabel}
-                    onChange={(e) => setNewTargetLabel(e.target.value)}
-                    placeholder="Etykieta"
-                    className="w-32 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs text-text-primary"
-                  />
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-600 hover:bg-cyan-500 text-white"
-                  >
-                    Dodaj
-                  </button>
                 </form>
-              )}
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {targets.map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-bg-elevated border border-border-subtle text-xs"
-                  >
-                    <div>
-                      <span className="font-mono font-semibold text-text-primary">{t.value}</span>
-                      {t.label && <span className="text-text-muted ml-2">({t.label})</span>}
-                    </div>
-                    {canDeleteScans && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await api.deleteTarget(t.id);
-                          loadAll();
-                        }}
-                        className="text-text-muted hover:text-rose-400"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+              </Card>
 
-            <div className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-rose-400 flex items-center gap-1.5">
-                <ShieldBan className="h-4 w-4" />
-                Lista Wykluczeń — Scope / Deny Gate ({exclusions.length})
-              </h3>
-              {canWriteScans && (
-                <form onSubmit={handleAddExclusion} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newExclusion}
-                    onChange={(e) => setNewExclusion(e.target.value)}
-                    placeholder="np. 10.0.0.1/32"
-                    className="flex-1 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-xs text-text-primary"
-                  />
-                  <input
-                    type="text"
-                    value={newExclusionReason}
-                    onChange={(e) => setNewExclusionReason(e.target.value)}
-                    placeholder="Powód wykluczenia"
-                    className="w-40 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs text-text-primary"
-                  />
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white"
-                  >
-                    Wyklucz
-                  </button>
-                </form>
-              )}
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {exclusions.map((ex) => (
-                  <div
-                    key={ex.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-rose-500/5 border border-rose-500/25 text-xs"
-                  >
-                    <div>
-                      <span className="font-mono font-semibold text-rose-300">{ex.value}</span>
-                      {ex.reason && <span className="text-text-muted ml-2">— {ex.reason}</span>}
-                    </div>
-                    {canDeleteScans && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await api.deleteExclusion(ex.id);
-                          loadAll();
-                        }}
-                        className="text-text-muted hover:text-rose-400"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
+              {/* Export */}
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle className="text-sm">Eksport</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                  <Field label="Skan">
+                    <SimpleSelect
+                      value={exportScanId || ALL}
+                      onValueChange={(v) => setExportScanId(v === ALL ? '' : v)}
+                      options={[
+                        { value: ALL, label: 'Wszystkie' },
+                        ...scans.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                    />
+                  </Field>
+                  <Field label="Stan">
+                    <SimpleSelect
+                      value={exportState || ALL}
+                      onValueChange={(v) => setExportState(v === ALL ? '' : v)}
+                      options={[
+                        { value: ALL, label: 'Wszystkie' },
+                        { value: 'ACTIVE', label: 'ACTIVE' },
+                        { value: 'INTERMITTENT', label: 'INTERMITTENT' },
+                        { value: 'MISSING', label: 'MISSING' },
+                      ]}
+                    />
+                  </Field>
+                  <Field label="Tag" htmlFor="exp-tag">
+                    <Input
+                      id="exp-tag"
+                      value={exportTag}
+                      onChange={(e) => setExportTag(e.target.value)}
+                      placeholder="dowolny"
+                    />
+                  </Field>
+                </CardContent>
+                <CardFooter className="justify-end gap-2">
+                  {canExport ? (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => runExport('csv')}>
+                        <RiDownload2Line data-icon="inline-start" /> CSV
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => runExport('json')}>
+                        <RiDownload2Line data-icon="inline-start" /> JSON
+                      </Button>
+                    </>
+                  ) : (
+                    <Notice tone="neutral" className="w-full">
+                      Wymagane uprawnienie <Code>export:read</Code>
+                    </Notice>
+                  )}
+                </CardFooter>
+              </Card>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* TAB 2: SCAN RUNS & COVERAGE LEDGER */}
-      {activeTab === 'runs' && (
-        <div className="space-y-3">
-          {scans.length === 0 ? (
-            <div className="rounded-xl border border-border-subtle bg-bg-card p-10 text-center text-sm text-text-muted">
-              Brak przebiegów skanów.
-            </div>
-          ) : (
-            scans.map((scan) => {
-              const meta = scanStatusMeta(scan.status);
-              const isExpanded = expandedScanId === scan.id;
-              const isEditing = editingScanId === scan.id;
-              const chunks: ScanChunk[] = isExpanded ? scanDetail?.chunks || scan.chunks || [] : [];
-              const pct =
-                scan.total_chunks > 0
-                  ? Math.round((scan.completed_chunks / scan.total_chunks) * 100)
-                  : scan.status === 'COMPLETED'
-                    ? 100
-                    : 0;
-
-              return (
-                <div
-                  key={scan.id}
-                  className="rounded-xl border border-border-subtle bg-bg-card overflow-hidden"
-                >
-                  <div className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div
-                      className="min-w-0 flex-1 cursor-pointer"
-                      onClick={() => handleToggleScanDetail(scan.id)}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-text-primary">{scan.name}</span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg-elevated border border-border-subtle text-text-secondary">
-                          {scan.run_type}
-                        </span>
-                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded border ${meta.badge}`}>
-                          {meta.label}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted mt-1.5 font-mono">
-                        <span>IP: {scan.scanned_ips}/{scan.total_ips}</span>
-                        <span>Chunki: {scan.completed_chunks}/{scan.total_chunks || 1} ({pct}%)</span>
-                        <span>Hosty: {scan.active_hosts}</span>
-                        <span>Usługi: {scan.services_found}</span>
-                        <span>Zmiany: {scan.changes_detected}</span>
-                        <span>Start: {formatDateTime(scan.started_at)}</span>
-                      </div>
-                      {scan.notes && (
-                        <p className="text-xs text-text-secondary mt-1 italic">Notatka: {scan.notes}</p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleScanDetail(scan.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border-subtle bg-bg-elevated hover:bg-bg-hover text-text-secondary"
-                      >
-                        <Layers className="h-3.5 w-3.5 text-cyan-400" />
-                        Coverage Ledger
-                      </button>
-
-                      {canWriteScans && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingScanId(isEditing ? null : scan.id);
-                            setEditScanName(scan.name);
-                            setEditScanNotes(scan.notes || '');
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border-subtle bg-bg-elevated hover:bg-bg-hover text-text-secondary"
-                          title="Edytuj nazwę/notatki (działa w każdym stanie skanu)"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          Edytuj
-                        </button>
-                      )}
-
-                      {canRunScans && scan.status === 'RUNNING' && (
-                        <button
-                          type="button"
-                          onClick={() => handleScanControl(scan.id, 'pause')}
-                          className="p-1.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/35"
-                          title="Pause"
-                        >
-                          <Pause className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      {canRunScans &&
-                        (scan.status === 'PAUSED_USER' || scan.status === 'PAUSED_WINDOW') && (
-                          <button
-                            type="button"
-                            onClick={() => handleScanControl(scan.id, 'resume')}
-                            className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/35"
-                            title="Resume"
-                          >
-                            <Play className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      {canRunScans &&
-                        (scan.status === 'RUNNING' ||
-                          scan.status === 'PAUSED_USER' ||
-                          scan.status === 'PAUSED_WINDOW') && (
-                          <button
-                            type="button"
-                            onClick={() => handleScanControl(scan.id, 'stop')}
-                            className="p-1.5 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/35"
-                            title="Stop"
-                          >
-                            <Square className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      {canDeleteScans && (
-                        <button
-                          type="button"
-                          onClick={() => handleScanControl(scan.id, 'delete')}
-                          className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10"
-                          title="Usuń skan"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Inline Scan Metadata Editor (always works regardless of status!) */}
-                  {isEditing && canWriteScans && (
-                    <div className="border-t border-border-subtle bg-bg-elevated/60 p-4 flex flex-col sm:flex-row gap-3 items-end">
-                      <div className="flex-1 w-full">
-                        <label className="block text-[11px] text-text-muted mb-1">Nazwa skanu</label>
-                        <input
-                          type="text"
-                          value={editScanName}
-                          onChange={(e) => setEditScanName(e.target.value)}
-                          className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs text-text-primary"
-                        />
-                      </div>
-                      <div className="flex-[2] w-full">
-                        <label className="block text-[11px] text-text-muted mb-1">
-                          Notatki operacyjne (edytowalne w dowolnym stanie skanu)
-                        </label>
-                        <input
-                          type="text"
-                          value={editScanNotes}
-                          onChange={(e) => setEditScanNotes(e.target.value)}
-                          className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs text-text-primary"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleSaveScanMeta(scan.id)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white shrink-0"
-                      >
-                        <Save className="h-3.5 w-3.5" /> Zapisz
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Coverage Ledger Visual Chunk Grid */}
-                  {isExpanded && (
-                    <div className="border-t border-border-subtle bg-bg-primary/50 p-4 space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <span className="font-semibold text-text-primary">
-                          Coverage Ledger — Siatka Chunków ({chunks.length})
-                        </span>
-                        <div className="flex items-center gap-3 text-[11px] font-mono">
-                          <span className="text-emerald-400">■ DONE</span>
-                          <span className="text-cyan-400">■ RUNNING</span>
-                          <span className="text-amber-400">■ PAUSED</span>
-                          <span className="text-text-muted">■ PENDING</span>
-                          <span className="text-rose-400">■ FAILED</span>
-                        </div>
-                      </div>
-
-                      {chunks.length === 0 ? (
-                        <p className="text-xs text-text-muted">
-                          Brak indywidualnych chunków dla tego przebiegu (np. import ręczny/CSV).
-                        </p>
-                      ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                          {chunks.map((ch) => (
-                            <div
-                              key={ch.id || ch.chunk_index}
-                              className={`rounded-lg border p-2 text-[11px] font-mono ${chunkColor(
-                                ch.status
-                              )}`}
-                              title={ch.error || `Chunk #${ch.chunk_index + 1}: ${ch.ip_count} IP`}
-                            >
-                              <div className="flex items-center justify-between font-bold">
-                                <span>#{ch.chunk_index + 1}</span>
-                                <span className="text-[9px]">{ch.status}</span>
-                              </div>
-                              <div className="text-[10px] opacity-80 mt-0.5">
-                                {ch.ip_count} IP · {ch.active_hosts}H/{ch.services_found}S
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* TAB 3: UNIFIED INGEST & EXPORT */}
-      {activeTab === 'ingest' && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          {/* Manual Form */}
-          <form
-            onSubmit={handleManualSubmit}
-            className="xl:col-span-7 rounded-xl border border-border-subtle bg-bg-card p-5 space-y-4"
-          >
-            <div>
-              <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <Plus className="h-4 w-4 text-cyan-400" />
-                Formularz Ręczny (Zunifikowany Pipeline)
-              </h2>
-              <p className="text-xs text-text-muted mt-0.5">
-                Tworzy pełnoprawny <span className="font-mono">scan_run(MANUAL)</span> i przepuszcza
-                dane przez silnik sygnatur, scoring, diff oraz szyfrowanie AES-256-GCM.
-              </p>
-            </div>
-
-            {!canImport ? (
-              <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-xs text-amber-300">
-                Brak uprawnienia <span className="font-mono">import:write</span>. Przełącz rolę na
-                Operator lub Administracja, aby dodawać dane ręcznie.
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div className="sm:col-span-2">
-                    <label className="block text-text-muted mb-1">Nazwa przebiegu</label>
-                    <input
-                      type="text"
-                      value={manualForm.scan_name}
-                      onChange={(e) => setManualForm((m) => ({ ...m, scan_name: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Środowisko</label>
-                    <select
-                      value={manualForm.environment}
-                      onChange={(e) => setManualForm((m) => ({ ...m, environment: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                    >
-                      <option value="prod">prod</option>
-                      <option value="staging">staging</option>
-                      <option value="dev">dev</option>
-                      <option value="test">test</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Adres IP *</label>
-                    <input
-                      type="text"
-                      required
-                      value={manualForm.ip}
-                      onChange={(e) => setManualForm((m) => ({ ...m, ip: e.target.value }))}
-                      placeholder="172.28.0.55"
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Hostname / Domena</label>
-                    <input
-                      type="text"
-                      value={manualForm.hostname}
-                      onChange={(e) => setManualForm((m) => ({ ...m, hostname: e.target.value }))}
-                      placeholder="admin-dev.agh.edu.pl"
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Tagi</label>
-                    <input
-                      type="text"
-                      value={manualForm.tags}
-                      onChange={(e) => setManualForm((m) => ({ ...m, tags: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Port</label>
-                    <input
-                      type="number"
-                      value={manualForm.port}
-                      onChange={(e) => setManualForm((m) => ({ ...m, port: Number(e.target.value) }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Usługa / Produkt</label>
-                    <input
-                      type="text"
-                      value={manualForm.product}
-                      onChange={(e) => setManualForm((m) => ({ ...m, product: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Wersja</label>
-                    <input
-                      type="text"
-                      value={manualForm.version}
-                      onChange={(e) => setManualForm((m) => ({ ...m, version: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-text-muted mb-1">Tytuł HTTP</label>
-                    <input
-                      type="text"
-                      value={manualForm.http_title}
-                      onChange={(e) => setManualForm((m) => ({ ...m, http_title: e.target.value }))}
-                      placeholder="np. Staging Admin Console"
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-muted mb-1">Kod HTTP</label>
-                    <input
-                      type="number"
-                      value={manualForm.status_code}
-                      onChange={(e) =>
-                        setManualForm((m) => ({ ...m, status_code: Number(e.target.value) }))
-                      }
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <label className="block text-text-muted mb-1">Nagłówki HTTP (Klucz: Wartość)</label>
-                    <textarea
-                      rows={2}
-                      value={manualForm.headers_text}
-                      onChange={(e) => setManualForm((m) => ({ ...m, headers_text: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated p-2 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <label className="block text-text-muted mb-1">Ciasteczka Set-Cookie (1 na linię)</label>
-                    <input
-                      type="text"
-                      value={manualForm.cookies_text}
-                      onChange={(e) => setManualForm((m) => ({ ...m, cookies_text: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <label className="block text-text-muted mb-1">Notatki</label>
-                    <input
-                      type="text"
-                      value={manualForm.notes}
-                      onChange={(e) => setManualForm((m) => ({ ...m, notes: e.target.value }))}
-                      className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={submittingManual}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {submittingManual ? 'Przetwarzanie...' : 'Dodaj i przetwórz w pipeline'}
-                </button>
-              </>
-            )}
-          </form>
-
-          {/* Right: File Import + Export */}
-          <div className="xl:col-span-5 space-y-5">
-            {/* Import CSV / JSON */}
-            <form
-              onSubmit={handleImportSubmit}
-              className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3"
-            >
-              <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <FileUp className="h-4 w-4 text-cyan-400" />
-                Import z pliku CSV / JSON
-              </h2>
-
-              {!canImport ? (
-                <p className="text-xs text-amber-300">Wymagane uprawnienie import:write.</p>
-              ) : (
-                <>
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      handleFileChange(e.dataTransfer.files?.[0] || null);
-                    }}
-                    className="rounded-xl border-2 border-dashed border-border-strong bg-bg-elevated/50 p-5 text-center space-y-2"
-                  >
-                    <Upload className="h-6 w-6 text-cyan-400 mx-auto" />
-                    <p className="text-xs text-text-secondary">
-                      Przeciągnij plik <span className="font-mono">.csv</span> lub{' '}
-                      <span className="font-mono">.json</span> tutaj albo wybierz z dysku
-                    </p>
-                    <input
-                      type="file"
-                      accept=".csv,.json,text/csv,application/json"
-                      onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-                      className="text-xs text-text-muted file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-cyan-500/15 file:text-cyan-300 hover:file:bg-cyan-500/25"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <label className="block text-text-muted mb-1">Format</label>
-                      <select
-                        value={importFormat}
-                        onChange={(e) => setImportFormat(e.target.value as 'csv' | 'json')}
-                        className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-text-primary"
-                      >
-                        <option value="csv">CSV</option>
-                        <option value="json">JSON</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-text-muted mb-1">Nazwa importu</label>
-                      <input
-                        type="text"
-                        value={importScanName}
-                        onChange={(e) => setImportScanName(e.target.value)}
-                        placeholder="opcjonalnie"
-                        className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-text-primary"
-                      />
-                    </div>
-                  </div>
-
-                  {importPreview && (
-                    <div className="rounded-lg border border-border-subtle bg-bg-primary/70 p-2.5">
-                      <div className="text-[10px] font-mono uppercase text-text-muted mb-1">
-                        Podgląd pliku ({importFile?.name})
-                      </div>
-                      <pre className="text-[11px] font-mono text-text-secondary overflow-x-auto max-h-36">
-                        {importPreview}
-                      </pre>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={!importFile || importing}
-                    className="w-full inline-flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50"
-                  >
-                    <FileUp className="h-3.5 w-3.5" />
-                    {importing ? 'Importowanie...' : 'Zaimportuj i przeanalizuj'}
-                  </button>
-                </>
-              )}
-            </form>
-
-            {/* Export Panel */}
-            <div className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <Download className="h-4 w-4 text-emerald-400" />
-                Eksport Danych (CSV / JSON)
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                <select
-                  value={exportScanId}
-                  onChange={(e) => setExportScanId(e.target.value)}
-                  className="rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-text-primary"
-                >
-                  <option value="">Wszystkie skany</option>
-                  {scans.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={exportState}
-                  onChange={(e) => setExportState(e.target.value)}
-                  className="rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-text-primary"
-                >
-                  <option value="">Wszystkie stany</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="INTERMITTENT">INTERMITTENT</option>
-                  <option value="MISSING">MISSING</option>
-                </select>
-                <input
-                  type="text"
-                  value={exportTag}
-                  onChange={(e) => setExportTag(e.target.value)}
-                  placeholder="Filtr tagu..."
-                  className="rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-text-primary"
-                />
-              </div>
-
-              {canExport ? (
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      api.exportData({
-                        format: 'csv',
-                        scan_id: exportScanId || undefined,
-                        state: exportState || undefined,
-                        tag: exportTag || undefined,
-                      })
-                    }
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-border-subtle bg-bg-elevated hover:bg-bg-hover text-text-primary"
-                  >
-                    <Download className="h-3.5 w-3.5 text-emerald-400" /> Pobierz CSV
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      api.exportData({
-                        format: 'json',
-                        scan_id: exportScanId || undefined,
-                        state: exportState || undefined,
-                        tag: exportTag || undefined,
-                      })
-                    }
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-border-subtle bg-bg-elevated hover:bg-bg-hover text-text-primary"
-                  >
-                    <Download className="h-3.5 w-3.5 text-cyan-400" /> Pobierz JSON
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs text-text-muted">Brak uprawnienia export:read.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -79,16 +79,19 @@ func (h *SSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ch := h.Subscribe()
 	defer h.Unsubscribe(ch)
 
-	// Initial hello event
+	// Initial hello event + replay recent telemetry so live console is populated immediately
 	hello := domain.LiveEvent{
 		Type:      "stream.connected",
 		Timestamp: time.Now().UTC(),
-		Payload:   map[string]any{"status": "connected"},
+		Payload:   map[string]any{"status": "connected", "clients": h.ClientCount()},
 	}
 	writeSSE(w, hello)
+	for _, ev := range h.Recent(15) {
+		writeSSE(w, ev)
+	}
 	flusher.Flush()
 
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -102,10 +105,38 @@ func (h *SSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeSSE(w, ev)
 			flusher.Flush()
 		case <-ticker.C:
-			_, _ = fmt.Fprintf(w, ": keepalive %d\n\n", time.Now().Unix())
+			hb := domain.LiveEvent{
+				Type:      "stream.heartbeat",
+				Timestamp: time.Now().UTC(),
+				Payload:   map[string]any{"status": "live", "clients": h.ClientCount()},
+			}
+			writeSSE(w, hb)
 			flusher.Flush()
 		}
 	}
+}
+
+// Recent returns up to n most recent buffered events.
+func (h *SSEHub) Recent(n int) []domain.LiveEvent {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if n <= 0 || len(h.recent) == 0 {
+		return nil
+	}
+	start := 0
+	if len(h.recent) > n {
+		start = len(h.recent) - n
+	}
+	out := make([]domain.LiveEvent, len(h.recent)-start)
+	copy(out, h.recent[start:])
+	return out
+}
+
+// ClientCount returns the number of active SSE subscribers.
+func (h *SSEHub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
 }
 
 func writeSSE(w http.ResponseWriter, ev domain.LiveEvent) {

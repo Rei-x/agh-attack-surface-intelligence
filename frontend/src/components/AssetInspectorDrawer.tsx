@@ -1,36 +1,37 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  Cookie,
-  Cpu,
-  ExternalLink,
-  FileCode2,
-  Globe,
-  History,
-  Lock,
-  Save,
-  Send,
-  ShieldAlert,
-  ShieldCheck,
-  Unlock,
-  X,
-} from 'lucide-react';
-import { api } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../context/ToastContext';
-import { PERMISSIONS } from '../lib/permissions';
+  RiAlertLine,
+  RiArrowDownSLine,
+  RiArrowRightSLine,
+  RiHistoryLine,
+  RiLockLine,
+  RiLockUnlockLine,
+  RiSaveLine,
+  RiSendPlaneLine,
+} from '@remixicon/react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { PERMISSIONS } from '@/lib/permissions';
 import {
   formatDateTime,
   formatRelativeTime,
   lifecycleMeta,
   scoreBarColor,
   scoreColor,
-} from '../lib/format';
-import type { Host, Service, ServiceObservation, TimeSlotStat } from '../types/api';
+} from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { Empty, Notice, Pill, SectionTitle, SimpleSelect } from '@/components/common';
+import { ServiceLogoFor } from '@/components/ServiceLogo';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { Host, Service, ServiceObservation, TimeSlotStat } from '@/types/api';
 
 interface Props {
   hostId: string | null;
@@ -40,13 +41,133 @@ interface Props {
 
 const DEFAULT_SLOTS = ['00-06', '06-12', '12-18', '18-24'];
 
+const ENV_NONE = '__none__';
+const ENV_OPTIONS = [
+  { value: ENV_NONE, label: 'Nieokreślone' },
+  { value: 'prod', label: 'prod' },
+  { value: 'staging', label: 'staging' },
+  { value: 'dev', label: 'dev' },
+  { value: 'test', label: 'test' },
+];
+
+const LIFECYCLE_OPTIONS = ['NEW', 'ACTIVE', 'INTERMITTENT', 'MISSING', 'INACTIVE', 'REACTIVATED'].map(
+  (s) => ({ value: s, label: s })
+);
+
+const TRIAGE_OPTIONS = [
+  { value: 'new', label: 'new' },
+  { value: 'triaged', label: 'triaged' },
+  { value: 'accepted_risk', label: 'accepted_risk' },
+  { value: 'false_positive', label: 'false_positive' },
+];
+
+type TabId = 'services' | 'overview' | 'heatmap' | 'summary';
+
+/* ---------- small presentational helpers ---------- */
+
+function KV({ label, children, className }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('min-w-0', className)}>
+      <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+        {label}
+      </div>
+      <div className="mt-1 font-mono text-xs break-all text-foreground">{children}</div>
+    </div>
+  );
+}
+
+/** Lock state indicator; when locked + allowed, clicking unlocks the field. */
+function LockToggle({
+  locked,
+  canUnlock,
+  disabled,
+  onUnlock,
+}: {
+  locked: boolean;
+  canUnlock: boolean;
+  disabled?: boolean;
+  onUnlock: () => void;
+}) {
+  if (!locked) {
+    return (
+      <span
+        className="inline-flex size-7 items-center justify-center text-muted-foreground/50"
+        title="Wartość ze skanera"
+      >
+        <RiLockUnlockLine className="size-3.5" />
+      </span>
+    );
+  }
+  if (!canUnlock) {
+    return (
+      <span
+        className="inline-flex size-7 items-center justify-center text-violet-600 dark:text-violet-400"
+        title="Zablokowane"
+      >
+        <RiLockLine className="size-3.5" />
+      </span>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            disabled={disabled}
+            onClick={onUnlock}
+            aria-label="Odblokuj"
+            className="text-violet-600 hover:text-foreground dark:text-violet-400"
+          />
+        }
+      >
+        <RiLockLine />
+      </TooltipTrigger>
+      <TooltipContent>Odblokuj</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function OverrideRow({
+  label,
+  lock,
+  scanner,
+  children,
+}: {
+  label: React.ReactNode;
+  lock?: React.ReactNode;
+  scanner?: string | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[8.5rem_1fr_1.75rem] items-start gap-4 border-b border-border py-3 last:border-b-0">
+      <Label className="pt-3 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+        {label}
+      </Label>
+      <div className="min-w-0">
+        {children}
+        {scanner && (
+          <div className="mt-1 font-mono text-[11px] text-amber-700 dark:text-amber-400">
+            Skaner: {scanner}
+          </div>
+        )}
+      </div>
+      <div className="pt-1.5">{lock}</div>
+    </div>
+  );
+}
+
+/* ---------- main component ---------- */
+
 export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
   const { can } = useAuth();
   const toast = useToast();
 
   const [host, setHost] = useState<Host | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'services' | 'heatmap'>('services');
+  const [activeTab, setActiveTab] = useState<TabId>('services');
 
   // Host override form state
   const [hostname, setHostname] = useState('');
@@ -92,7 +213,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
         setExpandedServiceId(h.services[0].id);
       }
     } catch (err) {
-      toast.error('Nie udało się załadować hosta', (err as Error).message);
+      toast.error('Błąd ładowania hosta', (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -103,12 +224,10 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       setExpandedServiceId(null);
       setEditingServiceId(null);
       loadHost(hostId);
-    } else {
-      setHost(null);
     }
+    // host is intentionally kept on close so the Sheet exit animation doesn't flash a loader
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostId]);
-
-  if (!hostId) return null;
 
   const isHostFieldLocked = (field: string) => (host?.locked_fields || []).includes(field);
   const scannerSawHost = (field: string): string | null => {
@@ -136,19 +255,16 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       if (notes !== (host.notes || '')) payload.notes = notes;
 
       if (Object.keys(payload).length === 0) {
-        toast.info('Brak zmian do zapisania');
+        toast.info('Brak zmian');
         return;
       }
 
       const updated = await api.patchHostOverrides(host.id, payload);
       setHost(updated);
-      toast.success(
-        'Zapisano nadpisania analityka',
-        'Pola zostały zablokowane i będą zachowane przy kolejnych skanach.'
-      );
+      toast.success('Zapisano overrides');
       onUpdated?.();
     } catch (err) {
-      toast.error('Błąd zapisu nadpisań', (err as Error).message);
+      toast.error('Błąd zapisu', (err as Error).message);
     } finally {
       setSavingHost(false);
     }
@@ -166,10 +282,10 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       setLifecycleState(updated.lifecycle_state || 'ACTIVE');
       setTagsInput((updated.tags || []).join(', '));
       setNotes(updated.notes || '');
-      toast.success('Odblokowano pole', `Pole "${field}" wróciło do wartości ze skanera.`);
+      toast.success('Odblokowano', field);
       onUpdated?.();
     } catch (err) {
-      toast.error('Nie udało się odblokować pola', (err as Error).message);
+      toast.error('Błąd odblokowania', (err as Error).message);
     } finally {
       setSavingHost(false);
     }
@@ -207,12 +323,12 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       if (svcForm.notes !== (svc.notes || '')) payload.notes = svcForm.notes;
 
       await api.patchServiceOverrides(svc.id, payload);
-      toast.success('Zapisano nadpisania usługi', 'Nadpisania chronione przed kolejnymi skanami.');
+      toast.success('Zapisano overrides usługi');
       setEditingServiceId(null);
       if (host) await loadHost(host.id);
       onUpdated?.();
     } catch (err) {
-      toast.error('Błąd zapisu usługi', (err as Error).message);
+      toast.error('Błąd zapisu', (err as Error).message);
     } finally {
       setSavingSvc(false);
     }
@@ -221,7 +337,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
   const handleUnlockServiceField = async (svcId: string, field: string) => {
     try {
       await api.patchServiceOverrides(svcId, { unlock_fields: [field] });
-      toast.success('Odblokowano pole usługi', field);
+      toast.success('Odblokowano', field);
       if (host) await loadHost(host.id);
       onUpdated?.();
     } catch (err) {
@@ -235,7 +351,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
       const list = await api.getServiceObservations(svcId);
       setObsByService((prev) => ({ ...prev, [svcId]: list }));
     } catch (err) {
-      toast.error('Nie udało się pobrać historii obserwacji', (err as Error).message);
+      toast.error('Błąd pobierania historii', (err as Error).message);
     }
   };
 
@@ -246,12 +362,9 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
         service_ids: [svc.id],
         severity: svc.interestingness >= 75 ? 'High' : svc.interestingness >= 50 ? 'Medium' : 'Low',
       });
-      toast.success(
-        'Wysłano do DefectDojo v2',
-        `Usługa ${host?.ip}:${svc.port} została wyeksportowana z dowodami.`
-      );
+      toast.success('Wysłano do DefectDojo', `${host?.ip}:${svc.port}`);
     } catch (err) {
-      toast.error('Błąd eksportu do DefectDojo', (err as Error).message);
+      toast.error('Błąd DefectDojo', (err as Error).message);
     } finally {
       setPushingDD(null);
     }
@@ -268,102 +381,89 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
     (slot) => statsMap.get(slot) || { slot, seen: 0, total: 0, ratio: 0 }
   );
 
+  const ready = !loading && !!host;
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-3xl bg-bg-secondary border-l border-border-strong h-full flex flex-col shadow-2xl">
-        {/* Drawer Header */}
-        <div className="p-5 border-b border-border-subtle flex items-start justify-between gap-4 bg-bg-card">
-          {loading || !host ? (
-            <div className="text-sm text-text-muted">Ładowanie szczegółów zasobu...</div>
-          ) : (
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-bold font-mono text-text-primary">{host.ip}</h2>
-                <span className={`text-xs font-mono px-2 py-0.5 rounded border ${lc.badge}`}>
-                  {lc.label}
-                </span>
-                <span
-                  className={`text-xs font-mono px-2 py-0.5 rounded border ${scoreColor(
-                    host.interestingness
-                  )}`}
-                >
-                  Score: {host.interestingness}/100
-                </span>
-                {(host.locked_fields?.length || 0) > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/35">
-                    <Lock className="h-3 w-3" />
-                    {host.locked_fields!.length} pól nadpisanych
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted mt-1.5">
-                {host.hostname && <span className="font-mono text-text-secondary">{host.hostname}</span>}
-                <span>Stabilność: <strong className="text-text-primary">{host.stability_score}%</strong></span>
-                <span>Widziany: {host.total_scans_seen}/{host.total_scans_checked} skanów</span>
-                <span>Ostatnio: {formatRelativeTime(host.last_seen)}</span>
-              </div>
-              {(host.interesting_factors?.length || 0) > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {host.interesting_factors!.map((f, idx) => (
-                    <span
-                      key={idx}
-                      className="text-[11px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/25"
-                    >
-                      +{f.points} {f.reason}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-hover"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Drawer Tabs */}
-        <div className="px-5 border-b border-border-subtle flex items-center gap-1 bg-bg-card/60">
-          {[
-            { id: 'services', label: `Usługi i Evidence Receipts (${host?.services?.length || 0})` },
-            { id: 'overview', label: 'Nadpisania (Overrides) i Metadane' },
-            { id: 'heatmap', label: 'Mapa Dostępności (Time-of-Day)' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className={`px-3.5 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-cyan-400 text-cyan-400'
-                  : 'border-transparent text-text-muted hover:text-text-primary'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Drawer Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {loading || !host ? (
-            <div className="py-12 text-center text-sm text-text-muted">Ładowanie...</div>
+    <Sheet
+      open={!!hostId}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"
+      >
+        {/* Header */}
+        <SheetHeader className="gap-3 border-b border-border p-6 pr-16">
+          {!ready || !host ? (
+            <SheetTitle className="text-sm text-muted-foreground">Ładowanie…</SheetTitle>
           ) : (
             <>
-              {/* TAB 1: SERVICES & EVIDENCE RECEIPTS */}
-              {activeTab === 'services' && (
-                <div className="space-y-4">
-                  {(host.services || []).length === 0 ? (
-                    <div className="rounded-xl border border-border-subtle bg-bg-card p-8 text-center text-sm text-text-muted">
-                      Brak wykrytych usług dla tego hosta.
-                    </div>
-                  ) : (
-                    (host.services || []).map((svc) => {
+              <div className="flex flex-wrap items-center gap-2">
+                <SheetTitle className="font-mono text-lg tracking-normal normal-case">
+                  {host.ip}
+                </SheetTitle>
+                <Pill className={lc.badge} dot>
+                  {lc.label}
+                </Pill>
+                <Pill className={cn('font-mono tabular-nums', scoreColor(host.interestingness))}>
+                  Score {host.interestingness}
+                </Pill>
+                {(host.locked_fields?.length || 0) > 0 && (
+                  <Pill tone="violet">
+                    <RiLockLine className="size-3" />
+                    {host.locked_fields!.length}
+                  </Pill>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                {host.hostname && <span className="font-mono text-foreground">{host.hostname}</span>}
+                <span>
+                  Stabilność <span className="font-mono text-foreground">{host.stability_score}%</span>
+                </span>
+                <span>
+                  Skany{' '}
+                  <span className="font-mono text-foreground">
+                    {host.total_scans_seen}/{host.total_scans_checked}
+                  </span>
+                </span>
+                <span>{formatRelativeTime(host.last_seen)}</span>
+              </div>
+            </>
+          )}
+        </SheetHeader>
+
+        {!ready || !host ? (
+          <Empty className="flex-1">Ładowanie…</Empty>
+        ) : (
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as TabId)}
+            className="min-h-0 flex-1 gap-0"
+          >
+            <div className="border-b border-border px-6">
+              <TabsList variant="line" className="-mb-px">
+                <TabsTrigger value="services">
+                  Usługi{' '}
+                  <span className="font-mono text-muted-foreground tabular-nums">
+                    {host.services?.length || 0}
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger value="summary">Przegląd</TabsTrigger>
+                <TabsTrigger value="heatmap">Heatmapa</TabsTrigger>
+                <TabsTrigger value="overview">Overrides</TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {/* ===== SERVICES: Evidence + Confidence ===== */}
+              <TabsContent value="services" className="p-6">
+                {(host.services || []).length === 0 ? (
+                  <Empty>Brak usług</Empty>
+                ) : (
+                  <div className="divide-y divide-border border border-border">
+                    {(host.services || []).map((svc) => {
                       const isOpen = expandedServiceId === svc.id;
                       const isEditing = editingServiceId === svc.id;
                       const http = svc.http;
@@ -371,298 +471,248 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                       const obsList = obsByService[svc.id];
 
                       return (
-                        <div
-                          key={svc.id}
-                          className="rounded-xl border border-border-subtle bg-bg-card overflow-hidden"
-                        >
-                          {/* Service header */}
+                        <div key={svc.id}>
+                          {/* Service row */}
                           <div
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setExpandedServiceId(isOpen ? null : svc.id)}
-                            className="p-4 flex items-center justify-between gap-3 cursor-pointer hover:bg-bg-hover/50 transition-colors"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setExpandedServiceId(isOpen ? null : svc.id);
+                              }
+                            }}
+                            className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted/50"
                           >
+                            {isOpen ? (
+                              <RiArrowDownSLine className="size-4 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <RiArrowRightSLine className="size-4 shrink-0 text-muted-foreground" />
+                            )}
+                            <ServiceLogoFor service={svc} size="md" />
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-mono text-sm font-bold text-cyan-400">
+                                <span className="font-mono text-sm font-semibold text-foreground">
                                   {svc.port}/{svc.protocol}
                                 </span>
-                                <span className="text-sm font-semibold text-text-primary">
+                                <span className="text-sm text-foreground">
                                   {svc.service_name || 'unknown'}
                                 </span>
                                 {(svc.product || svc.version) && (
-                                  <span className="text-xs font-mono text-text-secondary">
+                                  <span className="font-mono text-xs text-muted-foreground">
                                     {[svc.product, svc.version].filter(Boolean).join(' ')}
                                   </span>
                                 )}
-                                {svc.is_admin_panel && (
-                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/35">
-                                    ADMIN PANEL
-                                  </span>
-                                )}
-                                {svc.is_staging_env && (
-                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/35">
-                                    STAGING / DEV
-                                  </span>
-                                )}
-                                {svc.is_iot && (
-                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/35">
-                                    IoT
-                                  </span>
-                                )}
+                                {svc.is_admin_panel && <Pill tone="danger">Admin</Pill>}
+                                {svc.is_staging_env && <Pill tone="warning">Staging/Dev</Pill>}
+                                {svc.is_iot && <Pill tone="violet">IoT</Pill>}
                                 {(svc.locked_fields?.length || 0) > 0 && (
-                                  <Lock className="h-3.5 w-3.5 text-violet-400" />
+                                  <RiLockLine className="size-3.5 text-violet-600 dark:text-violet-400" />
                                 )}
                               </div>
                               {http?.title && (
-                                <p className="text-xs text-text-muted mt-1 truncate">
-                                  HTTP {http.status_code} · {http.title}
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                  <span className="font-mono">{http.status_code}</span> · {http.title}
                                 </p>
                               )}
                             </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span
-                                className={`text-xs font-mono px-2 py-0.5 rounded border ${scoreColor(
-                                  svc.interestingness
-                                )}`}
-                              >
-                                {svc.interestingness}
-                              </span>
-                              {isOpen ? (
-                                <ChevronUp className="h-4 w-4 text-text-muted" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4 text-text-muted" />
-                              )}
-                            </div>
+                            <Pill className={cn('font-mono tabular-nums', scoreColor(svc.interestingness))}>
+                              {svc.interestingness}
+                            </Pill>
                           </div>
 
-                          {/* Service expanded details */}
+                          {/* Service details */}
                           {isOpen && (
-                            <div className="border-t border-border-subtle p-4 space-y-5 bg-bg-primary/40">
-                              {/* Quick action bar */}
+                            <div className="space-y-6 border-t border-border bg-muted/20 px-4 py-5">
+                              {/* Action bar */}
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-bg-elevated border border-border-subtle text-text-secondary">
-                                    Triage: {svc.triage_status || 'new'}
-                                  </span>
+                                  <Pill className="font-mono normal-case tracking-normal">
+                                    triage: {svc.triage_status || 'new'}
+                                  </Pill>
                                   {(svc.tags || []).map((t) => (
-                                    <span
-                                      key={t}
-                                      className="text-[11px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/25"
-                                    >
+                                    <Pill key={t} className="font-normal normal-case tracking-normal">
                                       #{t}
-                                    </span>
+                                    </Pill>
                                   ))}
                                 </div>
-
                                 <div className="flex items-center gap-2">
                                   {canWrite && (
-                                    <button
+                                    <Button
                                       type="button"
+                                      variant="outline"
+                                      size="xs"
                                       onClick={() =>
                                         isEditing ? setEditingServiceId(null) : startEditService(svc)
                                       }
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border border-border-subtle bg-bg-elevated hover:bg-bg-hover text-text-primary"
                                     >
-                                      <Lock className="h-3 w-3 text-violet-400" />
-                                      {isEditing ? 'Anuluj edycję' : 'Nadpisz pola'}
-                                    </button>
+                                      <RiLockLine data-icon="inline-start" />
+                                      {isEditing ? 'Anuluj' : 'Overrides'}
+                                    </Button>
                                   )}
                                   {canPushDD && (
-                                    <button
+                                    <Button
                                       type="button"
+                                      variant="outline"
+                                      size="xs"
                                       disabled={pushingDD === svc.id}
                                       onClick={() => handlePushServiceToDD(svc)}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-cyan-500/15 text-cyan-300 border border-cyan-500/35 hover:bg-cyan-500/25 disabled:opacity-50"
                                     >
-                                      <Send className="h-3 w-3" />
-                                      {pushingDD === svc.id
-                                        ? 'Wysyłanie...'
-                                        : 'Wyślij do DefectDojo'}
-                                    </button>
+                                      <RiSendPlaneLine data-icon="inline-start" />
+                                      {pushingDD === svc.id ? 'Wysyłanie…' : 'DefectDojo'}
+                                    </Button>
                                   )}
                                 </div>
                               </div>
 
-                              {/* Inline Service Override Editor */}
+                              {/* Service override editor */}
                               {isEditing && canWrite && (
-                                <div className="rounded-lg border border-violet-500/35 bg-violet-500/5 p-3.5 space-y-3">
-                                  <div className="text-xs font-semibold text-violet-300 flex items-center gap-1.5">
-                                    <Lock className="h-3.5 w-3.5" />
-                                    Nadpisania usługi (chronione przed kolejnymi skanami)
-                                  </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                                    {[
-                                      { key: 'service_name', label: 'Nazwa usługi' },
-                                      { key: 'product', label: 'Produkt' },
-                                      { key: 'version', label: 'Wersja' },
-                                      { key: 'http_title', label: 'Tytuł HTTP' },
-                                    ].map((f) => {
-                                      const locked = (svc.locked_fields || []).includes(f.key);
-                                      const saw = svc.scanner_observed?.[f.key];
-                                      return (
-                                        <div key={f.key}>
-                                          <div className="flex items-center justify-between mb-1">
-                                            <label className="text-text-secondary font-medium flex items-center gap-1">
-                                              {f.label}
-                                              {locked && <Lock className="h-3 w-3 text-violet-400" />}
-                                            </label>
-                                            {locked && (
-                                              <button
-                                                type="button"
-                                                onClick={() => handleUnlockServiceField(svc.id, f.key)}
-                                                className="text-[10px] text-amber-400 hover:underline flex items-center gap-0.5"
-                                              >
-                                                <Unlock className="h-2.5 w-2.5" /> Odblokuj
-                                              </button>
-                                            )}
-                                          </div>
-                                          <input
-                                            type="text"
-                                            value={svcForm[f.key as keyof typeof svcForm]}
-                                            onChange={(e) =>
-                                              setSvcForm((prev) => ({
-                                                ...prev,
-                                                [f.key]: e.target.value,
-                                              }))
-                                            }
-                                            className="w-full rounded-md border border-border-subtle bg-bg-card px-2.5 py-1.5 text-xs text-text-primary focus:outline-none focus:border-cyan-500"
+                                <div className="border border-border bg-card px-4 py-2">
+                                  {[
+                                    { key: 'service_name', label: 'Usługa' },
+                                    { key: 'product', label: 'Produkt' },
+                                    { key: 'version', label: 'Wersja' },
+                                    { key: 'http_title', label: 'Tytuł HTTP' },
+                                  ].map((f) => {
+                                    const locked = (svc.locked_fields || []).includes(f.key);
+                                    const saw = svc.scanner_observed?.[f.key];
+                                    const sawStr =
+                                      saw !== undefined && saw !== null && saw !== ''
+                                        ? String(saw)
+                                        : null;
+                                    return (
+                                      <OverrideRow
+                                        key={f.key}
+                                        label={f.label}
+                                        scanner={sawStr}
+                                        lock={
+                                          <LockToggle
+                                            locked={locked}
+                                            canUnlock
+                                            onUnlock={() => handleUnlockServiceField(svc.id, f.key)}
                                           />
-                                          {saw !== undefined && saw !== null && saw !== '' && (
-                                            <div className="text-[10px] text-amber-400 mt-0.5 font-mono">
-                                              Skaner widzi: {String(saw)}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-
-                                    <div>
-                                      <label className="block text-text-secondary font-medium mb-1">
-                                        Status Triage
-                                      </label>
-                                      <select
-                                        value={svcForm.triage_status}
-                                        onChange={(e) =>
-                                          setSvcForm((p) => ({ ...p, triage_status: e.target.value }))
                                         }
-                                        className="w-full rounded-md border border-border-subtle bg-bg-card px-2.5 py-1.5 text-xs text-text-primary"
                                       >
-                                        <option value="new">Nowy (new)</option>
-                                        <option value="triaged">Zweryfikowany (triaged)</option>
-                                        <option value="accepted_risk">Zaakceptowane ryzyko</option>
-                                        <option value="false_positive">False positive</option>
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-text-secondary font-medium mb-1">
-                                        Tagi (po przecinku)
-                                      </label>
-                                      <input
-                                        type="text"
-                                        value={svcForm.tags}
-                                        onChange={(e) =>
-                                          setSvcForm((p) => ({ ...p, tags: e.target.value }))
-                                        }
-                                        className="w-full rounded-md border border-border-subtle bg-bg-card px-2.5 py-1.5 text-xs text-text-primary"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-xs text-text-secondary font-medium mb-1">
-                                      Notatki analityka
-                                    </label>
-                                    <textarea
+                                        <Input
+                                          value={svcForm[f.key as keyof typeof svcForm]}
+                                          onChange={(e) =>
+                                            setSvcForm((prev) => ({
+                                              ...prev,
+                                              [f.key]: e.target.value,
+                                            }))
+                                          }
+                                        />
+                                      </OverrideRow>
+                                    );
+                                  })}
+                                  <OverrideRow label="Triage">
+                                    <SimpleSelect
+                                      value={svcForm.triage_status}
+                                      onValueChange={(v) =>
+                                        setSvcForm((p) => ({ ...p, triage_status: v }))
+                                      }
+                                      options={TRIAGE_OPTIONS}
+                                    />
+                                  </OverrideRow>
+                                  <OverrideRow label="Tagi">
+                                    <Input
+                                      value={svcForm.tags}
+                                      onChange={(e) =>
+                                        setSvcForm((p) => ({ ...p, tags: e.target.value }))
+                                      }
+                                      placeholder="tag1, tag2"
+                                    />
+                                  </OverrideRow>
+                                  <OverrideRow label="Notatki">
+                                    <Textarea
                                       rows={2}
                                       value={svcForm.notes}
                                       onChange={(e) =>
                                         setSvcForm((p) => ({ ...p, notes: e.target.value }))
                                       }
-                                      className="w-full rounded-md border border-border-subtle bg-bg-card px-2.5 py-1.5 text-xs text-text-primary"
                                     />
-                                  </div>
-
-                                  <div className="flex justify-end gap-2">
-                                    <button
+                                  </OverrideRow>
+                                  <div className="flex justify-end gap-2 py-3">
+                                    <Button
                                       type="button"
+                                      variant="ghost"
+                                      size="sm"
                                       onClick={() => setEditingServiceId(null)}
-                                      className="px-3 py-1.5 rounded-md text-xs text-text-muted hover:text-text-primary"
                                     >
                                       Anuluj
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                       type="button"
+                                      size="sm"
                                       disabled={savingSvc}
                                       onClick={() => handleSaveServiceOverrides(svc)}
-                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-50"
                                     >
-                                      <Save className="h-3.5 w-3.5" />
-                                      {savingSvc ? 'Zapisywanie...' : 'Zapisz nadpisania'}
-                                    </button>
+                                      <RiSaveLine data-icon="inline-start" />
+                                      {savingSvc ? 'Zapisywanie…' : 'Zapisz'}
+                                    </Button>
                                   </div>
                                 </div>
                               )}
 
-                              {/* Detected Technologies with Noisy-OR Confidence */}
+                              {/* Confidence (Noisy-OR) */}
                               {(svc.technologies?.length || 0) > 0 && (
                                 <div className="space-y-2">
-                                  <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
-                                    <Cpu className="h-3.5 w-3.5 text-cyan-400" />
-                                    Wykryte Technologie (Noisy-OR Confidence)
-                                  </h4>
-                                  <div className="space-y-2">
+                                  <SectionTitle>Confidence</SectionTitle>
+                                  <div className="divide-y divide-border border border-border bg-card">
                                     {svc.technologies!.map((tech, idx) => {
                                       const techKey = `${svc.id}-${idx}`;
                                       const techOpen = expandedTechKey === techKey;
+                                      const hasEvidence = (tech.evidence?.length || 0) > 0;
                                       return (
-                                        <div
-                                          key={techKey}
-                                          className="rounded-lg border border-border-subtle bg-bg-card p-2.5"
-                                        >
+                                        <div key={techKey} className="px-3 py-2.5">
                                           <div
                                             onClick={() =>
                                               setExpandedTechKey(techOpen ? null : techKey)
                                             }
-                                            className="flex items-center justify-between gap-3 cursor-pointer"
+                                            className={cn(
+                                              'flex items-center justify-between gap-3',
+                                              hasEvidence && 'cursor-pointer'
+                                            )}
                                           >
-                                            <div className="flex items-center gap-2 min-w-0">
-                                              <span className="text-xs font-semibold text-text-primary">
+                                            <div className="flex min-w-0 items-center gap-2">
+                                              {hasEvidence &&
+                                                (techOpen ? (
+                                                  <RiArrowDownSLine className="size-3.5 shrink-0 text-muted-foreground" />
+                                                ) : (
+                                                  <RiArrowRightSLine className="size-3.5 shrink-0 text-muted-foreground" />
+                                                ))}
+                                              <span className="text-xs font-medium text-foreground">
                                                 {tech.name}
                                               </span>
                                               {tech.version && (
-                                                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-bg-elevated text-cyan-400">
+                                                <span className="font-mono text-[11px] text-muted-foreground">
                                                   v{tech.version}
                                                 </span>
                                               )}
-                                              <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-bg-elevated text-text-muted">
-                                                {tech.category}
-                                              </span>
+                                              <Pill>{tech.category}</Pill>
                                             </div>
-                                            <div className="flex items-center gap-2.5 shrink-0">
-                                              <div className="w-24 h-1.5 rounded-full bg-bg-elevated overflow-hidden">
-                                                <div
-                                                  className="h-full bg-cyan-400"
-                                                  style={{ width: `${tech.confidence}%` }}
-                                                />
-                                              </div>
-                                              <span className="text-xs font-mono font-semibold text-cyan-400 w-10 text-right">
+                                            <div className="flex shrink-0 items-center gap-3">
+                                              <Progress value={tech.confidence} className="w-24" />
+                                              <span className="w-10 text-right font-mono text-xs text-foreground tabular-nums">
                                                 {tech.confidence}%
                                               </span>
                                             </div>
                                           </div>
-                                          {techOpen && (tech.evidence?.length || 0) > 0 && (
-                                            <div className="mt-2.5 pt-2 border-t border-border-subtle space-y-1">
+                                          {techOpen && hasEvidence && (
+                                            <div className="mt-2.5 space-y-1 border-t border-border pt-2">
                                               {tech.evidence!.map((ev, eIdx) => (
                                                 <div
                                                   key={eIdx}
-                                                  className="flex items-center justify-between gap-2 text-[11px] font-mono"
+                                                  className="flex items-center justify-between gap-2 font-mono text-[11px]"
                                                 >
-                                                  <span className="text-text-secondary">
-                                                    <span className="text-cyan-400">[{ev.signal_type}]</span>{' '}
-                                                    {ev.detail}
+                                                  <span className="text-muted-foreground">
+                                                    <span className="text-primary">
+                                                      [{ev.signal_type}]
+                                                    </span>{' '}
+                                                    <span className="text-foreground">{ev.detail}</span>
                                                   </span>
-                                                  <span className="text-text-muted shrink-0">
+                                                  <span className="shrink-0 text-muted-foreground tabular-nums">
                                                     w={ev.weight.toFixed(2)}
                                                   </span>
                                                 </div>
@@ -676,79 +726,50 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 </div>
                               )}
 
-                              {/* HTTP Evidence Receipt */}
+                              {/* HTTP Evidence */}
                               {http && (
-                                <div className="space-y-3">
-                                  <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
-                                    <Globe className="h-3.5 w-3.5 text-cyan-400" />
-                                    HTTP Evidence Receipt
-                                  </h4>
-
-                                  <div className="rounded-lg border border-border-subtle bg-bg-card p-3 space-y-2.5 text-xs">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                      <div>
-                                        <span className="text-text-muted">URL: </span>
-                                        <span className="font-mono text-text-primary break-all">
-                                          {http.url || `${http.scheme || 'http'}://${host.ip}:${svc.port}`}
-                                        </span>
-                                      </div>
-                                      <div>
-                                        <span className="text-text-muted">Status / Czas: </span>
-                                        <span className="font-mono text-cyan-400">
-                                          {http.status_code}
-                                        </span>
+                                <div className="space-y-2">
+                                  <SectionTitle>Evidence · HTTP</SectionTitle>
+                                  <div className="space-y-4 border border-border bg-card p-4">
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                      <KV label="URL">
+                                        {http.url || `${http.scheme || 'http'}://${host.ip}:${svc.port}`}
+                                      </KV>
+                                      <KV label="Status">
+                                        {http.status_code}
                                         {http.response_time_ms ? (
-                                          <span className="font-mono text-text-muted">
+                                          <span className="text-muted-foreground">
                                             {' '}
-                                            ({http.response_time_ms} ms)
+                                            · {http.response_time_ms} ms
                                           </span>
                                         ) : null}
-                                      </div>
-                                      {http.server_header && (
-                                        <div>
-                                          <span className="text-text-muted">Server: </span>
-                                          <span className="font-mono text-text-primary">
-                                            {http.server_header}
-                                          </span>
-                                        </div>
-                                      )}
+                                      </KV>
+                                      {http.server_header && <KV label="Server">{http.server_header}</KV>}
                                       {http.meta_generator && (
-                                        <div>
-                                          <span className="text-text-muted">Meta Generator: </span>
-                                          <span className="font-mono text-text-primary">
-                                            {http.meta_generator}
+                                        <KV label="Generator">{http.meta_generator}</KV>
+                                      )}
+                                      {http.favicon_mmh3 && (
+                                        <KV label="Favicon MMH3">{http.favicon_mmh3}</KV>
+                                      )}
+                                      {http.favicon_sha256 && (
+                                        <KV label="Favicon SHA256">
+                                          <span className="block truncate" title={http.favicon_sha256}>
+                                            {http.favicon_sha256.slice(0, 24)}…
                                           </span>
-                                        </div>
+                                        </KV>
                                       )}
                                     </div>
 
-                                    {/* Favicon MMH3 & SHA256 */}
-                                    {(http.favicon_mmh3 || http.favicon_sha256) && (
-                                      <div className="flex flex-wrap gap-2 pt-1">
-                                        {http.favicon_mmh3 && (
-                                          <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                                            Favicon MMH3: {http.favicon_mmh3}
-                                          </span>
-                                        )}
-                                        {http.favicon_sha256 && (
-                                          <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-bg-elevated text-text-muted border border-border-subtle truncate max-w-full">
-                                            SHA256: {http.favicon_sha256.slice(0, 24)}…
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {/* Redirect Chain */}
                                     {(http.redirect_chain?.length || 0) > 0 && (
-                                      <div className="pt-2 border-t border-border-subtle">
-                                        <div className="text-[11px] text-text-muted mb-1">
-                                          Łańcuch przekierowań:
+                                      <div className="space-y-1.5 border-t border-border pt-3">
+                                        <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                                          Przekierowania
                                         </div>
                                         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
                                           {http.redirect_chain!.map((hop, i) => (
                                             <span
                                               key={i}
-                                              className="px-2 py-0.5 rounded bg-bg-elevated border border-border-subtle text-text-secondary"
+                                              className="border border-border px-1.5 py-0.5 text-foreground"
                                             >
                                               {hop.status_code} → {hop.url}
                                             </span>
@@ -757,91 +778,83 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       </div>
                                     )}
 
-                                    {/* Missing Security Headers */}
                                     {(http.missing_sec_headers?.length || 0) > 0 && (
-                                      <div className="pt-2 border-t border-border-subtle">
-                                        <div className="text-[11px] text-rose-400 font-medium mb-1.5 flex items-center gap-1">
-                                          <ShieldAlert className="h-3.5 w-3.5" />
-                                          Brakujące nagłówki bezpieczeństwa:
+                                      <div className="space-y-1.5 border-t border-border pt-3">
+                                        <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                                          Brakujące nagłówki
                                         </div>
-                                        <div className="flex flex-wrap gap-1.5">
+                                        <div className="flex flex-wrap gap-1">
                                           {http.missing_sec_headers!.map((h) => (
-                                            <span
+                                            <Pill
                                               key={h}
-                                              className="font-mono text-[11px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30"
+                                              tone="danger"
+                                              className="font-mono normal-case tracking-normal"
                                             >
                                               {h}
-                                            </span>
+                                            </Pill>
                                           ))}
                                         </div>
                                       </div>
                                     )}
 
-                                    {/* Headers Table */}
                                     {http.headers && Object.keys(http.headers).length > 0 && (
-                                      <div className="pt-2 border-t border-border-subtle">
-                                        <div className="text-[11px] text-text-muted mb-1.5">
-                                          Nagłówki HTTP:
+                                      <div className="space-y-1.5 border-t border-border pt-3">
+                                        <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                                          Nagłówki
                                         </div>
-                                        <div className="max-h-36 overflow-y-auto rounded border border-border-subtle bg-bg-primary/60 divide-y divide-border-subtle/50 font-mono text-[11px]">
+                                        <div className="max-h-40 divide-y divide-border overflow-y-auto border border-border font-mono text-[11px]">
                                           {Object.entries(http.headers).map(([k, v]) => (
-                                            <div key={k} className="px-2.5 py-1 flex gap-2">
-                                              <span className="text-cyan-400 shrink-0">{k}:</span>
-                                              <span className="text-text-secondary break-all">
-                                                {v}
-                                              </span>
+                                            <div key={k} className="flex gap-2 px-2.5 py-1">
+                                              <span className="shrink-0 text-muted-foreground">{k}:</span>
+                                              <span className="break-all text-foreground">{v}</span>
                                             </div>
                                           ))}
                                         </div>
                                       </div>
                                     )}
 
-                                    {/* Cookies Table */}
                                     {(http.cookies?.length || 0) > 0 && (
-                                      <div className="pt-2 border-t border-border-subtle">
-                                        <div className="text-[11px] text-text-muted mb-1.5 flex items-center gap-1">
-                                          <Cookie className="h-3.5 w-3.5 text-amber-400" />
-                                          Ciasteczka ({http.cookies!.length}):
+                                      <div className="space-y-1.5 border-t border-border pt-3">
+                                        <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                                          Cookies · {http.cookies!.length}
                                         </div>
-                                        <div className="overflow-x-auto rounded border border-border-subtle">
-                                          <table className="w-full text-[11px] font-mono">
-                                            <thead className="bg-bg-elevated text-text-muted">
+                                        <div className="overflow-x-auto border border-border">
+                                          <table className="w-full font-mono text-[11px]">
+                                            <thead className="border-b border-border text-[10px] tracking-widest text-muted-foreground uppercase">
                                               <tr>
-                                                <th className="text-left px-2 py-1">Nazwa</th>
-                                                <th className="text-left px-2 py-1">HttpOnly</th>
-                                                <th className="text-left px-2 py-1">Secure</th>
-                                                <th className="text-left px-2 py-1">SameSite</th>
+                                                <th className="px-2.5 py-1.5 text-left font-semibold">Nazwa</th>
+                                                <th className="px-2.5 py-1.5 text-left font-semibold">HttpOnly</th>
+                                                <th className="px-2.5 py-1.5 text-left font-semibold">Secure</th>
+                                                <th className="px-2.5 py-1.5 text-left font-semibold">SameSite</th>
                                               </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-border-subtle/60">
+                                            <tbody className="divide-y divide-border">
                                               {http.cookies!.map((c, ci) => (
                                                 <tr key={ci}>
-                                                  <td className="px-2 py-1 text-text-primary">
-                                                    {c.name}
-                                                  </td>
-                                                  <td className="px-2 py-1">
+                                                  <td className="px-2.5 py-1.5 text-foreground">{c.name}</td>
+                                                  <td className="px-2.5 py-1.5">
                                                     <span
                                                       className={
                                                         c.http_only
-                                                          ? 'text-emerald-400'
-                                                          : 'text-rose-400 font-semibold'
+                                                          ? 'text-muted-foreground'
+                                                          : 'font-semibold text-rose-600 dark:text-rose-400'
                                                       }
                                                     >
                                                       {c.http_only ? 'TAK' : 'BRAK'}
                                                     </span>
                                                   </td>
-                                                  <td className="px-2 py-1">
+                                                  <td className="px-2.5 py-1.5">
                                                     <span
                                                       className={
                                                         c.secure
-                                                          ? 'text-emerald-400'
-                                                          : 'text-rose-400 font-semibold'
+                                                          ? 'text-muted-foreground'
+                                                          : 'font-semibold text-rose-600 dark:text-rose-400'
                                                       }
                                                     >
                                                       {c.secure ? 'TAK' : 'BRAK'}
                                                     </span>
                                                   </td>
-                                                  <td className="px-2 py-1 text-text-secondary">
+                                                  <td className="px-2.5 py-1.5 text-muted-foreground">
                                                     {c.same_site || '—'}
                                                   </td>
                                                 </tr>
@@ -852,23 +865,22 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                       </div>
                                     )}
 
-                                    {/* Safe Path Hits */}
                                     {(http.safe_path_hits?.length || 0) > 0 && (
-                                      <div className="pt-2 border-t border-border-subtle">
-                                        <div className="text-[11px] text-text-muted mb-1.5">
-                                          Wykryte ścieżki (tylko GET/HEAD):
+                                      <div className="space-y-1.5 border-t border-border pt-3">
+                                        <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                                          Ścieżki (GET/HEAD)
                                         </div>
-                                        <div className="space-y-1">
+                                        <div className="divide-y divide-border border border-border">
                                           {http.safe_path_hits!.map((hit, hi) => (
                                             <div
                                               key={hi}
-                                              className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-bg-elevated font-mono text-[11px]"
+                                              className="flex items-center justify-between gap-3 px-2.5 py-1.5 font-mono text-[11px]"
                                             >
-                                              <span className="text-cyan-400">{hit.path}</span>
-                                              <span className="text-text-secondary truncate">
+                                              <span className="text-foreground">{hit.path}</span>
+                                              <span className="flex-1 truncate text-muted-foreground">
                                                 {hit.title || hit.snippet || ''}
                                               </span>
-                                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">
+                                              <span className="shrink-0 text-muted-foreground tabular-nums">
                                                 {hit.status_code}
                                               </span>
                                             </div>
@@ -878,68 +890,46 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                     )}
                                   </div>
 
-                                  {/* TLS Certificate Card */}
+                                  {/* TLS */}
                                   {tls && (
-                                    <div className="rounded-lg border border-border-subtle bg-bg-card p-3 space-y-2 text-xs">
+                                    <div className="space-y-4 border border-border bg-card p-4">
                                       <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <span className="font-semibold text-text-primary flex items-center gap-1.5">
-                                          <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                                          Certyfikat TLS ({tls.version})
+                                        <span className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                                          TLS · <span className="font-mono">{tls.version}</span>
                                         </span>
                                         <div className="flex items-center gap-1.5">
-                                          {tls.is_self_signed && (
-                                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/35">
-                                              SELF-SIGNED
-                                            </span>
-                                          )}
+                                          {tls.is_self_signed && <Pill tone="warning">Self-signed</Pill>}
                                           {tls.is_expired ? (
-                                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/35">
-                                              WYGASŁY
-                                            </span>
+                                            <Pill tone="danger">Wygasły</Pill>
                                           ) : (
-                                            <span
-                                              className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                                                tls.days_to_expiry <= 30
-                                                  ? 'bg-rose-500/15 text-rose-400 border-rose-500/35'
-                                                  : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                              }`}
+                                            <Pill
+                                              tone={tls.days_to_expiry <= 30 ? 'danger' : 'neutral'}
+                                              className="font-mono"
                                             >
-                                              Wygasa za {tls.days_to_expiry} dn.
-                                            </span>
+                                              {tls.days_to_expiry} dn.
+                                            </Pill>
                                           )}
                                         </div>
                                       </div>
-
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono text-[11px]">
-                                        <div>
-                                          <span className="text-text-muted">Subject CN: </span>
-                                          <span className="text-text-primary">{tls.subject_cn}</span>
-                                        </div>
-                                        <div>
-                                          <span className="text-text-muted">Issuer: </span>
-                                          <span className="text-text-primary">{tls.issuer}</span>
-                                        </div>
-                                        <div>
-                                          <span className="text-text-muted">Ważny do: </span>
-                                          <span className="text-text-secondary">
-                                            {formatDateTime(tls.not_after)}
+                                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <KV label="Subject CN">{tls.subject_cn}</KV>
+                                        <KV label="Issuer">{tls.issuer}</KV>
+                                        <KV label="Ważny do">{formatDateTime(tls.not_after)}</KV>
+                                        <KV label="SHA256">
+                                          <span className="block truncate" title={tls.sha256}>
+                                            {tls.sha256}
                                           </span>
-                                        </div>
-                                        <div className="truncate">
-                                          <span className="text-text-muted">SHA256: </span>
-                                          <span className="text-text-secondary">{tls.sha256}</span>
-                                        </div>
+                                        </KV>
                                       </div>
-
                                       {(tls.sans?.length || 0) > 0 && (
-                                        <div className="flex flex-wrap gap-1 pt-1">
+                                        <div className="flex flex-wrap gap-1">
                                           {tls.sans!.map((san) => (
-                                            <span
+                                            <Pill
                                               key={san}
-                                              className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-bg-elevated border border-border-subtle text-text-secondary"
+                                              className="font-mono font-normal normal-case tracking-normal"
                                             >
                                               {san}
-                                            </span>
+                                            </Pill>
                                           ))}
                                         </div>
                                       )}
@@ -948,424 +938,313 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 </div>
                               )}
 
-                              {/* Banner if non-HTTP */}
+                              {/* Banner */}
                               {svc.banner && (
-                                <div className="rounded-lg border border-border-subtle bg-bg-card p-3">
-                                  <div className="text-[11px] text-text-muted mb-1 flex items-center gap-1">
-                                    <FileCode2 className="h-3.5 w-3.5" /> Banner usługi
-                                  </div>
-                                  <pre className="font-mono text-[11px] text-text-secondary whitespace-pre-wrap break-all">
+                                <div className="space-y-2">
+                                  <SectionTitle>Banner</SectionTitle>
+                                  <pre className="border border-border bg-card p-3 font-mono text-[11px] break-all whitespace-pre-wrap text-foreground">
                                     {svc.banner}
                                   </pre>
                                 </div>
                               )}
 
-                              {/* Observation history button */}
-                              <div>
-                                <button
+                              {/* Observation history */}
+                              <div className="space-y-2">
+                                <Button
                                   type="button"
+                                  variant="ghost"
+                                  size="xs"
+                                  className="-ml-3"
                                   onClick={() => handleLoadObservations(svc.id)}
-                                  className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:underline"
                                 >
-                                  <History className="h-3.5 w-3.5" />
-                                  Pokaż historię obserwacji (Evidence Receipts)
-                                </button>
-                                {obsList && (
-                                  <div className="mt-2 space-y-1.5">
-                                    {obsList.length === 0 ? (
-                                      <p className="text-xs text-text-muted">
-                                        Brak archiwalnych obserwacji.
-                                      </p>
-                                    ) : (
-                                      obsList.map((o, idx) => (
+                                  <RiHistoryLine data-icon="inline-start" />
+                                  Historia obserwacji
+                                </Button>
+                                {obsList &&
+                                  (obsList.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">Brak historii</p>
+                                  ) : (
+                                    <div className="divide-y divide-border border border-border bg-card">
+                                      {obsList.map((o, idx) => (
                                         <div
                                           key={o.id || idx}
-                                          className="p-2 rounded border border-border-subtle bg-bg-card text-[11px] font-mono flex items-center justify-between gap-2"
+                                          className="flex items-center justify-between gap-2 px-3 py-2 font-mono text-[11px]"
                                         >
-                                          <span className="text-text-primary">
+                                          <span className="text-foreground">
                                             {o.service_name || svc.service_name} {o.product || ''}{' '}
                                             {o.version || ''}
                                             {o.http?.title ? ` · "${o.http.title}"` : ''}
                                           </span>
-                                          <span className="text-text-muted shrink-0">
+                                          <span className="shrink-0 text-muted-foreground">
                                             {formatDateTime(o.observed_at || o.created_at)}
                                           </span>
                                         </div>
-                                      ))
-                                    )}
-                                  </div>
-                                )}
+                                      ))}
+                                    </div>
+                                  ))}
                               </div>
                             </div>
                           )}
                         </div>
                       );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* TAB 2: HOST INLINE OVERRIDE EDITOR */}
-              {activeTab === 'overview' && (
-                <form onSubmit={handleSaveHostOverrides} className="space-y-4">
-                  <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3 text-xs text-text-secondary flex items-start gap-2.5">
-                    <Lock className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="text-text-primary">
-                        Warstwa kuratorska (Preserved Analyst Overrides):
-                      </strong>{' '}
-                      Ręczne edycje działają niezależnie od statusu skanu i są trwale chronione
-                      przed nadpisaniem przez kolejne skany. Gdy skaner wykryje inną wartość,
-                      zobaczysz ją w etykiecie <em>„Skaner widzi”</em> z możliwością odblokowania.
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[
-                      {
-                        field: 'hostname',
-                        label: 'Hostname / Domena główna',
-                        value: hostname,
-                        setValue: setHostname,
-                        placeholder: 'np. usos-test.agh.edu.pl',
-                      },
-                      {
-                        field: 'owner',
-                        label: 'Właściciel / Jednostka AGH',
-                        value: owner,
-                        setValue: setOwner,
-                        placeholder: 'np. WIET / CBI AGH',
-                      },
-                    ].map((f) => {
-                      const locked = isHostFieldLocked(f.field);
-                      const saw = scannerSawHost(f.field);
-                      return (
-                        <div key={f.field}>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
-                              {f.label}
-                              {locked && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/35">
-                                  <Lock className="h-2.5 w-2.5" /> Zablokowane
-                                </span>
-                              )}
-                            </label>
-                            {locked && canWrite && (
-                              <button
-                                type="button"
-                                onClick={() => handleUnlockHostField(f.field)}
-                                className="text-[11px] text-amber-400 hover:underline inline-flex items-center gap-0.5"
-                              >
-                                <Unlock className="h-3 w-3" /> Odblokuj
-                              </button>
-                            )}
-                          </div>
-                          <input
-                            type="text"
-                            disabled={!canWrite}
-                            value={f.value}
-                            onChange={(e) => f.setValue(e.target.value)}
-                            placeholder={f.placeholder}
-                            className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary disabled:opacity-60 focus:outline-none focus:border-cyan-500"
-                          />
-                          {saw && (
-                            <div className="mt-1 text-[11px] font-mono text-amber-400">
-                              Skaner widzi: {saw}
-                            </div>
-                          )}
-                        </div>
-                      );
                     })}
-
-                    {/* Environment */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
-                          Środowisko
-                          {isHostFieldLocked('environment') && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/35">
-                              <Lock className="h-2.5 w-2.5" /> Zablokowane
-                            </span>
-                          )}
-                        </label>
-                        {isHostFieldLocked('environment') && canWrite && (
-                          <button
-                            type="button"
-                            onClick={() => handleUnlockHostField('environment')}
-                            className="text-[11px] text-amber-400 hover:underline inline-flex items-center gap-0.5"
-                          >
-                            <Unlock className="h-3 w-3" /> Odblokuj
-                          </button>
-                        )}
-                      </div>
-                      <select
-                        disabled={!canWrite}
-                        value={environment}
-                        onChange={(e) => setEnvironment(e.target.value)}
-                        className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary disabled:opacity-60"
-                      >
-                        <option value="">Nieokreślone</option>
-                        <option value="prod">Produkcja (prod)</option>
-                        <option value="staging">Staging (staging)</option>
-                        <option value="dev">Deweloperskie (dev)</option>
-                        <option value="test">Testowe (test)</option>
-                      </select>
-                      {scannerSawHost('environment') && (
-                        <div className="mt-1 text-[11px] font-mono text-amber-400">
-                          Skaner widzi: {scannerSawHost('environment')}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Lifecycle state */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
-                          Stan cyklu życia
-                          {isHostFieldLocked('lifecycle_state') && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/35">
-                              <Lock className="h-2.5 w-2.5" /> Zablokowane
-                            </span>
-                          )}
-                        </label>
-                        {isHostFieldLocked('lifecycle_state') && canWrite && (
-                          <button
-                            type="button"
-                            onClick={() => handleUnlockHostField('lifecycle_state')}
-                            className="text-[11px] text-amber-400 hover:underline inline-flex items-center gap-0.5"
-                          >
-                            <Unlock className="h-3 w-3" /> Odblokuj
-                          </button>
-                        )}
-                      </div>
-                      <select
-                        disabled={!canWrite}
-                        value={lifecycleState}
-                        onChange={(e) => setLifecycleState(e.target.value)}
-                        className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary disabled:opacity-60"
-                      >
-                        <option value="NEW">NEW</option>
-                        <option value="ACTIVE">ACTIVE</option>
-                        <option value="INTERMITTENT">INTERMITTENT</option>
-                        <option value="MISSING">MISSING</option>
-                        <option value="INACTIVE">INACTIVE</option>
-                        <option value="REACTIVATED">REACTIVATED</option>
-                      </select>
-                      {scannerSawHost('lifecycle_state') && (
-                        <div className="mt-1 text-[11px] font-mono text-amber-400">
-                          Skaner widzi: {scannerSawHost('lifecycle_state')}
-                        </div>
-                      )}
-                    </div>
                   </div>
+                )}
+              </TabsContent>
 
-                  {/* Tags */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
-                        Tagi (oddzielone przecinkiem)
-                        {isHostFieldLocked('tags') && (
-                          <Lock className="h-3 w-3 text-violet-400" />
-                        )}
-                      </label>
-                      {isHostFieldLocked('tags') && canWrite && (
-                        <button
-                          type="button"
-                          onClick={() => handleUnlockHostField('tags')}
-                          className="text-[11px] text-amber-400 hover:underline inline-flex items-center gap-0.5"
-                        >
-                          <Unlock className="h-3 w-3" /> Odblokuj
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      disabled={!canWrite}
-                      value={tagsInput}
-                      onChange={(e) => setTagsInput(e.target.value)}
-                      placeholder="np. krytyczny, agh-usos, do-weryfikacji"
-                      className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary disabled:opacity-60"
-                    />
-                  </div>
+              {/* ===== SUMMARY ===== */}
+              <TabsContent value="summary" className="space-y-6 p-6">
+                <div className="grid grid-cols-2 gap-5 border border-border bg-card p-4">
+                  <KV label="Pierwsze wykrycie">{formatDateTime(host.first_seen)}</KV>
+                  <KV label="Ostatnia aktywność">{formatDateTime(host.last_seen)}</KV>
+                  <KV label="OS">{host.os_guess || '—'}</KV>
+                  <KV label="Histereza">
+                    {host.state_transitions} przejść · {host.consecutive_misses} braków
+                  </KV>
+                </div>
 
-                  {/* Notes */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
-                        Notatki analityka SOC (szyfrowane AES-256-GCM at rest)
-                        {isHostFieldLocked('notes') && (
-                          <Lock className="h-3 w-3 text-violet-400" />
-                        )}
-                      </label>
-                      {isHostFieldLocked('notes') && canWrite && (
-                        <button
-                          type="button"
-                          onClick={() => handleUnlockHostField('notes')}
-                          className="text-[11px] text-amber-400 hover:underline inline-flex items-center gap-0.5"
-                        >
-                          <Unlock className="h-3 w-3" /> Odblokuj
-                        </button>
-                      )}
-                    </div>
-                    <textarea
-                      rows={4}
-                      disabled={!canWrite}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Dodaj ustalenia, kontakt do administratora lub kontekst incydentu..."
-                      className="w-full rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-sm text-text-primary disabled:opacity-60"
-                    />
-                  </div>
-
-                  {canWrite ? (
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={savingHost}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50"
-                      >
-                        <Save className="h-4 w-4" />
-                        {savingHost ? 'Zapisywanie...' : 'Zapisz i zablokuj nadpisania'}
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-text-muted italic">
-                      Tryb tylko do odczytu — Twoja rola nie posiada uprawnienia{' '}
-                      <span className="font-mono">assets:write</span>.
-                    </p>
-                  )}
-
-                  {/* Technical metadata */}
-                  <div className="rounded-lg border border-border-subtle bg-bg-card p-3.5 text-xs grid grid-cols-2 gap-3">
-                    <div>
-                      <span className="text-text-muted block">Pierwsze wykrycie</span>
-                      <span className="font-mono text-text-primary">
-                        {formatDateTime(host.first_seen)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-text-muted block">Ostatnia aktywność</span>
-                      <span className="font-mono text-text-primary">
-                        {formatDateTime(host.last_seen)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-text-muted block">OS Fingerprint</span>
-                      <span className="font-mono text-text-primary">{host.os_guess || '—'}</span>
-                    </div>
-                    <div>
-                      <span className="text-text-muted block">Zmiany stanu (histereza)</span>
-                      <span className="font-mono text-text-primary">
-                        {host.state_transitions} przejść · {host.consecutive_misses} braków z rzędu
-                      </span>
-                    </div>
-                  </div>
-                </form>
-              )}
-
-              {/* TAB 3: TIME-OF-DAY AVAILABILITY HEATMAP */}
-              {activeTab === 'heatmap' && (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-border-subtle bg-bg-card p-4">
-                    <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-cyan-400" />
-                      Macierz Dostępności wg Pory Dnia (Time-of-Day Heatmap)
-                    </h3>
-                    <p className="text-xs text-text-muted mt-1">
-                      Pozwala odróżnić przewidywany harmonogram wyłączania stacji roboczych /
-                      laboratoriów (EXPECTED_OFF_HOURS) od anomalii pory dnia (TIME_ANOMALY).
-                    </p>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-                      {heatmapSlots.map((slot) => {
-                        const pct = Math.round((slot.ratio || 0) * 100);
-                        const bgClass =
-                          slot.total === 0
-                            ? 'bg-bg-elevated border-border-subtle text-text-muted'
-                            : pct >= 75
-                              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                              : pct >= 35
-                                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-                                : 'bg-rose-500/20 border-rose-500/40 text-rose-300';
-
-                        return (
-                          <div
-                            key={slot.slot}
-                            className={`rounded-xl border p-3.5 text-center ${bgClass}`}
-                          >
-                            <div className="font-mono text-xs font-semibold opacity-90">
-                              {slot.slot}
-                            </div>
-                            <div className="text-2xl font-bold font-mono mt-1">
-                              {slot.total > 0 ? `${pct}%` : '—'}
-                            </div>
-                            <div className="text-[11px] font-mono opacity-80 mt-1">
-                              {slot.seen} / {slot.total} skanów
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-border-subtle flex items-center justify-between text-xs">
-                      <span className="text-text-muted">Wskaźnik stabilności hosta:</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-32 h-2 rounded-full bg-bg-elevated overflow-hidden">
-                          <div
-                            className={`h-full ${scoreBarColor(100 - host.stability_score)}`}
-                            style={{ width: `${host.stability_score}%` }}
-                          />
-                        </div>
-                        <span className="font-mono font-semibold text-text-primary">
-                          {host.stability_score}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Recent host changes */}
-                  {(host.recent_changes?.length || 0) > 0 && (
-                    <div className="rounded-xl border border-border-subtle bg-bg-card p-4 space-y-2">
-                      <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                        Ostatnie zmiany i anomalie dla hosta
-                      </h4>
-                      {host.recent_changes!.map((ch) => (
-                        <div
-                          key={ch.id}
-                          className="p-2.5 rounded-lg border border-border-subtle bg-bg-elevated flex items-start justify-between gap-2 text-xs"
-                        >
-                          <div>
-                            <div className="font-medium text-text-primary flex items-center gap-1.5">
-                              {ch.is_time_anomaly && (
-                                <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
-                              )}
-                              {ch.summary}
-                            </div>
-                            <div className="text-[11px] text-text-muted mt-0.5 font-mono">
-                              {ch.event_type} · slot {ch.time_slot || '—'} ·{' '}
-                              {formatDateTime(ch.created_at)}
-                            </div>
-                          </div>
-                          {ch.is_expected_schedule && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-500/20 text-slate-300 shrink-0">
-                              Harmonogram
-                            </span>
-                          )}
-                          {ch.is_time_anomaly && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 shrink-0">
-                              Anomalia pory dnia
-                            </span>
-                          )}
+                {(host.interesting_factors?.length || 0) > 0 && (
+                  <div className="space-y-2">
+                    <SectionTitle>Czynniki score</SectionTitle>
+                    <div className="divide-y divide-border border border-border bg-card">
+                      {host.interesting_factors!.map((f, idx) => (
+                        <div key={idx} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                          <span className="text-foreground">{f.reason}</span>
+                          <span className="font-mono text-muted-foreground tabular-nums">+{f.points}</span>
                         </div>
                       ))}
                     </div>
-                  )}
+                  </div>
+                )}
+
+                {(host.recent_changes?.length || 0) > 0 && (
+                  <div className="space-y-2">
+                    <SectionTitle>Ostatnie zmiany</SectionTitle>
+                    <div className="divide-y divide-border border border-border bg-card">
+                      {host.recent_changes!.map((ch) => (
+                        <div key={ch.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-xs">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 text-foreground">
+                              {ch.is_time_anomaly && (
+                                <RiAlertLine className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+                              )}
+                              {ch.summary}
+                            </div>
+                            <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                              {ch.event_type} · slot {ch.time_slot || '—'} · {formatDateTime(ch.created_at)}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            {ch.is_expected_schedule && <Pill>Harmonogram</Pill>}
+                            {ch.is_time_anomaly && <Pill tone="danger">Anomalia</Pill>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* ===== HEATMAP ===== */}
+              <TabsContent value="heatmap" className="space-y-6 p-6">
+                <div className="space-y-3">
+                  <SectionTitle>Dostępność wg pory dnia</SectionTitle>
+                  <div className="grid grid-cols-2 border-t border-l border-border sm:grid-cols-4">
+                    {heatmapSlots.map((slot) => {
+                      const pct = Math.round((slot.ratio || 0) * 100);
+                      const mix = slot.total === 0 ? 0 : Math.round(6 + pct * 0.5);
+                      return (
+                        <div
+                          key={slot.slot}
+                          className={cn(
+                            'border-r border-b border-border p-4 text-center',
+                            slot.total === 0 && 'bg-muted/40'
+                          )}
+                          style={
+                            slot.total > 0
+                              ? { background: `color-mix(in oklch, var(--primary) ${mix}%, transparent)` }
+                              : undefined
+                          }
+                        >
+                          <div className="font-mono text-[11px] text-muted-foreground">{slot.slot}</div>
+                          <div className="mt-1 font-heading text-2xl font-semibold text-foreground tabular-nums">
+                            {slot.total > 0 ? `${pct}%` : '—'}
+                          </div>
+                          <div className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">
+                            {slot.seen}/{slot.total}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+
+                <div className="flex items-center justify-between gap-4 border border-border bg-card px-4 py-3 text-xs">
+                  <span className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                    Stabilność
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <div className="h-1 w-40 bg-muted">
+                      <div
+                        className={cn('h-full', scoreBarColor(100 - host.stability_score))}
+                        style={{ width: `${host.stability_score}%` }}
+                      />
+                    </div>
+                    <span className="w-10 text-right font-mono text-foreground tabular-nums">
+                      {host.stability_score}%
+                    </span>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* ===== OVERRIDES ===== */}
+              <TabsContent value="overview" className="p-6">
+                <form onSubmit={handleSaveHostOverrides} className="space-y-5">
+                  {!canWrite && (
+                    <Notice icon={RiLockLine}>
+                      Tylko odczyt · <span className="font-mono">assets:write</span>
+                    </Notice>
+                  )}
+
+                  <div className="border border-border bg-card px-4 py-1">
+                    {(
+                      [
+                        {
+                          field: 'hostname',
+                          label: 'Hostname',
+                          value: hostname,
+                          setValue: setHostname,
+                          placeholder: 'usos-test.agh.edu.pl',
+                        },
+                        {
+                          field: 'owner',
+                          label: 'Właściciel',
+                          value: owner,
+                          setValue: setOwner,
+                          placeholder: 'WIET / CBI AGH',
+                        },
+                      ] as const
+                    ).map((f) => (
+                      <OverrideRow
+                        key={f.field}
+                        label={f.label}
+                        scanner={scannerSawHost(f.field)}
+                        lock={
+                          <LockToggle
+                            locked={isHostFieldLocked(f.field)}
+                            canUnlock={canWrite}
+                            disabled={savingHost}
+                            onUnlock={() => handleUnlockHostField(f.field)}
+                          />
+                        }
+                      >
+                        <Input
+                          disabled={!canWrite}
+                          value={f.value}
+                          onChange={(e) => f.setValue(e.target.value)}
+                          placeholder={f.placeholder}
+                        />
+                      </OverrideRow>
+                    ))}
+
+                    <OverrideRow
+                      label="Środowisko"
+                      scanner={scannerSawHost('environment')}
+                      lock={
+                        <LockToggle
+                          locked={isHostFieldLocked('environment')}
+                          canUnlock={canWrite}
+                          disabled={savingHost}
+                          onUnlock={() => handleUnlockHostField('environment')}
+                        />
+                      }
+                    >
+                      <SimpleSelect
+                        disabled={!canWrite}
+                        value={environment === '' ? ENV_NONE : environment}
+                        onValueChange={(v) => setEnvironment(v === ENV_NONE ? '' : v)}
+                        options={
+                          environment && !ENV_OPTIONS.some((o) => o.value === environment)
+                            ? [...ENV_OPTIONS, { value: environment, label: environment }]
+                            : ENV_OPTIONS
+                        }
+                      />
+                    </OverrideRow>
+
+                    <OverrideRow
+                      label="Cykl życia"
+                      scanner={scannerSawHost('lifecycle_state')}
+                      lock={
+                        <LockToggle
+                          locked={isHostFieldLocked('lifecycle_state')}
+                          canUnlock={canWrite}
+                          disabled={savingHost}
+                          onUnlock={() => handleUnlockHostField('lifecycle_state')}
+                        />
+                      }
+                    >
+                      <SimpleSelect
+                        disabled={!canWrite}
+                        value={lifecycleState}
+                        onValueChange={setLifecycleState}
+                        options={LIFECYCLE_OPTIONS}
+                      />
+                    </OverrideRow>
+
+                    <OverrideRow
+                      label="Tagi"
+                      lock={
+                        <LockToggle
+                          locked={isHostFieldLocked('tags')}
+                          canUnlock={canWrite}
+                          disabled={savingHost}
+                          onUnlock={() => handleUnlockHostField('tags')}
+                        />
+                      }
+                    >
+                      <Input
+                        disabled={!canWrite}
+                        value={tagsInput}
+                        onChange={(e) => setTagsInput(e.target.value)}
+                        placeholder="krytyczny, agh-usos"
+                      />
+                    </OverrideRow>
+
+                    <OverrideRow
+                      label="Notatki"
+                      lock={
+                        <LockToggle
+                          locked={isHostFieldLocked('notes')}
+                          canUnlock={canWrite}
+                          disabled={savingHost}
+                          onUnlock={() => handleUnlockHostField('notes')}
+                        />
+                      }
+                    >
+                      <Textarea
+                        rows={4}
+                        disabled={!canWrite}
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="AES-256-GCM at rest"
+                      />
+                    </OverrideRow>
+                  </div>
+
+                  {canWrite && (
+                    <div className="flex justify-end">
+                      <Button type="submit" disabled={savingHost}>
+                        <RiSaveLine data-icon="inline-start" />
+                        {savingHost ? 'Zapisywanie…' : 'Zapisz i zablokuj'}
+                      </Button>
+                    </div>
+                  )}
+                </form>
+              </TabsContent>
+            </div>
+          </Tabs>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }

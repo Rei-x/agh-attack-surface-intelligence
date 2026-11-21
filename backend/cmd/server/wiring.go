@@ -271,6 +271,19 @@ func (r *LiveScanRunner) StartScan(ctx context.Context, run *domain.ScanRun, pro
 	if err := r.store.SaveScanChunks(ctx, run.ID, prepared.Chunks); err != nil {
 		return err
 	}
+	if r.hub != nil {
+		r.hub.Publish(domain.LiveEvent{
+			Type:      "scan.started",
+			ScanRunID: run.ID,
+			Timestamp: time.Now().UTC(),
+			Payload: map[string]any{
+				"name":         run.Name,
+				"total_ips":    run.TotalIPs,
+				"total_chunks": run.TotalChunks,
+				"eta_seconds":  run.ETASeconds,
+			},
+		})
+	}
 
 	r.launchAsync(run, *profile, exclusions, resolution, unstableHosts)
 	return nil
@@ -318,6 +331,31 @@ func (r *LiveScanRunner) launchAsync(
 				if r.hub != nil {
 					r.hub.Publish(ev)
 				}
+			},
+			OnHostObserved: func(obs domain.ObservedHost) {
+				if r.hub == nil || !obs.IsAlive {
+					return
+				}
+				ports := make([]int, 0, len(obs.Services))
+				titles := make([]string, 0, len(obs.Services))
+				for _, s := range obs.Services {
+					ports = append(ports, s.Port)
+					if s.HTTP != nil && s.HTTP.Title != "" {
+						titles = append(titles, s.HTTP.Title)
+					}
+				}
+				r.hub.Publish(domain.LiveEvent{
+					Type:      "scan.host_discovered",
+					ScanRunID: runCopy.ID,
+					Timestamp: time.Now().UTC(),
+					Payload: map[string]any{
+						"ip":       obs.IP,
+						"hostname": obs.Hostname,
+						"ports":    ports,
+						"services": len(obs.Services),
+						"titles":   titles,
+					},
+				})
 			},
 			OnChunkUpdate: func(ch domain.ScanChunk) {
 				bgCtx, bgCancel := context.WithTimeout(context.Background(), 10*time.Second)

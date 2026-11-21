@@ -191,13 +191,22 @@ func (s *Server) handleGetScan(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ProfileID    string   `json:"profile_id"`
-		Name         string   `json:"name"`
-		Notes        string   `json:"notes"`
-		Targets      []string `json:"targets"`
-		AllowedPorts string   `json:"allowed_ports"`
-		MaxRatePPS   int      `json:"max_rate_pps"`
-		Concurrency  int      `json:"concurrency"`
+		ProfileID        string   `json:"profile_id"`
+		Name             string   `json:"name"`
+		Notes            string   `json:"notes"`
+		Targets          []string `json:"targets"`
+		AllowedPorts     string   `json:"allowed_ports"`
+		MaxRatePPS       int      `json:"max_rate_pps"`
+		HTTPRPS          int      `json:"http_rps"`
+		Concurrency      int      `json:"concurrency"`
+		ChunkTargetSec   int      `json:"chunk_target_sec"`
+		WindowEnabled    bool     `json:"window_enabled"`
+		WindowStart      string   `json:"window_start"`
+		WindowEnd        string   `json:"window_end"`
+		Timezone         string   `json:"timezone"`
+		MissingThreshold int      `json:"missing_threshold"`
+		GracePeriodHours int      `json:"grace_period_hours"`
+		SaveProfile      bool     `json:"save_profile"`
 	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
@@ -214,15 +223,27 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		profile = &domain.ScanProfile{
-			Name:                  nonEmptyStr(req.Name, "Ad-hoc Scan"),
+			Name:                  nonEmptyStr(req.Name, "Szybki skan "+time.Now().UTC().Format("15:04")),
 			Targets:               req.Targets,
 			AllowedPorts:          req.AllowedPorts,
 			MaxRatePPS:            req.MaxRatePPS,
+			HTTPRPS:               req.HTTPRPS,
 			Concurrency:           req.Concurrency,
+			ChunkTargetSec:        req.ChunkTargetSec,
+			WindowEnabled:         req.WindowEnabled,
+			WindowStart:           req.WindowStart,
+			WindowEnd:             req.WindowEnd,
+			Timezone:              req.Timezone,
+			MissingThreshold:      req.MissingThreshold,
+			GracePeriodHours:      req.GracePeriodHours,
 			EnableHTTPFingerprint: true,
 			Enabled:               true,
 		}
 		applyProfileDefaults(profile)
+		// Persist ad-hoc profile when windowing or save_profile is enabled so Pause/Resume works seamlessly.
+		if req.SaveProfile || req.WindowEnabled {
+			_ = s.store.CreateProfile(r.Context(), profile)
+		}
 	}
 	if len(profile.Targets) == 0 {
 		writeErr(w, http.StatusBadRequest, "no targets specified in profile or request")

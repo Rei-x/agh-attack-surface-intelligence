@@ -24,6 +24,14 @@ export function formatShortTime(value?: string | null): string {
   }).format(d);
 }
 
+/** HH:MM:SS wall-clock time, for live mono feeds. */
+export function formatClock(value?: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleTimeString('en-GB', { hour12: false });
+}
+
 export function formatRelativeTime(value?: string | null): string {
   if (!value) return '—';
   const d = new Date(value);
@@ -56,6 +64,23 @@ export function formatNumber(n?: number | null): string {
   return new Intl.NumberFormat('pl-PL').format(n);
 }
 
+/**
+ * Semantic tones. Quiet, theme-aware tints — accents reserved for real risk/status.
+ * Use with <Pill className={TONE.x}> from components/common.
+ */
+export const TONE = {
+  neutral: 'bg-muted text-muted-foreground border-border',
+  info: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25',
+  primary: 'bg-primary/10 text-primary dark:text-blue-300 border-primary/25',
+  success: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25',
+  warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
+  orange: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/25',
+  danger: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/25',
+  violet: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/25',
+} as const;
+
+export type Tone = keyof typeof TONE;
+
 export function lifecycleMeta(state?: string): {
   label: string;
   badge: string;
@@ -64,54 +89,19 @@ export function lifecycleMeta(state?: string): {
 } {
   switch (state) {
     case 'NEW':
-      return {
-        label: 'NOWY',
-        badge: 'bg-sky-500/15 text-sky-400 border-sky-500/30',
-        dot: 'bg-sky-400',
-        stroke: '#38bdf8',
-      };
+      return { label: 'NOWY', badge: TONE.info, dot: 'bg-sky-500', stroke: '#38bdf8' };
     case 'ACTIVE':
-      return {
-        label: 'AKTYWNY',
-        badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-        dot: 'bg-emerald-400',
-        stroke: '#10b981',
-      };
+      return { label: 'AKTYWNY', badge: TONE.success, dot: 'bg-emerald-500', stroke: '#10b981' };
     case 'INTERMITTENT':
-      return {
-        label: 'NIESTABILNY',
-        badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-        dot: 'bg-amber-400',
-        stroke: '#f59e0b',
-      };
+      return { label: 'NIESTABILNY', badge: TONE.warning, dot: 'bg-amber-500', stroke: '#f59e0b' };
     case 'MISSING':
-      return {
-        label: 'ZAGINIONY',
-        badge: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
-        dot: 'bg-orange-400',
-        stroke: '#f97316',
-      };
+      return { label: 'ZAGINIONY', badge: TONE.orange, dot: 'bg-orange-500', stroke: '#f97316' };
     case 'INACTIVE':
-      return {
-        label: 'NIEAKTYWNY',
-        badge: 'bg-slate-500/15 text-slate-400 border-slate-500/30',
-        dot: 'bg-slate-400',
-        stroke: '#64748b',
-      };
+      return { label: 'NIEAKTYWNY', badge: TONE.neutral, dot: 'bg-stone-400', stroke: '#78716c' };
     case 'REACTIVATED':
-      return {
-        label: 'REAKTYWOWANY',
-        badge: 'bg-violet-500/15 text-violet-400 border-violet-500/30',
-        dot: 'bg-violet-400',
-        stroke: '#a78bfa',
-      };
+      return { label: 'REAKTYWOWANY', badge: TONE.violet, dot: 'bg-violet-500', stroke: '#a78bfa' };
     default:
-      return {
-        label: state || 'NIEZNANY',
-        badge: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
-        dot: 'bg-slate-400',
-        stroke: '#94a3b8',
-      };
+      return { label: state || 'NIEZNANY', badge: TONE.neutral, dot: 'bg-stone-400', stroke: '#a8a29e' };
   }
 }
 
@@ -122,52 +112,23 @@ export function scanStatusMeta(status?: string): {
 } {
   switch (status) {
     case 'RUNNING':
-      return {
-        label: 'W TRAKCIE',
-        badge: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40',
-        pulse: true,
-      };
+      return { label: 'W TRAKCIE', badge: TONE.primary, pulse: true };
     case 'CALIBRATING':
-      return {
-        label: 'KALIBRACJA',
-        badge: 'bg-sky-500/15 text-sky-300 border-sky-500/40',
-        pulse: true,
-      };
+      return { label: 'KALIBRACJA', badge: TONE.info, pulse: true };
     case 'QUEUED':
-      return {
-        label: 'W KOLEJCE',
-        badge: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/35',
-      };
+      return { label: 'W KOLEJCE', badge: TONE.neutral };
     case 'PAUSED_WINDOW':
-      return {
-        label: 'PAUSED_WINDOW',
-        badge: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
-      };
+      return { label: 'PAUSED_WINDOW', badge: TONE.warning };
     case 'PAUSED_USER':
-      return {
-        label: 'WSTRZYMANY',
-        badge: 'bg-amber-500/15 text-amber-300 border-amber-500/35',
-      };
+      return { label: 'WSTRZYMANY', badge: TONE.warning };
     case 'COMPLETED':
-      return {
-        label: 'ZAKOŃCZONY',
-        badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-      };
+      return { label: 'ZAKOŃCZONY', badge: TONE.success };
     case 'STOPPED':
-      return {
-        label: 'ZATRZYMANY',
-        badge: 'bg-slate-500/15 text-slate-300 border-slate-500/35',
-      };
+      return { label: 'ZATRZYMANY', badge: TONE.neutral };
     case 'FAILED':
-      return {
-        label: 'BŁĄD',
-        badge: 'bg-rose-500/15 text-rose-400 border-rose-500/35',
-      };
+      return { label: 'BŁĄD', badge: TONE.danger };
     default:
-      return {
-        label: status || '—',
-        badge: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
-      };
+      return { label: status || '—', badge: TONE.neutral };
   }
 }
 
@@ -178,38 +139,26 @@ export function severityMeta(severity?: string): {
   switch ((severity || '').toLowerCase()) {
     case 'critical':
     case 'high':
-      return {
-        label: 'WYSOKI',
-        badge: 'bg-rose-500/15 text-rose-400 border-rose-500/35',
-      };
+      return { label: 'WYSOKI', badge: TONE.danger };
     case 'medium':
-      return {
-        label: 'ŚREDNI',
-        badge: 'bg-amber-500/15 text-amber-400 border-amber-500/35',
-      };
+      return { label: 'ŚREDNI', badge: TONE.warning };
     case 'low':
-      return {
-        label: 'NISKI',
-        badge: 'bg-sky-500/15 text-sky-400 border-sky-500/35',
-      };
+      return { label: 'NISKI', badge: TONE.info };
     default:
-      return {
-        label: 'INFO',
-        badge: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
-      };
+      return { label: 'INFO', badge: TONE.neutral };
   }
 }
 
 export function scoreColor(score: number): string {
-  if (score >= 75) return 'text-rose-400 bg-rose-500/15 border-rose-500/35';
-  if (score >= 50) return 'text-amber-400 bg-amber-500/15 border-amber-500/35';
-  if (score >= 25) return 'text-cyan-400 bg-cyan-500/15 border-cyan-500/30';
-  return 'text-slate-400 bg-slate-500/15 border-slate-500/30';
+  if (score >= 75) return TONE.danger;
+  if (score >= 50) return TONE.warning;
+  if (score >= 25) return TONE.info;
+  return TONE.neutral;
 }
 
 export function scoreBarColor(score: number): string {
   if (score >= 75) return 'bg-rose-500';
   if (score >= 50) return 'bg-amber-500';
-  if (score >= 25) return 'bg-cyan-500';
-  return 'bg-slate-500';
+  if (score >= 25) return 'bg-sky-500';
+  return 'bg-stone-400';
 }

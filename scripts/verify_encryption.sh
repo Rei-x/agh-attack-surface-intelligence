@@ -26,7 +26,7 @@ else
 fi
 
 psql_exec() {
-  docker compose exec -T "$PG_SERVICE" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 "$@"
+  docker compose exec -T "$PG_SERVICE" psql -q -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 "$@"
 }
 
 echo "${BOLD}${CYAN}=== AegisASI Encryption At Rest Verification (PostgreSQL Direct Query) ===${RESET}"
@@ -61,7 +61,7 @@ BEGIN
     enc_count BIGINT,
     wrap_count BIGINT,
     sample_prefix TEXT
-  ) ON COMMIT DROP;
+  ) ON COMMIT PRESERVE ROWS;
 
   FOR rec IN
     SELECT table_name, column_name

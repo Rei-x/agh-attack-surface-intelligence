@@ -14,6 +14,7 @@ import { ScansPage } from './pages/ScansPage';
 import { SignaturesPage } from './pages/SignaturesPage';
 import { AdminPage } from './pages/AdminPage';
 import { PERMISSIONS } from './lib/permissions';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 function ProtectedRoute({
   children,
@@ -26,8 +27,8 @@ function ProtectedRoute({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-bg-primary flex items-center justify-center text-sm text-text-muted font-mono">
-        Ładowanie AegisASI...
+      <div className="flex min-h-screen items-center justify-center bg-background text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+        Ładowanie…
       </div>
     );
   }
@@ -38,12 +39,9 @@ function ProtectedRoute({
 
   if (anyPerms && anyPerms.length > 0 && !canAny(anyPerms)) {
     return (
-      <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 p-8 text-center space-y-2 max-w-lg mx-auto mt-12">
-        <div className="text-lg font-bold text-rose-400">403 — Brak uprawnień</div>
-        <p className="text-xs text-text-secondary">
-          Twoja obecna rola nie posiada wymaganych uprawnień do wyświetlenia tej sekcji.
-          Możesz przełączyć rolę w górnym menu, aby przetestować RBAC.
-        </p>
+      <div className="mx-auto mt-24 max-w-sm space-y-2 text-center">
+        <div className="font-mono text-3xl font-semibold text-rose-600 dark:text-rose-400">403</div>
+        <p className="text-xs tracking-wider text-muted-foreground uppercase">Brak uprawnień RBAC</p>
       </div>
     );
   }
@@ -146,9 +144,11 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <LiveEventsProvider>
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
+            <TooltipProvider delay={200}>
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+            </TooltipProvider>
           </LiveEventsProvider>
         </AuthProvider>
       </ToastProvider>

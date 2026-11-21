@@ -1,22 +1,74 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Download,
-  Layers,
-  Lock,
-  RefreshCw,
-  Search,
-  Server,
-  ShieldAlert,
-  Trash2,
-} from 'lucide-react';
-import { api } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../context/ToastContext';
-import { PERMISSIONS } from '../lib/permissions';
-import { formatRelativeTime, lifecycleMeta, scoreColor } from '../lib/format';
-import { AssetInspectorDrawer } from '../components/AssetInspectorDrawer';
-import type { Host, ServiceCluster } from '../types/api';
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
+  RiDeleteBinLine,
+  RiDownload2Line,
+  RiLockLine,
+  RiRefreshLine,
+  RiSearchLine,
+} from '@remixicon/react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
+import { PERMISSIONS } from '@/lib/permissions';
+import { formatNumber, formatRelativeTime, lifecycleMeta, scoreColor } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
+import { Empty, PageHeader, Pill, SimpleSelect } from '@/components/common';
+import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import type { Host, ServiceCluster } from '@/types/api';
+
+const ALL = '__all__';
+
+const STATE_OPTIONS = [
+  { value: ALL, label: 'Wszystkie stany' },
+  { value: 'NEW', label: 'NEW' },
+  { value: 'ACTIVE', label: 'ACTIVE' },
+  { value: 'INTERMITTENT', label: 'INTERMITTENT' },
+  { value: 'MISSING', label: 'MISSING' },
+  { value: 'INACTIVE', label: 'INACTIVE' },
+  { value: 'REACTIVATED', label: 'REACTIVATED' },
+];
+
+const ENV_OPTIONS = [
+  { value: ALL, label: 'Wszystkie środowiska' },
+  { value: 'prod', label: 'prod' },
+  { value: 'staging', label: 'staging' },
+  { value: 'dev', label: 'dev' },
+  { value: 'test', label: 'test' },
+];
+
+const CLUSTER_OPTIONS = [
+  { value: ALL, label: 'Wszystkie grupy' },
+  { value: 'favicon', label: 'Favicon MMH3' },
+  { value: 'tech_stack', label: 'Stos technologiczny' },
+  { value: 'http_title', label: 'Tytuł HTTP' },
+  { value: 'tls_issuer', label: 'TLS Issuer' },
+];
+
+const PAGE_SIZE_OPTIONS = [
+  { value: '25', label: '25 / str.' },
+  { value: '50', label: '50 / str.' },
+  { value: '100', label: '100 / str.' },
+];
+
+const toSel = (v: string) => (v === '' ? ALL : v);
+const fromSel = (v: string) => (v === ALL ? '' : v);
 
 export function AssetsPage() {
   const { can } = useAuth();
@@ -26,12 +78,16 @@ export function AssetsPage() {
   const [viewMode, setViewMode] = useState<'table' | 'clusters'>('table');
   const [hosts, setHosts] = useState<Host[]>([]);
   const [totalHosts, setTotalHosts] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalPages, setTotalPages] = useState(1);
   const [clusters, setClusters] = useState<ServiceCluster[]>([]);
   const [clusterGroupBy, setClusterGroupBy] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   // Filters
   const [q, setQ] = useState(searchParams.get('q') || '');
+  const [debouncedQ, setDebouncedQ] = useState(q.trim());
   const [stateFilter, setStateFilter] = useState(searchParams.get('state') || '');
   const [envFilter, setEnvFilter] = useState(searchParams.get('env') || '');
   const [tagFilter, setTagFilter] = useState(searchParams.get('tag') || '');
@@ -43,45 +99,62 @@ export function AssetsPage() {
   const canDelete = can(PERMISSIONS.ASSETS_DELETE);
   const canExport = can(PERMISSIONS.EXPORT_READ);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const { recentIPs } = useLiveEvents();
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQ(q.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
+  // Any filter change resets to the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ, stateFilter, envFilter, tagFilter, minScore, adminOnly, pageSize]);
+
+  const loadData = useCallback(async (silent?: boolean) => {
+    if (!silent) setLoading(true);
     try {
       if (viewMode === 'table') {
         const res = await api.listHosts({
-          q: q.trim() || undefined,
+          q: debouncedQ || undefined,
           state: stateFilter || undefined,
           env: envFilter || undefined,
           tag: tagFilter.trim() || undefined,
           min_score: minScore > 0 ? minScore : undefined,
           has_admin: adminOnly ? true : undefined,
-          limit: 200,
+          page,
+          limit: pageSize,
         });
         setHosts(res.hosts);
         setTotalHosts(res.total);
+        setTotalPages(Math.max(1, res.total_pages));
+        if (res.page > res.total_pages && res.total > 0) setPage(res.total_pages);
       } else {
         const list = await api.clusters(clusterGroupBy || undefined);
         setClusters(list);
       }
     } catch (err) {
-      toast.error('Błąd pobierania zasobów', (err as Error).message);
+      if (!silent) toast.error('Błąd pobierania', (err as Error).message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [viewMode, q, stateFilter, envFilter, tagFilter, minScore, adminOnly, clusterGroupBy, toast]);
+  }, [viewMode, debouncedQ, page, pageSize, stateFilter, envFilter, tagFilter, minScore, adminOnly, clusterGroupBy, toast]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  useLiveRefresh(() => loadData(true));
+
   const handleDeleteHost = async (host: Host, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm(`Usunąć host ${host.ip} wraz z powiązanymi usługami?`)) return;
+    if (!window.confirm(`Usunąć host ${host.ip} wraz z usługami?`)) return;
     try {
       await api.deleteHost(host.id);
-      toast.success('Usunięto zasób', host.ip);
+      toast.success('Usunięto', host.ip);
       loadData();
     } catch (err) {
-      toast.error('Nie udało się usunąć hosta', (err as Error).message);
+      toast.error('Błąd usuwania', (err as Error).message);
     }
   };
 
@@ -92,7 +165,7 @@ export function AssetsPage() {
         state: stateFilter || undefined,
         tag: tagFilter.trim() || undefined,
       });
-      toast.success(`Eksport ${format.toUpperCase()}`, 'Pobieranie pliku rozpoczęte.');
+      toast.success(`Eksport ${format.toUpperCase()}`);
     } catch (err) {
       toast.error('Błąd eksportu', (err as Error).message);
     }
@@ -113,418 +186,399 @@ export function AssetsPage() {
     }
   };
 
+  const colCount = canDelete ? 9 : 8;
+
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
-            <Server className="h-5 w-5 text-cyan-400" />
-            Zasoby: Hosty, Usługi i Grupowanie
-          </h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            Inwentarz zasobów z Evidence Receipts, Noisy-OR Confidence oraz trwałymi nadpisaniami
-            analityka
-          </p>
+    <div>
+      <PageHeader
+        title="Zasoby"
+        meta={
+          viewMode === 'table' ? (
+            <span className="font-mono tabular-nums">{formatNumber(totalHosts)} hostów</span>
+          ) : (
+            <span className="font-mono tabular-nums">{clusters.length} klastrów</span>
+          )
+        }
+        actions={
+          <>
+            {canExport && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => handleExport('csv')}>
+                  <RiDownload2Line data-icon="inline-start" /> CSV
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleExport('json')}>
+                  <RiDownload2Line data-icon="inline-start" /> JSON
+                </Button>
+              </>
+            )}
+            <Button variant="outline" size="icon-sm" onClick={() => loadData()} aria-label="Odśwież">
+              <RiRefreshLine className={cn(loading && 'animate-spin')} />
+            </Button>
+          </>
+        }
+      />
+
+      <Tabs
+        value={viewMode}
+        onValueChange={(v) => setViewMode(v as 'table' | 'clusters')}
+        className="gap-0"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border">
+          <TabsList variant="line" className="-mb-px">
+            <TabsTrigger value="table">
+              Hosty <span className="font-mono text-muted-foreground tabular-nums">{formatNumber(totalHosts)}</span>
+            </TabsTrigger>
+            <TabsTrigger value="clusters">Klastry</TabsTrigger>
+          </TabsList>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* View Toggle */}
-          <div className="inline-flex rounded-lg border border-border-subtle bg-bg-card p-0.5">
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-cyan-500/15 text-cyan-400'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              Lista Hostów ({totalHosts})
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('clusters')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                viewMode === 'clusters'
-                  ? 'bg-cyan-500/15 text-cyan-400'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              <Layers className="h-3.5 w-3.5" />
-              Grupuj podobne usługi
-            </button>
+        {/* HOSTS */}
+        <TabsContent value="table" className="pt-5">
+          <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="relative min-w-[240px] flex-1">
+              <RiSearchLine className="pointer-events-none absolute top-1/2 left-0 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="IP, hostname, domena, technologia"
+                className="pl-6"
+              />
+            </div>
+            <SimpleSelect
+              size="sm"
+              className="w-44"
+              value={toSel(stateFilter)}
+              onValueChange={(v) => setStateFilter(fromSel(v))}
+              options={STATE_OPTIONS}
+            />
+            <SimpleSelect
+              size="sm"
+              className="w-44"
+              value={toSel(envFilter)}
+              onValueChange={(v) => setEnvFilter(fromSel(v))}
+              options={ENV_OPTIONS}
+            />
+            <Input
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+              placeholder="Tag"
+              className="w-28"
+            />
+            <label className="flex items-center gap-2 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+              Min score
+              <input
+                type="range"
+                min={0}
+                max={90}
+                step={5}
+                value={minScore}
+                onChange={(e) => setMinScore(Number(e.target.value))}
+                className="w-24 accent-primary"
+              />
+              <span className="w-6 font-mono text-xs text-foreground tabular-nums">{minScore}</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase select-none">
+              <Switch checked={adminOnly} onCheckedChange={(checked) => setAdminOnly(checked)} />
+              Panele admina
+            </label>
           </div>
 
-          {canExport && (
-            <>
-              <button
-                type="button"
-                onClick={() => handleExport('csv')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border-subtle bg-bg-card hover:bg-bg-hover text-text-secondary"
-              >
-                <Download className="h-3.5 w-3.5" /> CSV
-              </button>
-              <button
-                type="button"
-                onClick={() => handleExport('json')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border-subtle bg-bg-card hover:bg-bg-hover text-text-secondary"
-              >
-                <Download className="h-3.5 w-3.5" /> JSON
-              </button>
-            </>
-          )}
-
-          <button
-            type="button"
-            onClick={loadData}
-            className="p-2 rounded-lg border border-border-subtle bg-bg-card hover:bg-bg-hover text-text-secondary"
-            title="Odśwież"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Filters */}
-      {viewMode === 'table' ? (
-        <div className="rounded-xl border border-border-subtle bg-bg-card p-3.5 flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="h-3.5 w-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Szukaj IP, hostname, domeny, technologii..."
-              className="w-full rounded-lg border border-border-subtle bg-bg-elevated pl-8 pr-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-cyan-500"
-            />
-          </div>
-
-          <select
-            value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value)}
-            className="rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-xs text-text-primary"
-          >
-            <option value="">Wszystkie stany</option>
-            <option value="NEW">NEW</option>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="INTERMITTENT">INTERMITTENT</option>
-            <option value="MISSING">MISSING</option>
-            <option value="INACTIVE">INACTIVE</option>
-            <option value="REACTIVATED">REACTIVATED</option>
-          </select>
-
-          <select
-            value={envFilter}
-            onChange={(e) => setEnvFilter(e.target.value)}
-            className="rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-xs text-text-primary"
-          >
-            <option value="">Środowisko: wszystkie</option>
-            <option value="prod">prod</option>
-            <option value="staging">staging</option>
-            <option value="dev">dev</option>
-            <option value="test">test</option>
-          </select>
-
-          <input
-            type="text"
-            value={tagFilter}
-            onChange={(e) => setTagFilter(e.target.value)}
-            placeholder="Tag..."
-            className="w-32 rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-xs text-text-primary"
-          />
-
-          <label className="flex items-center gap-2 text-xs text-text-secondary">
-            <span>
-              Min Score: <strong className="font-mono text-cyan-400">{minScore}</strong>
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={90}
-              step={5}
-              value={minScore}
-              onChange={(e) => setMinScore(Number(e.target.value))}
-              className="w-24 accent-cyan-500"
-            />
-          </label>
-
-          <label className="inline-flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={adminOnly}
-              onChange={(e) => setAdminOnly(e.target.checked)}
-              className="accent-rose-500"
-            />
-            Tylko panele admina
-          </label>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border-subtle bg-bg-card p-3.5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-text-muted">Kryterium klastrowania:</span>
-            {[
-              { id: '', label: 'Wszystkie grupy' },
-              { id: 'favicon', label: 'Favicon MMH3' },
-              { id: 'tech_stack', label: 'Stos technologiczny' },
-              { id: 'http_title', label: 'Tytuł HTTP' },
-              { id: 'tls_issuer', label: 'TLS Issuer' },
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setClusterGroupBy(opt.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
-                  clusterGroupBy === opt.id
-                    ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/35'
-                    : 'bg-bg-elevated text-text-secondary border-border-subtle hover:bg-bg-hover'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs font-mono text-text-muted">{clusters.length} klastrów</span>
-        </div>
-      )}
-
-      {/* TABLE VIEW */}
-      {viewMode === 'table' && (
-        <div className="rounded-xl border border-border-subtle bg-bg-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-bg-elevated border-b border-border-subtle text-text-muted uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="px-4 py-3">Host / IP</th>
-                  <th className="px-4 py-3">Stan</th>
-                  <th className="px-4 py-3">Środowisko / Właściciel</th>
-                  <th className="px-4 py-3">Usługi</th>
-                  <th className="px-4 py-3">Stabilność</th>
-                  <th className="px-4 py-3">Interestingness</th>
-                  <th className="px-4 py-3">Tagi</th>
-                  <th className="px-4 py-3">Ostatnio</th>
-                  {canDelete && <th className="px-4 py-3 text-right">Akcje</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle/70">
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-text-muted">
-                      Ładowanie zasobów...
-                    </td>
-                  </tr>
+          <div className="border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-4">Host</TableHead>
+                  <TableHead>Stan</TableHead>
+                  <TableHead>Środowisko</TableHead>
+                  <TableHead className="text-right">Usługi</TableHead>
+                  <TableHead>Stabilność</TableHead>
+                  <TableHead>Score</TableHead>
+                  <TableHead>Tagi</TableHead>
+                  <TableHead>Ostatnio</TableHead>
+                  {canDelete && <TableHead className="w-10 pr-4" />}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading && hosts.length === 0 ? (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={colCount}>
+                      <Empty>Ładowanie…</Empty>
+                    </TableCell>
+                  </TableRow>
                 ) : hosts.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-10 text-center text-text-muted">
-                      Brak hostów spełniających podane kryteria.
-                    </td>
-                  </tr>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={colCount}>
+                      <Empty>Brak hostów</Empty>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   hosts.map((h) => {
                     const lc = lifecycleMeta(h.lifecycle_state);
                     const hasLocked = (h.locked_fields?.length || 0) > 0;
                     return (
-                      <tr
-                        key={h.id}
+                      <TableRow
+                        key={`${h.id}-${recentIPs[h.ip] ?? ''}`}
                         onClick={() => setInspectHostId(h.id)}
-                        className="hover:bg-bg-hover/60 cursor-pointer transition-colors"
+                        className={cn('group cursor-pointer', recentIPs[h.ip] && 'animate-live-row')}
                       >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-semibold text-sm text-text-primary">
+                        <TableCell className="pl-4">
+                          <div className="flex items-center gap-1.5">
+                            {recentIPs[h.ip] && (
+                              <span className="size-1.5 shrink-0 animate-pulse bg-emerald-500" aria-hidden />
+                            )}
+                            <span className="font-mono text-sm font-medium text-foreground">
                               {h.ip}
                             </span>
                             {hasLocked && (
                               <span
-                                title={`Zablokowane nadpisania: ${h.locked_fields!.join(', ')}`}
-                                className="text-violet-400"
+                                title={`Overrides: ${h.locked_fields!.join(', ')}`}
+                                className="text-muted-foreground"
                               >
-                                <Lock className="h-3.5 w-3.5" />
+                                <RiLockLine className="size-3.5" />
                               </span>
                             )}
                           </div>
                           {h.hostname && (
-                            <div className="font-mono text-[11px] text-text-muted mt-0.5">
+                            <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                               {h.hostname}
                             </div>
                           )}
-                        </td>
+                        </TableCell>
 
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center gap-1.5 font-mono text-[11px] px-2 py-0.5 rounded border ${lc.badge}`}
-                          >
-                            <span className={`h-1.5 w-1.5 rounded-full ${lc.dot}`} />
+                        <TableCell>
+                          <Pill className={lc.badge} dot>
                             {lc.label}
-                          </span>
-                        </td>
+                          </Pill>
+                        </TableCell>
 
-                        <td className="px-4 py-3">
-                          <div className="text-text-primary font-mono">
+                        <TableCell>
+                          <div className="font-mono text-xs text-foreground">
                             {h.environment || '—'}
                           </div>
                           {h.owner && (
-                            <div className="text-[11px] text-text-muted">{h.owner}</div>
+                            <div className="text-[11px] text-muted-foreground">{h.owner}</div>
                           )}
-                        </td>
+                        </TableCell>
 
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-text-primary font-semibold">
-                            {h.service_count ?? h.services?.length ?? 0}
-                          </span>
-                          <span className="text-text-muted"> usług</span>
-                        </td>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {[...(h.services || [])]
+                              .sort((a, b) => b.interestingness - a.interestingness)
+                              .slice(0, 4)
+                              .map((s) => (
+                                <ServiceLogoFor key={s.id} service={s} size="xs" />
+                              ))}
+                            <span className="ml-1 min-w-5 font-mono text-xs tabular-nums">
+                              {h.service_count ?? h.services?.length ?? 0}
+                            </span>
+                          </div>
+                        </TableCell>
 
-                        <td className="px-4 py-3">
+                        <TableCell>
                           <div className="flex items-center gap-2">
-                            <div className="w-16 h-1.5 rounded-full bg-bg-elevated overflow-hidden">
+                            <div className="h-1 w-14 bg-muted">
                               <div
-                                className="h-full bg-emerald-500"
+                                className="h-full bg-foreground/60"
                                 style={{ width: `${h.stability_score}%` }}
                               />
                             </div>
-                            <span className="font-mono text-[11px] text-text-secondary">
+                            <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
                               {h.stability_score}%
                             </span>
                           </div>
-                        </td>
+                        </TableCell>
 
-                        <td className="px-4 py-3">
-                          <span
-                            className={`font-mono font-bold text-xs px-2 py-0.5 rounded border ${scoreColor(
-                              h.interestingness
-                            )}`}
-                          >
+                        <TableCell>
+                          <Pill className={cn('font-mono tabular-nums', scoreColor(h.interestingness))}>
                             {h.interestingness}
-                          </span>
-                        </td>
+                          </Pill>
+                        </TableCell>
 
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        <TableCell>
+                          <div className="flex max-w-[200px] flex-wrap gap-1">
                             {(h.tags || []).slice(0, 3).map((t) => (
-                              <span
-                                key={t}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-bg-elevated border border-border-subtle text-text-secondary"
-                              >
+                              <Pill key={t} className="normal-case tracking-normal font-normal">
                                 #{t}
-                              </span>
+                              </Pill>
                             ))}
                             {(h.tags?.length || 0) > 3 && (
-                              <span className="text-[10px] text-text-muted">
+                              <span className="self-center text-[10px] text-muted-foreground">
                                 +{h.tags!.length - 3}
                               </span>
                             )}
                           </div>
-                        </td>
+                        </TableCell>
 
-                        <td className="px-4 py-3 text-text-muted font-mono text-[11px]">
+                        <TableCell className="font-mono text-[11px] text-muted-foreground">
                           {formatRelativeTime(h.last_seen)}
-                        </td>
+                        </TableCell>
 
                         {canDelete && (
-                          <td className="px-4 py-3 text-right">
-                            <button
-                              type="button"
+                          <TableCell className="pr-4 text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
                               onClick={(e) => handleDeleteHost(h, e)}
-                              className="p-1.5 rounded-md text-text-muted hover:text-rose-400 hover:bg-rose-500/10"
+                              aria-label="Usuń host"
                               title="Usuń host"
+                              className="text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
+                              <RiDeleteBinLine />
+                            </Button>
+                          </TableCell>
                         )}
-                      </tr>
+                      </TableRow>
                     );
                   })
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* CLUSTERS VIEW */}
-      {viewMode === 'clusters' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {loading ? (
-            <div className="col-span-full py-12 text-center text-sm text-text-muted">
-              Grupowanie podobnych usług...
-            </div>
-          ) : clusters.length === 0 ? (
-            <div className="col-span-full rounded-xl border border-border-subtle bg-bg-card py-12 text-center text-sm text-text-muted">
-              Brak zgrupowanych usług dla wybranego kryterium.
-            </div>
-          ) : (
-            clusters.map((cl) => (
-              <div
-                key={cl.cluster_key}
-                className="rounded-xl border border-border-subtle bg-bg-card p-4 flex flex-col justify-between gap-3"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                      {cl.group_by}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-mono font-semibold text-cyan-400">
-                        {cl.count} usług
-                      </span>
-                      <span
-                        className={`text-xs font-mono px-1.5 py-0.5 rounded border ${scoreColor(
-                          cl.max_interestingness
-                        )}`}
-                      >
-                        Max {cl.max_interestingness}
-                      </span>
-                    </div>
-                  </div>
-
-                  <h3 className="text-sm font-semibold text-text-primary mt-2 break-words">
-                    {cl.label}
-                  </h3>
-                  <p className="text-[11px] font-mono text-text-muted mt-0.5 truncate">
-                    {cl.cluster_key}
-                  </p>
-
-                  {(cl.sample_techs?.length || 0) > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2.5">
-                      {cl.sample_techs!.map((t) => (
-                        <span
-                          key={t}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/25"
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-3 border-t border-border-subtle">
-                  <div className="text-[11px] text-text-muted mb-1.5">Hosty w klastrze:</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(cl.host_ips || []).slice(0, 8).map((ip) => (
-                      <button
-                        key={ip}
-                        type="button"
-                        onClick={() => openHostByIP(ip)}
-                        className="font-mono text-[11px] px-2 py-0.5 rounded bg-bg-elevated border border-border-subtle hover:border-cyan-500/40 text-text-primary"
-                      >
-                        {ip}
-                      </button>
-                    ))}
-                    {(cl.host_ips?.length || 0) > 8 && (
-                      <span className="text-[11px] text-text-muted self-center">
-                        +{cl.host_ips.length - 8} więcej
-                      </span>
-                    )}
-                  </div>
-                </div>
+              </TableBody>
+            </Table>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2.5">
+              <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                {totalHosts === 0
+                  ? '0 hostów'
+                  : `${formatNumber((page - 1) * pageSize + 1)}–${formatNumber(
+                      Math.min(page * pageSize, totalHosts)
+                    )} z ${formatNumber(totalHosts)} hostów`}
+              </span>
+              <div className="flex items-center gap-2">
+                <SimpleSelect
+                  size="sm"
+                  className="w-28"
+                  value={String(pageSize)}
+                  onValueChange={(v) => setPageSize(Number(v) || 50)}
+                  options={PAGE_SIZE_OPTIONS}
+                />
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  disabled={page <= 1 || loading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  aria-label="Poprzednia strona"
+                >
+                  <RiArrowLeftSLine />
+                </Button>
+                <span className="min-w-16 text-center font-mono text-xs tabular-nums">
+                  {formatNumber(page)} / {formatNumber(totalPages)}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  disabled={page >= totalPages || loading}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  aria-label="Następna strona"
+                >
+                  <RiArrowRightSLine />
+                </Button>
               </div>
-            ))
-          )}
-        </div>
-      )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* CLUSTERS */}
+        <TabsContent value="clusters" className="pt-5">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <SimpleSelect
+              size="sm"
+              className="w-56"
+              value={toSel(clusterGroupBy)}
+              onValueChange={(v) => setClusterGroupBy(fromSel(v))}
+              options={CLUSTER_OPTIONS}
+            />
+          </div>
+
+          <div className="border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-4">Klaster</TableHead>
+                  <TableHead>Kryterium</TableHead>
+                  <TableHead className="text-right">Usługi</TableHead>
+                  <TableHead>Max score</TableHead>
+                  <TableHead>Technologie</TableHead>
+                  <TableHead className="pr-4">Hosty</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading && clusters.length === 0 ? (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6}>
+                      <Empty>Ładowanie…</Empty>
+                    </TableCell>
+                  </TableRow>
+                ) : clusters.length === 0 ? (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6}>
+                      <Empty>Brak klastrów</Empty>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  clusters.map((cl) => (
+                    <TableRow key={cl.cluster_key} className="align-top">
+                      <TableCell className="max-w-[320px] pl-4 whitespace-normal">
+                        <div className="flex items-start gap-2.5">
+                          <ServiceLogo names={[...(cl.sample_techs || []), cl.label]} size="md" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium break-words text-foreground">
+                              {cl.label}
+                            </div>
+                            <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                              {cl.cluster_key}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Pill className="font-mono">{cl.group_by}</Pill>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs tabular-nums">
+                        {cl.count}
+                      </TableCell>
+                      <TableCell>
+                        <Pill className={cn('font-mono tabular-nums', scoreColor(cl.max_interestingness))}>
+                          {cl.max_interestingness}
+                        </Pill>
+                      </TableCell>
+                      <TableCell className="max-w-[220px] whitespace-normal">
+                        <div className="flex flex-wrap gap-1">
+                          {(cl.sample_techs || []).map((t) => (
+                            <span
+                              key={t}
+                              className="inline-flex h-6 items-center gap-1.5 border border-border bg-muted/40 pr-1.5 text-[11px]"
+                            >
+                              <ServiceLogo name={t} size={22} className="-my-px -ml-px" />
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[320px] pr-4 whitespace-normal">
+                        <div className="flex flex-wrap gap-1">
+                          {(cl.host_ips || []).slice(0, 8).map((ip) => (
+                            <button
+                              key={ip}
+                              type="button"
+                              onClick={() => openHostByIP(ip)}
+                              className="border border-border px-1.5 py-0.5 font-mono text-[11px] text-foreground transition-colors hover:border-primary hover:text-primary"
+                            >
+                              {ip}
+                            </button>
+                          ))}
+                          {(cl.host_ips?.length || 0) > 8 && (
+                            <span className="self-center text-[11px] text-muted-foreground">
+                              +{cl.host_ips.length - 8}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <AssetInspectorDrawer
         hostId={inspectHostId}

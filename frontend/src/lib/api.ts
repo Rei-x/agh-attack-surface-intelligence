@@ -6,9 +6,11 @@ import type {
   DefectDojoConfig,
   DefectDojoExport,
   DemoAccount,
+  GraphQuery,
   GraphResponse,
   HealthResponse,
   Host,
+  HostPage,
   LoginResponse,
   Role,
   ScanDiffResponse,
@@ -175,8 +177,22 @@ export const api = {
 
   // Dashboard, Graph & Clusters
   dashboardSummary: () => request<DashboardSummary>('/api/v1/dashboard/summary'),
-  graph: (params?: { state?: string; min_score?: number; admin_only?: boolean }) =>
-    request<GraphResponse>(`/api/v1/graph${buildQuery(params || {})}`),
+  graph: async (params?: GraphQuery): Promise<GraphResponse> => {
+    const res = await request<Partial<GraphResponse> | undefined>(
+      `/api/v1/graph${buildQuery({ ...(params || {}) })}`
+    );
+    return {
+      nodes: res?.nodes || [],
+      edges: res?.edges || [],
+      total_hosts: res?.total_hosts ?? 0,
+      matched_hosts: res?.matched_hosts ?? 0,
+      shown_hosts: res?.shown_hosts ?? 0,
+      clustered: Boolean(res?.clustered),
+      mode: res?.mode || params?.mode || 'auto',
+      limit: res?.limit ?? params?.limit ?? 50,
+      subnets: res?.subnets || [],
+    };
+  },
   clusters: async (groupBy?: string): Promise<ServiceCluster[]> => {
     const res = await request<unknown>(`/api/v1/clusters${buildQuery({ group_by: groupBy })}`);
     return unwrapList<ServiceCluster>(res, ['clusters', 'items', 'data']);
@@ -242,6 +258,11 @@ export const api = {
     notes?: string;
     targets?: string[];
     allowed_ports?: string;
+    max_rate_pps?: number;
+    window_enabled?: boolean;
+    window_start?: string;
+    window_end?: string;
+    timezone?: string;
   }) => request<ScanRun>('/api/v1/scans', { method: 'POST', body: JSON.stringify(payload) }),
   updateScan: (id: string, payload: { name?: string; notes?: string }) =>
     request<ScanRun>(`/api/v1/scans/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -260,14 +281,18 @@ export const api = {
     has_admin?: boolean;
     page?: number;
     limit?: number;
-  }): Promise<{ hosts: Host[]; total: number }> => {
+  }): Promise<HostPage> => {
     const res = await request<unknown>(`/api/v1/hosts${buildQuery(params || {})}`);
     const hosts = unwrapList<Host>(res, ['hosts', 'items', 'data']);
-    const total =
-      res && typeof res === 'object' && 'total' in (res as Record<string, unknown>)
-        ? Number((res as Record<string, unknown>).total)
-        : hosts.length;
-    return { hosts, total };
+    const obj = (res && typeof res === 'object' ? res : {}) as Record<string, unknown>;
+    const total = 'total' in obj ? Number(obj.total) : hosts.length;
+    const limit = 'limit' in obj ? Number(obj.limit) : params?.limit || hosts.length || 50;
+    const page = 'page' in obj ? Number(obj.page) : params?.page || 1;
+    const totalPages =
+      'total_pages' in obj
+        ? Number(obj.total_pages)
+        : Math.max(1, Math.ceil(total / Math.max(1, limit)));
+    return { hosts, total, page, limit, total_pages: totalPages };
   },
   getHost: (id: string) => request<Host>(`/api/v1/hosts/${id}`),
   patchHostOverrides: (

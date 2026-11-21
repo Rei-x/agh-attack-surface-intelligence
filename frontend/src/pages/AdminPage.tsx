@@ -1,30 +1,23 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  CheckCircle2,
-  ExternalLink,
-  FileText,
-  KeyRound,
-  Lock,
-  Plus,
-  RefreshCw,
-  RotateCw,
-  Save,
-  Send,
-  Settings,
-  Shield,
-  Trash2,
-  UserPlus,
-  Users,
-} from 'lucide-react';
-import { api } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../context/ToastContext';
-import {
-  ALL_PERMISSIONS_META,
-  getRoleBadgeClasses,
-  PERMISSIONS,
-} from '../lib/permissions';
-import { formatDateTime } from '../lib/format';
+  RiAddLine,
+  RiCheckboxCircleLine,
+  RiDeleteBinLine,
+  RiExternalLinkLine,
+  RiFileList3Line,
+  RiLockLine,
+  RiLoopRightLine,
+  RiRefreshLine,
+  RiSave3Line,
+  RiSendPlaneLine,
+  RiUserAddLine,
+} from '@remixicon/react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { ALL_PERMISSIONS_META, getRoleBadgeClasses, PERMISSIONS } from '@/lib/permissions';
+import { formatDateTime, type Tone } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import type {
   AuditLog,
   CryptoStatusResponse,
@@ -34,9 +27,34 @@ import type {
   ScanRun,
   Service,
   User,
-} from '../types/api';
+} from '@/types/api';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Code,
+  Empty,
+  Field,
+  PageHeader,
+  Pill,
+  SectionTitle,
+  SimpleSelect,
+} from '@/components/common';
 
-type AdminTab = 'defectdojo' | 'rbac' | 'crypto' | 'audit';
+type AdminTab = 'defectdojo' | 'users' | 'rbac' | 'crypto' | 'audit';
+
+const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Info'];
 
 export function AdminPage() {
   const { can } = useAuth();
@@ -50,7 +68,7 @@ export function AdminPage() {
   const defaultTab: AdminTab = canDD
     ? 'defectdojo'
     : canRBAC
-      ? 'rbac'
+      ? 'users'
       : canCrypto
         ? 'crypto'
         : 'audit';
@@ -149,13 +167,13 @@ export function AdminPage() {
       });
       setAuditLogs(logs);
     } catch (err) {
-      toast.error('Błąd dziennika audytowego', (err as Error).message);
+      toast.error('Błąd Audit Log', (err as Error).message);
     }
   }, [auditStatusFilter, toast]);
 
   useEffect(() => {
     if (activeTab === 'defectdojo' && canDD) loadDefectDojo();
-    if (activeTab === 'rbac' && canRBAC) loadRBAC();
+    if ((activeTab === 'rbac' || activeTab === 'users') && canRBAC) loadRBAC();
     if (activeTab === 'crypto' && canCrypto) loadCrypto();
     if (activeTab === 'audit' && canAudit) loadAudit();
   }, [activeTab, canDD, canRBAC, canCrypto, canAudit, loadDefectDojo, loadRBAC, loadCrypto, loadAudit]);
@@ -174,10 +192,10 @@ export function AdminPage() {
       };
       if (ddConfig.api_token?.trim()) payload.api_token = ddConfig.api_token.trim();
       await api.updateDefectDojoConfig(payload);
-      toast.success('Zapisano konfigurację DefectDojo v2', 'Token API zaszyfrowany AES-256-GCM.');
+      toast.success('Zapisano', 'Token zaszyfrowany AES-256-GCM');
       loadDefectDojo();
     } catch (err) {
-      toast.error('Błąd zapisu konfiguracji DefectDojo', (err as Error).message);
+      toast.error('Błąd zapisu', (err as Error).message);
     } finally {
       setDdBusy(false);
     }
@@ -187,9 +205,9 @@ export function AdminPage() {
     setDdBusy(true);
     try {
       const res = await api.testDefectDojo();
-      toast.success('Połączenie z DefectDojo v2 OK', JSON.stringify(res));
+      toast.success('DefectDojo: OK', JSON.stringify(res));
     } catch (err) {
-      toast.error('Test połączenia DefectDojo nieudany', (err as Error).message);
+      toast.error('DefectDojo: błąd', (err as Error).message);
     } finally {
       setDdBusy(false);
     }
@@ -203,10 +221,10 @@ export function AdminPage() {
         scan_run_id: selectedScanForNmap,
         engagement_id: Number(ddConfig.engagement_id) || 1,
       });
-      toast.success('Wysłano Nmap XML do DefectDojo v2', 'Import Nmap Scan zakończony.');
+      toast.success('Wysłano Nmap XML');
       loadDefectDojo();
     } catch (err) {
-      toast.error('Błąd eksportu Nmap XML', (err as Error).message);
+      toast.error('Błąd eksportu Nmap', (err as Error).message);
     } finally {
       setDdBusy(false);
     }
@@ -214,7 +232,7 @@ export function AdminPage() {
 
   const handlePushFindings = async () => {
     if (selectedServiceIds.length === 0) {
-      toast.warning('Wybierz co najmniej jedną usługę do eksportu');
+      toast.warning('Wybierz usługi');
       return;
     }
     setDdBusy(true);
@@ -224,14 +242,11 @@ export function AdminPage() {
         engagement_id: Number(ddConfig.engagement_id) || 1,
         severity: ddSeverity,
       });
-      toast.success(
-        'Wysłano znaleziska do DefectDojo v2',
-        `Wyeksportowano ${selectedServiceIds.length} znalezisk z dowodami.`
-      );
+      toast.success('Wysłano findings', `${selectedServiceIds.length} szt.`);
       setSelectedServiceIds([]);
       loadDefectDojo();
     } catch (err) {
-      toast.error('Błąd eksportu znalezisk', (err as Error).message);
+      toast.error('Błąd eksportu', (err as Error).message);
     } finally {
       setDdBusy(false);
     }
@@ -256,10 +271,10 @@ export function AdminPage() {
           description: roleForm.description,
           permissions: roleForm.permissions,
         });
-        toast.success('Zaktualizowano rolę RBAC', roleForm.name);
+        toast.success('Zapisano rolę', roleForm.name);
       } else {
         await api.createRole(roleForm);
-        toast.success('Utworzono nową rolę RBAC', roleForm.name);
+        toast.success('Utworzono rolę', roleForm.name);
       }
       setSelectedRoleId(null);
       setRoleForm({ slug: '', name: '', description: '', permissions: [] });
@@ -279,11 +294,11 @@ export function AdminPage() {
         role_slug: newUserForm.role_slug,
         active: true,
       });
-      toast.success('Utworzono użytkownika', newUserForm.username);
+      toast.success('Dodano użytkownika', newUserForm.username);
       setNewUserForm({ username: '', email: '', password: '', role_slug: 'analyst' });
       loadRBAC();
     } catch (err) {
-      toast.error('Błąd tworzenia użytkownika', (err as Error).message);
+      toast.error('Błąd tworzenia', (err as Error).message);
     }
   };
 
@@ -293,13 +308,10 @@ export function AdminPage() {
     setRotatingKey(true);
     try {
       await api.rotateCryptoKey();
-      toast.success(
-        'Rotacja klucza DEK zakończona',
-        'Wszystkie wrażliwe wiersze zostały ponownie zaszyfrowane nową wersją klucza.'
-      );
+      toast.success('Rotacja DEK zakończona');
       await loadCrypto();
     } catch (err) {
-      toast.error('Błąd rotacji klucza DEK', (err as Error).message);
+      toast.error('Błąd rotacji DEK', (err as Error).message);
     } finally {
       setRotatingKey(false);
     }
@@ -320,833 +332,774 @@ export function AdminPage() {
         ? [cryptoStatus.sample]
         : [];
 
+  const roleOptions = roles.map((r) => ({ value: r.slug, label: r.name }));
+
+  const auditTone = (status: string): Tone =>
+    status === 'success' ? 'success' : status === 'denied' ? 'danger' : 'warning';
+
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-text-primary flex items-center gap-2">
-            <Settings className="h-5 w-5 text-cyan-400" />
-            DefectDojo v2, Dynamiczny RBAC, Szyfrowanie i Audyt
-          </h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            Integracja z DefectDojo API v2, macierz uprawnień RBAC, dowód szyfrowania AES-256-GCM
-            at rest oraz Audit Log
-          </p>
-        </div>
+    <div>
+      <PageHeader title="Administracja" />
 
-        <div className="inline-flex flex-wrap rounded-lg border border-border-subtle bg-bg-card p-0.5">
-          {canDD && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('defectdojo')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium ${
-                activeTab === 'defectdojo'
-                  ? 'bg-cyan-500/15 text-cyan-400'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              DefectDojo v2
-            </button>
-          )}
-          {canRBAC && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('rbac')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium ${
-                activeTab === 'rbac'
-                  ? 'bg-cyan-500/15 text-cyan-400'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              Dynamiczny RBAC
-            </button>
-          )}
-          {canCrypto && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('crypto')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium ${
-                activeTab === 'crypto'
-                  ? 'bg-cyan-500/15 text-cyan-400'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              Encryption At Rest
-            </button>
-          )}
-          {canAudit && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('audit')}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium ${
-                activeTab === 'audit'
-                  ? 'bg-cyan-500/15 text-cyan-400'
-                  : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              Audit Log
-            </button>
-          )}
-        </div>
-      </div>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AdminTab)} className="gap-6">
+        <TabsList variant="line" className="max-w-full flex-wrap">
+          {canDD && <TabsTrigger value="defectdojo">DefectDojo</TabsTrigger>}
+          {canRBAC && <TabsTrigger value="users">Użytkownicy</TabsTrigger>}
+          {canRBAC && <TabsTrigger value="rbac">Role (RBAC)</TabsTrigger>}
+          {canCrypto && <TabsTrigger value="crypto">Szyfrowanie</TabsTrigger>}
+          {canAudit && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
+        </TabsList>
 
-      {/* TAB 1: DEFECTDOJO v2 */}
-      {activeTab === 'defectdojo' && canDD && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-            {/* Configuration */}
-            <form
-              onSubmit={handleSaveDDConfig}
-              className="xl:col-span-5 rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3 text-xs"
-            >
-              <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <Shield className="h-4 w-4 text-cyan-400" />
-                Konfiguracja DefectDojo API v2
-              </h2>
-              <div>
-                <label className="block text-text-muted mb-1">DefectDojo Base URL</label>
-                <input
-                  type="text"
-                  value={ddConfig.url}
-                  onChange={(e) => setDdConfig((c) => ({ ...c, url: e.target.value }))}
-                  placeholder="http://lab-defectdojo-mock:8000"
-                  className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-text-muted mb-1">
-                  API v2 Token{' '}
-                  {ddConfig.has_api_token && (
-                    <span className="text-emerald-400">(zapisany i zaszyfrowany w DB)</span>
-                  )}
-                </label>
-                <input
-                  type="password"
-                  value={ddConfig.api_token || ''}
-                  onChange={(e) => setDdConfig((c) => ({ ...c, api_token: e.target.value }))}
-                  placeholder={ddConfig.has_api_token ? '•••••••• (pozostaw puste aby zachować)' : 'Token API...'}
-                  className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-text-muted mb-1">Product ID</label>
-                  <input
-                    type="number"
-                    value={ddConfig.product_id}
-                    onChange={(e) =>
-                      setDdConfig((c) => ({ ...c, product_id: Number(e.target.value) }))
-                    }
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-text-muted mb-1">Engagement ID</label>
-                  <input
-                    type="number"
-                    value={ddConfig.engagement_id}
-                    onChange={(e) =>
-                      setDdConfig((c) => ({ ...c, engagement_id: Number(e.target.value) }))
-                    }
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-4 pt-1">
-                <label className="inline-flex items-center gap-1.5 text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={ddConfig.verify_tls}
-                    onChange={(e) => setDdConfig((c) => ({ ...c, verify_tls: e.target.checked }))}
-                    className="accent-cyan-500"
-                  />
-                  Weryfikuj TLS
-                </label>
-                <label className="inline-flex items-center gap-1.5 text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={ddConfig.auto_push_nmap}
-                    onChange={(e) =>
-                      setDdConfig((c) => ({ ...c, auto_push_nmap: e.target.checked }))
-                    }
-                    className="accent-cyan-500"
-                  />
-                  Auto-push Nmap XML po skanie
-                </label>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                {can(PERMISSIONS.ADMIN_SETTINGS) && (
-                  <button
-                    type="submit"
-                    disabled={ddBusy}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50"
-                  >
-                    <Save className="h-3.5 w-3.5" /> Zapisz
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={ddBusy}
-                  onClick={handleTestDD}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg font-medium border border-emerald-500/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Testuj połączenie
-                </button>
-              </div>
-            </form>
-
-            {/* Push Actions: Nmap XML & Selected Findings */}
-            <div className="xl:col-span-7 space-y-4">
-              <div className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3">
-                <h3 className="text-sm font-semibold text-text-primary">
-                  Eksport Nmap XML Scan (<span className="font-mono text-xs">/api/v2/import-scan/</span>)
-                </h3>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <select
-                    value={selectedScanForNmap}
-                    onChange={(e) => setSelectedScanForNmap(e.target.value)}
-                    className="flex-1 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-xs text-text-primary"
-                  >
-                    <option value="">Wybierz skan z Nmap XML...</option>
-                    {scans.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.run_type}) {s.has_raw_nmap_xml ? '✓ Nmap XML' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    disabled={ddBusy || !selectedScanForNmap || !can(PERMISSIONS.DEFECTDOJO_PUSH)}
-                    onClick={handlePushNmap}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50"
-                  >
-                    <Send className="h-3.5 w-3.5" /> Wyślij Nmap XML
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-text-primary">
-                    Selektywny Eksport Znalezisk (<span className="font-mono text-xs">/api/v2/findings/</span>)
-                  </h3>
-                  <div className="flex items-center gap-2 text-xs">
-                    <select
-                      value={ddSeverity}
-                      onChange={(e) => setDdSeverity(e.target.value)}
-                      className="rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1 text-text-primary"
+        {/* DEFECTDOJO */}
+        {canDD && (
+          <TabsContent value="defectdojo" className="space-y-6">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+              <Card size="sm" className="h-fit xl:col-span-5">
+                <form onSubmit={handleSaveDDConfig} className="flex flex-col gap-(--card-spacing)">
+                  <CardHeader className="border-b">
+                    <CardTitle className="text-sm">Konfiguracja API v2</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <Field label="Base URL" htmlFor="dd-url">
+                      <Input
+                        id="dd-url"
+                        value={ddConfig.url}
+                        onChange={(e) => setDdConfig((c) => ({ ...c, url: e.target.value }))}
+                        placeholder="http://lab-defectdojo-mock:8000"
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field
+                      label={
+                        <span className="flex items-center gap-2">
+                          API Token
+                          {ddConfig.has_api_token && (
+                            <Pill tone="success">
+                              <RiLockLine className="size-3" /> zaszyfrowany
+                            </Pill>
+                          )}
+                        </span>
+                      }
+                      htmlFor="dd-token"
                     >
-                      <option value="Critical">Critical</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                      <option value="Info">Info</option>
-                    </select>
-                    <button
+                      <Input
+                        id="dd-token"
+                        type="password"
+                        value={ddConfig.api_token || ''}
+                        onChange={(e) => setDdConfig((c) => ({ ...c, api_token: e.target.value }))}
+                        placeholder={ddConfig.has_api_token ? '•••••••• (bez zmian)' : 'Token'}
+                        className="font-mono"
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="Product ID" htmlFor="dd-product">
+                        <Input
+                          id="dd-product"
+                          type="number"
+                          value={ddConfig.product_id}
+                          onChange={(e) =>
+                            setDdConfig((c) => ({ ...c, product_id: Number(e.target.value) }))
+                          }
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Engagement ID" htmlFor="dd-engagement">
+                        <Input
+                          id="dd-engagement"
+                          type="number"
+                          value={ddConfig.engagement_id}
+                          onChange={(e) =>
+                            setDdConfig((c) => ({ ...c, engagement_id: Number(e.target.value) }))
+                          }
+                          className="font-mono"
+                        />
+                      </Field>
+                    </div>
+                    <div className="space-y-3 pt-1">
+                      <Label className="justify-between">
+                        <span className="text-xs font-normal tracking-normal normal-case">
+                          Weryfikuj TLS
+                        </span>
+                        <Switch
+                          checked={ddConfig.verify_tls}
+                          onCheckedChange={(checked) =>
+                            setDdConfig((c) => ({ ...c, verify_tls: checked }))
+                          }
+                        />
+                      </Label>
+                      <Label className="justify-between">
+                        <span className="text-xs font-normal tracking-normal normal-case">
+                          Auto-push Nmap XML po skanie
+                        </span>
+                        <Switch
+                          checked={ddConfig.auto_push_nmap}
+                          onCheckedChange={(checked) =>
+                            setDdConfig((c) => ({ ...c, auto_push_nmap: checked }))
+                          }
+                        />
+                      </Label>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="justify-end gap-2 border-t">
+                    <Button
                       type="button"
-                      disabled={ddBusy || selectedServiceIds.length === 0 || !can(PERMISSIONS.DEFECTDOJO_PUSH)}
-                      onClick={handlePushFindings}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50"
+                      variant="outline"
+                      size="sm"
+                      disabled={ddBusy}
+                      onClick={handleTestDD}
                     >
-                      <Send className="h-3.5 w-3.5" /> Wyślij ({selectedServiceIds.length})
-                    </button>
-                  </div>
-                </div>
+                      <RiCheckboxCircleLine /> Test
+                    </Button>
+                    {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                      <Button type="submit" size="sm" disabled={ddBusy}>
+                        <RiSave3Line /> Zapisz
+                      </Button>
+                    )}
+                  </CardFooter>
+                </form>
+              </Card>
 
-                <div className="max-h-44 overflow-y-auto space-y-1.5">
-                  {services.length === 0 ? (
-                    <p className="text-xs text-text-muted py-4 text-center">
-                      Brak usług o podwyższonym score do eksportu.
-                    </p>
-                  ) : (
-                    services.slice(0, 20).map((svc) => {
-                      const checked = selectedServiceIds.includes(svc.id);
-                      return (
-                        <label
-                          key={svc.id}
-                          className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border-subtle bg-bg-elevated/60 hover:bg-bg-hover cursor-pointer text-xs"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() =>
-                                setSelectedServiceIds((prev) =>
-                                  checked ? prev.filter((id) => id !== svc.id) : [...prev, svc.id]
-                                )
-                              }
-                              className="accent-cyan-500"
-                            />
-                            <span className="font-mono font-semibold text-text-primary">
-                              {svc.host_ip}:{svc.port}
-                            </span>
-                            <span className="text-text-secondary truncate">
-                              {svc.http?.title || svc.product || svc.service_name}
-                            </span>
-                          </div>
-                          <span className="font-mono text-amber-400 shrink-0">
-                            Score {svc.interestingness}
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
+              <div className="space-y-6 xl:col-span-7">
+                <Card size="sm">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Nmap XML</CardTitle>
+                    <CardAction>
+                      <Code>/api/v2/import-scan/</Code>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <Field label="Skan" className="flex-1">
+                      <SimpleSelect
+                        value={selectedScanForNmap}
+                        onValueChange={setSelectedScanForNmap}
+                        placeholder="Wybierz skan"
+                        options={scans.map((s) => ({
+                          value: s.id,
+                          label: `${s.name} (${s.run_type})${s.has_raw_nmap_xml ? ' · XML ✓' : ''}`,
+                        }))}
+                      />
+                    </Field>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={ddBusy || !selectedScanForNmap || !can(PERMISSIONS.DEFECTDOJO_PUSH)}
+                      onClick={handlePushNmap}
+                    >
+                      <RiSendPlaneLine /> Wyślij
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card size="sm">
+                  <CardHeader className="border-b">
+                    <CardTitle className="text-sm">Findings</CardTitle>
+                    <CardAction>
+                      <Code>/api/v2/findings/</Code>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent>
+                    {services.length === 0 ? (
+                      <Empty>Brak usług</Empty>
+                    ) : (
+                      <div className="max-h-64 divide-y divide-border overflow-y-auto border border-border">
+                        {services.slice(0, 20).map((svc) => {
+                          const checked = selectedServiceIds.includes(svc.id);
+                          return (
+                            <label
+                              key={svc.id}
+                              className={cn(
+                                'flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs hover:bg-muted/50',
+                                checked && 'bg-muted'
+                              )}
+                            >
+                              <div className="flex min-w-0 items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setSelectedServiceIds((prev) =>
+                                      checked ? prev.filter((id) => id !== svc.id) : [...prev, svc.id]
+                                    )
+                                  }
+                                  className="size-3.5 accent-primary"
+                                />
+                                <span className="font-mono font-semibold">
+                                  {svc.host_ip}:{svc.port}
+                                </span>
+                                <span className="truncate text-muted-foreground">
+                                  {svc.http?.title || svc.product || svc.service_name}
+                                </span>
+                              </div>
+                              <span className="shrink-0 font-mono text-muted-foreground tabular-nums">
+                                {svc.interestingness}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                  <CardFooter className="justify-end gap-2 border-t">
+                    <SimpleSelect
+                      size="sm"
+                      value={ddSeverity}
+                      onValueChange={setDdSeverity}
+                      options={SEVERITIES.map((s) => ({ value: s, label: s }))}
+                      className="w-32"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={
+                        ddBusy || selectedServiceIds.length === 0 || !can(PERMISSIONS.DEFECTDOJO_PUSH)
+                      }
+                      onClick={handlePushFindings}
+                    >
+                      <RiSendPlaneLine /> Wyślij ({selectedServiceIds.length})
+                    </Button>
+                  </CardFooter>
+                </Card>
               </div>
             </div>
-          </div>
 
-          {/* Export History */}
-          <div className="rounded-xl border border-border-subtle bg-bg-card overflow-hidden">
-            <div className="p-4 border-b border-border-subtle flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-text-primary">
-                Historia Eksportów do DefectDojo ({ddHistory.length})
-              </h3>
-              <button
-                type="button"
-                onClick={loadDefectDojo}
-                className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
-              >
-                <RefreshCw className="h-3.5 w-3.5" /> Odśwież
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-bg-elevated text-text-muted uppercase text-[11px]">
-                  <tr>
-                    <th className="px-4 py-2.5">Typ</th>
-                    <th className="px-4 py-2.5">Tytuł</th>
-                    <th className="px-4 py-2.5">Status</th>
-                    <th className="px-4 py-2.5">External ID / Link</th>
-                    <th className="px-4 py-2.5">Użytkownik</th>
-                    <th className="px-4 py-2.5">Data</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle/60">
-                  {ddHistory.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-4 py-6 text-center text-text-muted">
-                        Brak wykonanych eksportów.
-                      </td>
-                    </tr>
-                  ) : (
-                    ddHistory.map((ex) => (
-                      <tr key={ex.id}>
-                        <td className="px-4 py-2.5 font-mono text-cyan-400">{ex.export_type}</td>
-                        <td className="px-4 py-2.5 text-text-primary">{ex.title}</td>
-                        <td className="px-4 py-2.5">
-                          <span
-                            className={`px-2 py-0.5 rounded font-mono text-[10px] border ${
-                              ex.status === 'success'
-                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                            }`}
-                          >
-                            {ex.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 font-mono">
+            <Card size="sm" className="pb-0">
+              <CardHeader>
+                <CardTitle className="text-sm">Historia ({ddHistory.length})</CardTitle>
+                <CardAction>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Odśwież"
+                    onClick={loadDefectDojo}
+                  >
+                    <RiRefreshLine />
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              {ddHistory.length === 0 ? (
+                <Empty>Brak eksportów</Empty>
+              ) : (
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-5">Typ</TableHead>
+                      <TableHead>Tytuł</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>External ID</TableHead>
+                      <TableHead>Użytkownik</TableHead>
+                      <TableHead className="pr-5">Data</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ddHistory.map((ex) => (
+                      <TableRow key={ex.id}>
+                        <TableCell className="pl-5 font-mono">{ex.export_type}</TableCell>
+                        <TableCell>{ex.title}</TableCell>
+                        <TableCell>
+                          <Pill tone={ex.status === 'success' ? 'success' : 'danger'}>{ex.status}</Pill>
+                        </TableCell>
+                        <TableCell className="font-mono">
                           {ex.external_url ? (
                             <a
                               href={ex.external_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-cyan-400 hover:underline"
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
                             >
-                              #{ex.external_id || 'link'} <ExternalLink className="h-3 w-3" />
+                              #{ex.external_id || 'link'} <RiExternalLinkLine className="size-3" />
                             </a>
                           ) : (
-                            ex.external_id || ex.error_message || '—'
+                            <span className="text-muted-foreground">
+                              {ex.external_id || ex.error_message || '—'}
+                            </span>
                           )}
-                        </td>
-                        <td className="px-4 py-2.5 text-text-secondary">{ex.exported_by}</td>
-                        <td className="px-4 py-2.5 font-mono text-text-muted">
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{ex.exported_by}</TableCell>
+                        <TableCell className="pr-5 font-mono text-muted-foreground">
                           {formatDateTime(ex.created_at)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+          </TabsContent>
+        )}
 
-      {/* TAB 2: DYNAMIC RBAC */}
-      {activeTab === 'rbac' && canRBAC && (
-        <div className="space-y-5">
-          {/* Roles & Permission Matrix */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-            <div className="xl:col-span-5 rounded-xl border border-border-subtle bg-bg-card p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                  <KeyRound className="h-4 w-4 text-cyan-400" />
-                  Role RBAC ({roles.length})
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedRoleId(null);
-                    setRoleForm({ slug: '', name: '', description: '', permissions: ['dashboard:read'] });
-                  }}
-                  className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:underline"
+        {/* USERS */}
+        {canRBAC && (
+          <TabsContent value="users" className="space-y-6">
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="text-sm">Nowy użytkownik</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form
+                  onSubmit={handleCreateUser}
+                  className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]"
                 >
-                  <Plus className="h-3.5 w-3.5" /> Nowa rola
-                </button>
-              </div>
-              <div className="space-y-2">
-                {roles.map((r) => (
-                  <div
-                    key={r.id}
-                    onClick={() => {
-                      setSelectedRoleId(r.id);
-                      setRoleForm({
-                        slug: r.slug,
-                        name: r.name,
-                        description: r.description,
-                        permissions: r.permissions || [],
-                      });
-                    }}
-                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedRoleId === r.id
-                        ? 'border-cyan-500/50 bg-cyan-500/10'
-                        : 'border-border-subtle bg-bg-elevated/60 hover:bg-bg-hover'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-xs font-semibold px-2 py-0.5 rounded border ${getRoleBadgeClasses(
-                          r.slug
-                        )}`}
-                      >
-                        {r.name}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-mono text-text-muted">
-                          {r.permissions?.includes('*')
-                            ? 'ALL (*)'
-                            : `${r.permissions?.length || 0} perm`}
-                        </span>
-                        {!r.is_system && (
-                          <button
+                  <Field label="Login" htmlFor="nu-username">
+                    <Input
+                      id="nu-username"
+                      required
+                      value={newUserForm.username}
+                      onChange={(e) => setNewUserForm((u) => ({ ...u, username: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Email" htmlFor="nu-email">
+                    <Input
+                      id="nu-email"
+                      type="email"
+                      value={newUserForm.email}
+                      onChange={(e) => setNewUserForm((u) => ({ ...u, email: e.target.value }))}
+                      placeholder="email@agh.edu.pl"
+                    />
+                  </Field>
+                  <Field label="Hasło" htmlFor="nu-password">
+                    <Input
+                      id="nu-password"
+                      type="password"
+                      required
+                      value={newUserForm.password}
+                      onChange={(e) => setNewUserForm((u) => ({ ...u, password: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Rola">
+                    <SimpleSelect
+                      value={newUserForm.role_slug}
+                      onValueChange={(v) => setNewUserForm((u) => ({ ...u, role_slug: v }))}
+                      options={roleOptions}
+                    />
+                  </Field>
+                  <Button type="submit" size="sm">
+                    <RiUserAddLine /> Dodaj
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card size="sm" className="pb-0">
+              <CardHeader>
+                <CardTitle className="text-sm">Użytkownicy ({users.length})</CardTitle>
+              </CardHeader>
+              {users.length === 0 ? (
+                <Empty>Brak użytkowników</Empty>
+              ) : (
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-5">Użytkownik</TableHead>
+                      <TableHead>
+                        Email <span className="normal-case opacity-70">(encrypted)</span>
+                      </TableHead>
+                      <TableHead>Rola</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="pr-5 text-right" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="pl-5 font-mono font-semibold">{u.username}</TableCell>
+                        <TableCell className="text-muted-foreground">{u.email || '—'}</TableCell>
+                        <TableCell>
+                          <Pill className={getRoleBadgeClasses(u.role_slug)}>
+                            {u.role_name || u.role_slug}
+                          </Pill>
+                        </TableCell>
+                        <TableCell>
+                          {u.active !== false ? (
+                            <Pill tone="success" dot>
+                              Aktywny
+                            </Pill>
+                          ) : (
+                            <Pill dot>Wyłączony</Pill>
+                          )}
+                        </TableCell>
+                        <TableCell className="pr-5 text-right">
+                          <Button
                             type="button"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              await api.deleteRole(r.id);
-                              toast.success('Usunięto rolę', r.name);
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Usuń ${u.username}`}
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={async () => {
+                              if (!window.confirm(`Usunąć użytkownika ${u.username}?`)) return;
+                              await api.deleteUser(u.id);
+                              toast.success('Usunięto', u.username);
                               loadRBAC();
                             }}
-                            className="text-text-muted hover:text-rose-400"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                            <RiDeleteBinLine />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* ROLES (RBAC) */}
+        {canRBAC && (
+          <TabsContent value="rbac">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+              <Card size="sm" className="h-fit pb-0 xl:col-span-4">
+                <CardHeader>
+                  <CardTitle className="text-sm">Role ({roles.length})</CardTitle>
+                  <CardAction>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => {
+                        setSelectedRoleId(null);
+                        setRoleForm({
+                          slug: '',
+                          name: '',
+                          description: '',
+                          permissions: ['dashboard:read'],
+                        });
+                      }}
+                    >
+                      <RiAddLine /> Nowa
+                    </Button>
+                  </CardAction>
+                </CardHeader>
+                <div className="divide-y divide-border border-t border-border">
+                  {roles.length === 0 && <Empty>Brak ról</Empty>}
+                  {roles.map((r) => (
+                    <div
+                      key={r.id}
+                      onClick={() => {
+                        setSelectedRoleId(r.id);
+                        setRoleForm({
+                          slug: r.slug,
+                          name: r.name,
+                          description: r.description,
+                          permissions: r.permissions || [],
+                        });
+                      }}
+                      className={cn(
+                        'cursor-pointer border-l-2 border-l-transparent px-5 py-3 transition-colors hover:bg-muted/50',
+                        selectedRoleId === r.id && 'border-l-primary bg-muted'
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Pill className={getRoleBadgeClasses(r.slug)}>{r.name}</Pill>
+                        <div className="flex items-center gap-1">
+                          <span className="font-mono text-[11px] text-muted-foreground">
+                            {r.permissions?.includes('*')
+                              ? 'ALL (*)'
+                              : `${r.permissions?.length || 0} perm`}
+                          </span>
+                          {!r.is_system && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={`Usuń ${r.name}`}
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await api.deleteRole(r.id);
+                                toast.success('Usunięto rolę', r.name);
+                                loadRBAC();
+                              }}
+                            >
+                              <RiDeleteBinLine />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      {r.description && (
+                        <p className="mt-1.5 truncate text-[11px] text-muted-foreground">
+                          {r.description}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <Card size="sm" className="xl:col-span-8">
+                <form onSubmit={handleSaveRole} className="flex flex-col gap-(--card-spacing)">
+                  <CardHeader className="border-b">
+                    <CardTitle className="text-sm">
+                      {selectedRoleId ? roleForm.name || 'Rola' : 'Nowa rola'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-3">
+                      <Field label="Slug" htmlFor="role-slug">
+                        <Input
+                          id="role-slug"
+                          required
+                          disabled={Boolean(selectedRoleId)}
+                          value={roleForm.slug}
+                          onChange={(e) => setRoleForm((f) => ({ ...f, slug: e.target.value }))}
+                          placeholder="soc_auditor"
+                          className="font-mono"
+                        />
+                      </Field>
+                      <Field label="Nazwa" htmlFor="role-name" className="sm:col-span-2">
+                        <Input
+                          id="role-name"
+                          required
+                          value={roleForm.name}
+                          onChange={(e) => setRoleForm((f) => ({ ...f, name: e.target.value }))}
+                          placeholder="Audytor SOC"
+                        />
+                      </Field>
+                      <Field label="Opis" htmlFor="role-desc" className="sm:col-span-3">
+                        <Input
+                          id="role-desc"
+                          value={roleForm.description}
+                          onChange={(e) =>
+                            setRoleForm((f) => ({ ...f, description: e.target.value }))
+                          }
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="space-y-2">
+                      <SectionTitle>Uprawnienia</SectionTitle>
+                      <div className="max-h-[28rem] divide-y divide-border overflow-y-auto border border-border">
+                        {Object.entries(groupedPermissions).map(([group, list]) => (
+                          <div key={group} className="px-4 py-3">
+                            <div className="mb-2 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
+                              {group}
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              {list.map((p) => {
+                                const hasAll = roleForm.permissions.includes('*');
+                                const checked = hasAll || roleForm.permissions.includes(p.slug);
+                                return (
+                                  <label
+                                    key={p.slug}
+                                    className={cn(
+                                      'flex cursor-pointer items-start gap-2 text-[11px]',
+                                      hasAll && 'cursor-not-allowed opacity-70'
+                                    )}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      disabled={hasAll}
+                                      checked={checked}
+                                      onChange={() => togglePermission(p.slug)}
+                                      className="mt-0.5 size-3.5 accent-primary"
+                                    />
+                                    <span className="min-w-0">
+                                      <span className="block font-mono">{p.slug}</span>
+                                      <span className="text-muted-foreground">{p.label}</span>
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="justify-end border-t">
+                    <Button type="submit" size="sm">
+                      <RiSave3Line /> Zapisz rolę
+                    </Button>
+                  </CardFooter>
+                </form>
+              </Card>
+            </div>
+          </TabsContent>
+        )}
+
+        {/* ENCRYPTION AT REST */}
+        {canCrypto && (
+          <TabsContent value="crypto" className="space-y-6">
+            <Card size="sm">
+              <CardContent className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="flex size-10 shrink-0 items-center justify-center border border-border bg-muted">
+                    <RiLockLine className="size-4" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="font-heading text-sm font-semibold tracking-wider uppercase">
+                        Encryption At Rest
+                      </h2>
+                      <Pill tone="success" dot>
+                        Aktywne
+                      </Pill>
+                    </div>
+                    <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                      <div className="flex gap-1.5">
+                        <dt className="text-muted-foreground">DEK</dt>
+                        <dd className="font-mono font-semibold">
+                          {cryptoStatus?.key_version || cryptoStatus?.active_kid || 'v1'}
+                        </dd>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <dt className="text-muted-foreground">Algorytm</dt>
+                        <dd className="font-mono font-semibold">
+                          {cryptoStatus?.algorithm || 'AES-256-GCM + AAD'}
+                        </dd>
+                      </div>
+                      {cryptoStatus?.rotated_at && (
+                        <div className="flex gap-1.5">
+                          <dt className="text-muted-foreground">Rotacja</dt>
+                          <dd className="font-mono">{formatDateTime(cryptoStatus.rotated_at)}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={rotatingKey}
+                  onClick={handleRotateKey}
+                >
+                  <RiLoopRightLine className={cn(rotatingKey && 'animate-spin')} />
+                  {rotatingKey ? 'Rotacja…' : 'Rotuj DEK'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="text-sm">Ciphertext vs odszyfrowane</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {cryptoSamples.length === 0 ? (
+                  <Empty icon={RiLockLine}>Brak próbek</Empty>
+                ) : (
+                  cryptoSamples.map((s, idx) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-1 divide-y divide-border border border-border lg:grid-cols-2 lg:divide-x lg:divide-y-0"
+                    >
+                      <div className="min-w-0 space-y-2 p-4">
+                        <SectionTitle>
+                          Raw DB · {s.table || 'hosts'}.{s.column || 'ip_enc'}
+                        </SectionTitle>
+                        <div className="border border-border bg-muted/30 p-3 font-mono text-xs break-all">
+                          {s.raw_ciphertext || s.ciphertext || 'enc:v1:...'}
+                        </div>
+                        {s.aad && (
+                          <div className="font-mono text-[11px] text-muted-foreground">
+                            AAD: {s.aad}
+                          </div>
+                        )}
+                        {s.blind_index && (
+                          <div className="truncate font-mono text-[11px] text-muted-foreground">
+                            Blind index: {s.blind_index}
+                          </div>
                         )}
                       </div>
-                    </div>
-                    <p className="text-[11px] text-text-muted mt-1">{r.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Role Editor + Permission Checkboxes */}
-            <form
-              onSubmit={handleSaveRole}
-              className="xl:col-span-7 rounded-xl border border-border-subtle bg-bg-card p-5 space-y-4 text-xs"
-            >
-              <h3 className="text-sm font-semibold text-text-primary">
-                {selectedRoleId ? `Edycja roli: ${roleForm.name}` : 'Tworzenie Własnej Roli RBAC'}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-text-muted mb-1">Slug</label>
-                  <input
-                    type="text"
-                    required
-                    disabled={Boolean(selectedRoleId)}
-                    value={roleForm.slug}
-                    onChange={(e) => setRoleForm((f) => ({ ...f, slug: e.target.value }))}
-                    placeholder="np. soc_auditor"
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 font-mono text-text-primary disabled:opacity-60"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-text-muted mb-1">Nazwa wyświetlana</label>
-                  <input
-                    type="text"
-                    required
-                    value={roleForm.name}
-                    onChange={(e) => setRoleForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="np. Audytor SOC CBI AGH"
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                  />
-                </div>
-                <div className="sm:col-span-3">
-                  <label className="block text-text-muted mb-1">Opis</label>
-                  <input
-                    type="text"
-                    value={roleForm.description}
-                    onChange={(e) => setRoleForm((f) => ({ ...f, description: e.target.value }))}
-                    className="w-full rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {Object.entries(groupedPermissions).map(([group, list]) => (
-                  <div
-                    key={group}
-                    className="rounded-lg border border-border-subtle bg-bg-elevated/60 p-3"
-                  >
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-cyan-400 mb-2">
-                      {group}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {list.map((p) => {
-                        const hasAll = roleForm.permissions.includes('*');
-                        const checked = hasAll || roleForm.permissions.includes(p.slug);
-                        return (
-                          <label
-                            key={p.slug}
-                            className="flex items-start gap-2 cursor-pointer text-[11px]"
-                          >
-                            <input
-                              type="checkbox"
-                              disabled={hasAll}
-                              checked={checked}
-                              onChange={() => togglePermission(p.slug)}
-                              className="mt-0.5 accent-cyan-500"
-                            />
-                            <span>
-                              <span className="font-mono text-text-primary block">{p.slug}</span>
-                              <span className="text-text-muted">{p.label}</span>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg font-semibold bg-cyan-600 hover:bg-cyan-500 text-white"
-              >
-                <Save className="h-3.5 w-3.5" /> Zapisz rolę RBAC
-              </button>
-            </form>
-          </div>
-
-          {/* Users Management */}
-          <div className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-              <Users className="h-4 w-4 text-cyan-400" />
-              Użytkownicy Systemu ({users.length})
-            </h3>
-
-            <form
-              onSubmit={handleCreateUser}
-              className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 text-xs"
-            >
-              <input
-                type="text"
-                required
-                value={newUserForm.username}
-                onChange={(e) => setNewUserForm((u) => ({ ...u, username: e.target.value }))}
-                placeholder="Nazwa użytkownika"
-                className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-              />
-              <input
-                type="email"
-                value={newUserForm.email}
-                onChange={(e) => setNewUserForm((u) => ({ ...u, email: e.target.value }))}
-                placeholder="email@agh.edu.pl"
-                className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-              />
-              <input
-                type="password"
-                required
-                value={newUserForm.password}
-                onChange={(e) => setNewUserForm((u) => ({ ...u, password: e.target.value }))}
-                placeholder="Hasło"
-                className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-              />
-              <select
-                value={newUserForm.role_slug}
-                onChange={(e) => setNewUserForm((u) => ({ ...u, role_slug: e.target.value }))}
-                className="rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5 text-text-primary"
-              >
-                {roles.map((r) => (
-                  <option key={r.id} value={r.slug}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-1.5"
-              >
-                <UserPlus className="h-3.5 w-3.5" /> Dodaj
-              </button>
-            </form>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-bg-elevated text-text-muted uppercase text-[11px]">
-                  <tr>
-                    <th className="px-3 py-2">Użytkownik</th>
-                    <th className="px-3 py-2">Email (encrypted at rest)</th>
-                    <th className="px-3 py-2">Rola</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2 text-right">Akcje</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle/60">
-                  {users.map((u) => (
-                    <tr key={u.id}>
-                      <td className="px-3 py-2 font-mono font-semibold text-text-primary">
-                        {u.username}
-                      </td>
-                      <td className="px-3 py-2 text-text-secondary">{u.email || '—'}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`px-2 py-0.5 rounded border text-[11px] ${getRoleBadgeClasses(
-                            u.role_slug
-                          )}`}
+                      <div className="min-w-0 space-y-2 p-4">
+                        <SectionTitle
+                          actions={
+                            <Pill tone="success">
+                              <RiCheckboxCircleLine className="size-3" /> odszyfrowane
+                            </Pill>
+                          }
                         >
-                          {u.role_name || u.role_slug}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={u.active !== false ? 'text-emerald-400' : 'text-rose-400'}>
-                          {u.active !== false ? 'Aktywny' : 'Wyłączony'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!window.confirm(`Usunąć użytkownika ${u.username}?`)) return;
-                            await api.deleteUser(u.id);
-                            toast.success('Usunięto użytkownika', u.username);
-                            loadRBAC();
-                          }}
-                          className="text-text-muted hover:text-rose-400"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: ENCRYPTION AT REST PROOF PANEL */}
-      {activeTab === 'crypto' && canCrypto && (
-        <div className="space-y-5">
-          <div className="rounded-xl border border-emerald-500/35 bg-bg-card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="h-11 w-11 rounded-xl bg-emerald-500/15 border border-emerald-500/35 flex items-center justify-center text-emerald-400 shrink-0">
-                <Lock className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
-                  Encryption At Rest — Envelope Encryption (AES-256-GCM AEAD)
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/35">
-                    AKTYWNE
-                  </span>
-                </h2>
-                <p className="text-xs text-text-muted mt-1">
-                  Wszystkie pola wrażliwe (IP, hosty, nagłówki HTTP, ciasteczka, certyfikaty TLS,
-                  notatki, nadpisania, surowy Nmap XML, tokeny API) są szyfrowane z AAD (
-                  <span className="font-mono">table:record_id:column</span>) i indeksowane przez
-                  HMAC-SHA256 blind index.
-                </p>
-                <div className="flex flex-wrap gap-3 mt-2.5 text-xs font-mono">
-                  <span className="text-text-secondary">
-                    Aktywny DEK:{' '}
-                    <strong className="text-cyan-400">
-                      {cryptoStatus?.key_version || cryptoStatus?.active_kid || 'v1'}
-                    </strong>
-                  </span>
-                  <span className="text-text-secondary">
-                    Algorytm:{' '}
-                    <strong className="text-emerald-400">
-                      {cryptoStatus?.algorithm || 'AES-256-GCM + AAD'}
-                    </strong>
-                  </span>
-                  {cryptoStatus?.rotated_at && (
-                    <span className="text-text-muted">
-                      Ostatnia rotacja: {formatDateTime(cryptoStatus.rotated_at)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              disabled={rotatingKey}
-              onClick={handleRotateKey}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shrink-0 disabled:opacity-50"
-            >
-              <RotateCw className={`h-4 w-4 ${rotatingKey ? 'animate-spin' : ''}`} />
-              {rotatingKey ? 'Rotacja DEK...' : 'Rotuj klucz DEK'}
-            </button>
-          </div>
-
-          {/* Side-by-Side Raw DB Ciphertext vs Decrypted View */}
-          <div className="rounded-xl border border-border-subtle bg-bg-card p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-text-primary">
-              Dowód Szyfrowania w Bazie Danych (Raw DB Ciphertext vs Zdekryptowany Widok)
-            </h3>
-
-            {cryptoSamples.length === 0 ? (
-              <p className="text-xs text-text-muted">
-                Dodaj lub przeskanuj co najmniej jednego hosta, aby zobaczyć żywą próbkę szyfrogramu
-                z bazy danych.
-              </p>
-            ) : (
-              cryptoSamples.map((s, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-1 lg:grid-cols-2 gap-4 rounded-xl border border-border-subtle bg-bg-elevated/60 p-4"
-                >
-                  <div className="space-y-1.5">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-semibold">
-                      Surowy wiersz w PostgreSQL ({s.table || 'hosts'}.{s.column || 'ip_enc'})
-                    </div>
-                    <div className="rounded-lg border border-amber-500/30 bg-bg-primary p-3 font-mono text-xs text-amber-300 break-all">
-                      {s.raw_ciphertext || s.ciphertext || 'enc:v1:...'}
-                    </div>
-                    {s.aad && (
-                      <div className="text-[11px] font-mono text-text-muted">AAD: {s.aad}</div>
-                    )}
-                    {s.blind_index && (
-                      <div className="text-[11px] font-mono text-text-muted truncate">
-                        Blind Index (HMAC-SHA256): {s.blind_index}
+                          API
+                        </SectionTitle>
+                        <div className="border border-border bg-muted/30 p-3 font-mono text-xs break-all">
+                          {s.decrypted_value || s.plaintext || '—'}
+                        </div>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 font-semibold">
-                      Po autoryzowanej deszyfracji w pamięci (AegisASI API)
                     </div>
-                    <div className="rounded-lg border border-emerald-500/30 bg-bg-primary p-3 font-mono text-xs text-emerald-300 break-all">
-                      {s.decrypted_value || s.plaintext || '—'}
-                    </div>
-                    <div className="text-[11px] text-text-muted">
-                      Klucz szyfrujący nigdy nie opuszcza warstwy Vault i nie jest eksponowany w API.
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: AUDIT LOG */}
-      {activeTab === 'audit' && canAudit && (
-        <div className="rounded-xl border border-border-subtle bg-bg-card overflow-hidden">
-          <div className="p-4 border-b border-border-subtle flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-              <FileText className="h-4 w-4 text-cyan-400" />
-              Dziennik Audytowy — Audit Log ({auditLogs.length})
-            </h2>
-            <div className="flex items-center gap-2">
-              <select
-                value={auditStatusFilter}
-                onChange={(e) => setAuditStatusFilter(e.target.value)}
-                className="rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1 text-xs text-text-primary"
-              >
-                <option value="">Wszystkie statusy</option>
-                <option value="success">success</option>
-                <option value="denied">denied (403)</option>
-                <option value="error">error</option>
-              </select>
-              <button
-                type="button"
-                onClick={loadAudit}
-                className="p-1.5 rounded-lg border border-border-subtle bg-bg-elevated hover:bg-bg-hover text-text-secondary"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-bg-elevated text-text-muted uppercase text-[11px]">
-                <tr>
-                  <th className="px-4 py-2.5">Czas</th>
-                  <th className="px-4 py-2.5">Użytkownik / Rola</th>
-                  <th className="px-4 py-2.5">Akcja</th>
-                  <th className="px-4 py-2.5">Zasób</th>
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5">IP</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle/60">
-                {auditLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-text-muted">
-                      Brak wpisów audytowych.
-                    </td>
-                  </tr>
-                ) : (
-                  auditLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-bg-hover/40">
-                      <td className="px-4 py-2.5 font-mono text-[11px] text-text-muted whitespace-nowrap">
-                        {formatDateTime(log.created_at)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className="font-mono font-semibold text-text-primary">
-                          {log.username}
-                        </span>
-                        <span className="ml-1.5 text-[10px] font-mono text-text-muted">
-                          ({log.role_slug})
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-cyan-400">{log.action}</td>
-                      <td className="px-4 py-2.5 font-mono text-text-secondary">
-                        {log.resource}
-                        {log.resource_id ? `/${log.resource_id.slice(0, 8)}` : ''}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                            log.status === 'success'
-                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                              : log.status === 'denied'
-                                ? 'bg-rose-500/15 text-rose-400 border-rose-500/35'
-                                : 'bg-amber-500/15 text-amber-400 border-amber-500/35'
-                          }`}
-                        >
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-[11px] text-text-muted">
-                        {log.ip_address || '—'}
-                      </td>
-                    </tr>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* AUDIT LOG */}
+        {canAudit && (
+          <TabsContent value="audit">
+            <Card size="sm" className="pb-0">
+              <CardHeader>
+                <CardTitle className="text-sm">Audit Log ({auditLogs.length})</CardTitle>
+                <CardAction className="flex items-center gap-2">
+                  <SimpleSelect
+                    size="sm"
+                    value={auditStatusFilter || 'all'}
+                    onValueChange={(v) => setAuditStatusFilter(v === 'all' ? '' : v)}
+                    options={[
+                      { value: 'all', label: 'Wszystkie' },
+                      { value: 'success', label: 'success' },
+                      { value: 'denied', label: 'denied (403)' },
+                      { value: 'error', label: 'error' },
+                    ]}
+                    className="w-40"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Odśwież"
+                    onClick={loadAudit}
+                  >
+                    <RiRefreshLine />
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              {auditLogs.length === 0 ? (
+                <Empty icon={RiFileList3Line}>Brak wpisów</Empty>
+              ) : (
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-5">Czas</TableHead>
+                      <TableHead>Użytkownik</TableHead>
+                      <TableHead>Akcja</TableHead>
+                      <TableHead>Zasób</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="pr-5">IP</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {auditLogs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="pl-5 font-mono text-[11px] text-muted-foreground">
+                          {formatDateTime(log.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono font-semibold">{log.username}</span>
+                          <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                            {log.role_slug}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-mono">{log.action}</TableCell>
+                        <TableCell className="font-mono text-muted-foreground">
+                          {log.resource}
+                          {log.resource_id ? `/${log.resource_id.slice(0, 8)}` : ''}
+                        </TableCell>
+                        <TableCell>
+                          <Pill tone={auditTone(log.status)}>{log.status}</Pill>
+                        </TableCell>
+                        <TableCell className="pr-5 font-mono text-[11px] text-muted-foreground">
+                          {log.ip_address || '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

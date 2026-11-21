@@ -1,5 +1,11 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
+import {
+  RiAlertLine as AlertTriangle,
+  RiCheckboxCircleLine as CheckCircle2,
+  RiCloseCircleLine as XCircle,
+  RiCloseLine,
+  RiInformationLine as Info,
+} from '@remixicon/react';
 
 type ToastKind = 'success' | 'error' | 'warning' | 'info';
 
@@ -53,16 +59,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[90] flex flex-col gap-2 max-w-md w-full pointer-events-none px-4 sm:px-0">
+      <div className="pointer-events-none fixed right-4 bottom-4 z-[90] flex w-full max-w-sm flex-col gap-2 px-4 sm:px-0">
         {items.map((item) => {
           const styles =
             item.kind === 'success'
-              ? 'border-emerald-500/40 bg-bg-card/95 text-emerald-300'
+              ? 'text-emerald-600 dark:text-emerald-400'
               : item.kind === 'error'
-                ? 'border-rose-500/40 bg-bg-card/95 text-rose-300'
+                ? 'text-rose-600 dark:text-rose-400'
                 : item.kind === 'warning'
-                  ? 'border-amber-500/40 bg-bg-card/95 text-amber-300'
-                  : 'border-cyan-500/40 bg-bg-card/95 text-cyan-300';
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-sky-600 dark:text-sky-400';
           const Icon =
             item.kind === 'success'
               ? CheckCircle2
@@ -75,22 +81,22 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           return (
             <div
               key={item.id}
-              className={`pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 shadow-xl backdrop-blur-md ${styles}`}
+              className={`pointer-events-auto flex items-start gap-3 border bg-popover px-4 py-3 shadow-md ${styles}`}
             >
-              <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+              <Icon className="mt-0.5 size-4 shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-text-primary">{item.title}</p>
+                <p className="text-sm font-medium text-foreground">{item.title}</p>
                 {item.detail && (
-                  <p className="text-xs text-text-muted mt-0.5 break-words">{item.detail}</p>
+                  <p className="mt-0.5 text-xs break-words text-muted-foreground">{item.detail}</p>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => dismiss(item.id)}
-                className="text-text-muted hover:text-text-primary"
+                className="text-muted-foreground hover:text-foreground"
                 aria-label="Zamknij"
               >
-                <X className="h-4 w-4" />
+                <RiCloseLine className="size-4" />
               </button>
             </div>
           );
