@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
@@ -20,6 +21,10 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 	page := queryInt(r, "page", 1)
 	if page < 1 {
 		page = 1
+	}
+	if _, err := db.ParseAssetQuery(q.Get("q")); err != nil {
+		writeErr(w, http.StatusBadRequest, "query: "+err.Error())
+		return
 	}
 	filter := db.HostFilter{
 		Query:    q.Get("q"),
@@ -56,7 +61,7 @@ func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
-	allChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{Limit: 100})
+	allChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{HostID: host.ID, Limit: 20})
 	hostChanges := make([]domain.ChangeEvent, 0)
 	for _, ev := range allChanges {
 		if ev.HostID == host.ID {
@@ -103,6 +108,10 @@ func (s *Server) handlePatchHostOverrides(w http.ResponseWriter, r *http.Request
 			patch[k] = v
 		}
 	}
+	if err := applyTriagePatch(body, patch, &unlock, currentUsername(r), false, time.Now()); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := s.store.PatchOverrides(ctx, "host", id, patch, unlock, currentUsername(r)); err != nil {
 		writeStoreErr(w, err)
 		return
@@ -125,6 +134,10 @@ func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if _, err := db.ParseAssetQuery(q.Get("q")); err != nil {
+		writeErr(w, http.StatusBadRequest, "query: "+err.Error())
+		return
+	}
 	filter := db.ServiceFilter{
 		HostID:   q.Get("host_id"),
 		Query:    q.Get("q"),
@@ -178,6 +191,10 @@ func (s *Server) handlePatchServiceOverrides(w http.ResponseWriter, r *http.Requ
 		if db.AllowedServiceOverrideFields[k] {
 			patch[k] = v
 		}
+	}
+	if err := applyTriagePatch(body, patch, &unlock, currentUsername(r), true, time.Now()); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	if err := s.store.PatchOverrides(ctx, "service", id, patch, unlock, currentUsername(r)); err != nil {
 		writeStoreErr(w, err)

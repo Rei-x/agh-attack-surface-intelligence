@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
@@ -45,6 +46,18 @@ func (s *Server) handleDashboardSummary(w http.ResponseWriter, r *http.Request) 
 	totalServices := 0
 	interestingCount := 0
 	allServices := make([]domain.Service, 0)
+	// Triage: accepted-risk / false-positive findings are left out of "most important
+	// findings"; expired acceptances are listed so they get re-reviewed.
+	now := time.Now()
+	acceptedCount := 0
+	expiredAcceptances := make([]map[string]any, 0)
+	noteExpired := func(h *domain.Host, svc *domain.Service, t *domain.TriageInfo) {
+		item := map[string]any{"host_id": h.ID, "host_ip": h.IP, "triage": t}
+		if svc != nil {
+			item["service_id"], item["port"], item["service_name"] = svc.ID, svc.Port, svc.ServiceName
+		}
+		expiredAcceptances = append(expiredAcceptances, item)
+	}
 
 	for _, h := range hosts {
 		breakdown[h.LifecycleState]++
@@ -55,7 +68,23 @@ func (s *Server) handleDashboardSummary(w http.ResponseWriter, r *http.Request) 
 			unstableHosts++
 		}
 		totalServices += len(h.Services)
+		hostSuppressed := h.Triage.IsSuppressing(now)
+		if hostSuppressed {
+			acceptedCount++
+		} else if h.Triage != nil && h.Triage.Expired {
+			noteExpired(&h, nil, h.Triage)
+		}
 		for _, svc := range h.Services {
+			if svc.Triage.IsSuppressing(now) {
+				acceptedCount++
+				continue
+			}
+			if svc.Triage != nil && svc.Triage.Expired {
+				noteExpired(&h, &svc, svc.Triage)
+			}
+			if hostSuppressed {
+				continue
+			}
 			if svc.Interestingness >= 50 {
 				interestingCount++
 			}
@@ -133,6 +162,8 @@ func (s *Server) handleDashboardSummary(w http.ResponseWriter, r *http.Request) 
 		"top_interesting":            topFindings,
 		"lifecycle_breakdown":        breakdown,
 		"recent_changes":             changes,
+		"accepted_risk_count":        acceptedCount,
+		"expired_acceptances":        expiredAcceptances,
 	})
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/notify"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
 )
 
@@ -52,6 +53,8 @@ type Server struct {
 
 	schedOnce  sync.Once
 	localSched *scheduler.Scheduler
+
+	notifier *notify.Notifier // outbound alert webhook (fed by the ingest pipeline)
 }
 
 // NewServer constructs a fully wired AegisASI HTTP Server.
@@ -80,6 +83,8 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 		hub:      hub,
 		mux:      http.NewServeMux(),
 	}
+	s.notifier = notify.New(store)
+	pipeline.SetNotifier(s.notifier)
 	s.registerRoutes()
 	return s
 }
@@ -145,6 +150,15 @@ func (s *Server) registerRoutes() {
 	// Changes
 	s.mux.HandleFunc("GET /api/v1/changes", mw.RequirePerm(domain.PermAssetsRead, s.handleListChanges))
 	s.mux.HandleFunc("POST /api/v1/changes/{id}/acknowledge", mw.RequirePerm(domain.PermAssetsWrite, s.handleAcknowledgeChange))
+
+	// Daily ops: host timeline, CIDR tag rules (ownership), alert webhook (handlers_ops.go)
+	s.mux.HandleFunc("GET /api/v1/hosts/{id}/timeline", mw.RequirePerm(domain.PermAssetsRead, s.handleHostTimeline))
+	s.mux.HandleFunc("GET /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsRead, s.handleListTagRules))
+	s.mux.HandleFunc("PUT /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsWrite, s.handleSaveTagRules))
+	s.mux.HandleFunc("POST /api/v1/tag-rules/apply", mw.RequirePerm(domain.PermAssetsWrite, s.handleApplyTagRules))
+	s.mux.HandleFunc("GET /api/v1/integrations/webhook", mw.RequirePerm(domain.PermAdminSettings, s.handleGetWebhook))
+	s.mux.HandleFunc("PUT /api/v1/integrations/webhook", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveWebhook))
+	s.mux.HandleFunc("POST /api/v1/integrations/webhook/test", mw.RequirePerm(domain.PermAdminSettings, s.handleTestWebhook))
 
 	// Unified Manual Entry, Import & Export
 	s.mux.HandleFunc("POST /api/v1/ingest/manual", mw.RequirePerm(domain.PermAssetsWrite, s.handleIngestManual))

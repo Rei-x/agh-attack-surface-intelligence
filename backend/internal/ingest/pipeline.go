@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
@@ -44,6 +45,20 @@ type Pipeline struct {
 	store    db.Store
 	analyzer Analyzer
 	emit     func(domain.LiveEvent)
+	notifier atomic.Value // notifierBox
+}
+
+// ChangeNotifier receives the change events produced by one pipeline run (e.g. the
+// outbound alert webhook). Implementations must not block for long.
+type ChangeNotifier interface {
+	NotifyChanges(ctx context.Context, run *domain.ScanRun, changes []domain.ChangeEvent)
+}
+
+type notifierBox struct{ n ChangeNotifier }
+
+// SetNotifier registers the notifier called after every ingest that produced changes.
+func (p *Pipeline) SetNotifier(n ChangeNotifier) {
+	p.notifier.Store(notifierBox{n: n})
 }
 
 func NewPipeline(store db.Store, analyzer Analyzer, emit func(domain.LiveEvent)) *Pipeline {
@@ -112,6 +127,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 	}
 
 	customSigs, _ := p.store.ListSignatures(ctx)
+	tagRules := LoadTagRules(ctx, p.store)
 	missingThresh := req.MissingThreshold
 	if missingThresh <= 0 {
 		missingThresh = 2
@@ -221,6 +237,8 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		if host.Environment == "" {
 			host.Environment = "unknown"
 		}
+		// Ownership by CIDR: tags / owner / environment from the configured tag rules.
+		ApplyTagRules(host, tagRules)
 
 		savedHost, err := p.store.UpsertObservedHost(ctx, host)
 		if err != nil {
@@ -323,7 +341,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			if existed {
 				svcModel.ID = prevSvc.ID
 				svcModel.FirstSeen = prevSvc.FirstSeen
-				svcModel.TriageStatus = prevSvc.TriageStatus
+				svcModel.TriageStatus = observedTriageStatus(&prevSvc)
 			}
 
 			savedSvc, err := p.store.UpsertObservedService(ctx, svcModel)
@@ -353,9 +371,15 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			if !existed {
 				sev := "low"
 				evType := "NEW_SERVICE"
+				summary := fmt.Sprintf("New service %d/%s (%s) on %s", osvc.Port, proto, svcModel.ServiceName, ip)
 				if analysis.IsAdminPanel {
 					sev = "high"
 					evType = "ADMIN_PANEL_EXPOSED"
+				} else if label, risky := RiskyExposure(osvc.Port, svcModel.ServiceName); risky && state == "open" {
+					// Remote-access / file-sharing / database ports newly reachable are the
+					// exposures a SOC wants paged about (they go out via the alert webhook).
+					sev = "high"
+					summary = fmt.Sprintf("New %s exposure %d/%s (%s) on %s", label, osvc.Port, proto, svcModel.ServiceName, ip)
 				} else if analysis.IsStagingEnv {
 					sev = "medium"
 				}
@@ -366,7 +390,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 					Port:      osvc.Port,
 					EventType: evType,
 					Severity:  sev,
-					Summary:   fmt.Sprintf("New service %d/%s (%s) on %s", osvc.Port, proto, svcModel.ServiceName, ip),
+					Summary:   summary,
 					TimeSlot:  domain.TimeSlotFor(obsAt),
 					After: map[string]any{
 						"port":    osvc.Port,
@@ -525,6 +549,10 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		})
 	}
 
+	if box, ok := p.notifier.Load().(notifierBox); ok && box.n != nil && len(changes) > 0 {
+		box.n.NotifyChanges(ctx, run, changes)
+	}
+
 	return &IngestResult{
 		ScanRun:          run,
 		HostsProcessed:   len(seenIPs),
@@ -532,6 +560,54 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		ChangesDetected:  len(changes),
 		Changes:          changes,
 	}, nil
+}
+
+// observedTriageStatus returns the scanner-side triage status of a (merged) service, so an
+// analyst override (triage / triage_status) is never copied into the observed record and
+// cannot outlive its own unlock or expiry.
+func observedTriageStatus(s *domain.Service) string {
+	locked := false
+	for _, f := range s.LockedFields {
+		if f == "triage" || f == "triage_status" {
+			locked = true
+			break
+		}
+	}
+	if !locked {
+		if s.TriageStatus == domain.TriageAcceptedRisk || s.TriageStatus == domain.TriageFalsePositive {
+			return domain.TriageNew
+		}
+		return nonEmpty(s.TriageStatus, domain.TriageNew)
+	}
+	if v, ok := s.ScannerObserved["triage_status"].(string); ok && v != "" {
+		return v
+	}
+	return domain.TriageNew
+}
+
+// riskyPorts are exposures that warrant an immediate alert when they newly appear.
+var riskyPorts = map[int]string{
+	21: "FTP", 23: "Telnet", 135: "MS-RPC", 139: "SMB", 445: "SMB", 1433: "MSSQL",
+	1521: "Oracle DB", 2375: "Docker API", 3306: "MySQL", 3389: "RDP", 5432: "PostgreSQL",
+	5900: "VNC", 5984: "CouchDB", 6379: "Redis", 9200: "Elasticsearch", 11211: "Memcached",
+	27017: "MongoDB",
+}
+
+// RiskyExposure reports whether a port/service is a high-risk exposure (remote access,
+// file sharing, database, unauthenticated-by-default APIs) and returns a short label.
+func RiskyExposure(port int, serviceName string) (string, bool) {
+	if l, ok := riskyPorts[port]; ok {
+		return l, true
+	}
+	switch strings.ToLower(serviceName) {
+	case "ms-wbt-server", "rdp":
+		return "RDP", true
+	case "microsoft-ds", "netbios-ssn", "smb":
+		return "SMB", true
+	case "vnc", "telnet":
+		return strings.ToUpper(serviceName), true
+	}
+	return "", false
 }
 
 func svcKey(port int, proto string) string {
