@@ -24,7 +24,6 @@ import { useToast } from '@/context/ToastContext';
 import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
 import { PERMISSIONS } from '@/lib/permissions';
 import {
-  TONE,
   formatDateTime,
   formatDurationSeconds,
   formatNumber,
@@ -540,21 +539,6 @@ export function ScansPage() {
       toast.error('Błąd importu', (err as Error).message);
     } finally {
       setImporting(false);
-    }
-  };
-
-  const chunkTone = (status: string) => {
-    switch (status) {
-      case 'DONE':
-        return TONE.success;
-      case 'RUNNING':
-        return cn(TONE.primary, 'animate-pulse');
-      case 'PAUSED':
-        return TONE.warning;
-      case 'FAILED':
-        return TONE.danger;
-      default:
-        return TONE.neutral;
     }
   };
 
