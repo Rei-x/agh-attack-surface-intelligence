@@ -389,12 +389,17 @@ func sanitizePrintable(s string) string {
 	for _, r := range s {
 		if r == '\n' || r == '\r' || r == '\t' || (r >= 32 && r <= 126) {
 			b.WriteRune(r)
+		} else if r == 0 {
+			b.WriteByte(' ') // keep field boundaries of binary greetings (MySQL handshake)
 		}
 	}
 	return b.String()
 }
 
 func inferServiceFromPortAndBanner(port int, banner string) (svcName, product, version string) {
+	if s, p, v, ok := identifyBanner(port, banner); ok {
+		return s, p, v
+	}
 	bl := strings.ToLower(banner)
 	if strings.HasPrefix(banner, "SSH-") {
 		svcName = "ssh"
