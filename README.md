@@ -61,6 +61,7 @@ aegis diff                                  # porównanie dwóch ostatnich skan�
 aegis diff <runA> <runB>                    # konkretne skany (wystarczy unikalny prefiks ID)
 aegis import wyniki.xml                     # nmap -oX, a także .csv / .json
 aegis export --format csv -o inwentarz.csv  # albo --format json (na stdout bez -o)
+aegis export --format scb -o findings.json  # findings.json OWASP secureCodeBox (import też działa)
 aegis version
 ```
 
@@ -77,6 +78,8 @@ Domyślnie `~/.aegis` (zmiana: `--data-dir` lub `ASI_DATA_DIR`):
 Zapis jest atomowy (plik tymczasowy + fsync + rename): po ~1,5 s bez zmian, najpóźniej co 10 s przy ciągłych zapisach oraz przy zamknięciu (Ctrl+C).
 
 Tryb z Dockerem i PostgreSQL działa jak dotąd — szczegóły w [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
+
+Znasz OWASP secureCodeBox? Mapowanie pojęć (ScanType, ScheduledScan, Hook, findings.json) i współpraca obu narzędzi: [docs/SECURECODEBOX.md](./docs/SECURECODEBOX.md).
 
 ### Budowanie ze źródeł
 

@@ -191,6 +191,9 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 | `ASI_LISTEN_ADDR` | No | `:8080` | HTTP bind address (same as `aegis serve --listen`; `PORT` is honoured when unset). |
 | `ASI_PORT` | No | `8080` | Host port mapped to container `:8080`. |
 | `TZ` | No | `Europe/Warsaw` | Default timezone for scan windows and logs. |
+| `ASI_DEFECTDOJO_PRODUCT_TYPE_NAME` / `_PRODUCT_NAME` / `_ENGAGEMENT_NAME` | No | `AegisASI` / `AGH Attack Surface` / `AegisASI continuous discovery` | DefectDojo context names used when no product/engagement is pinned by ID (same levels as the secureCodeBox DefectDojo hook annotations, see `docs/SECURECODEBOX.md`). |
+| `ASI_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | No | `false` | Sends `deduplication_on_engagement=true` when DefectDojo auto-creates the engagement. |
+| `ASI_DEFECTDOJO_MINIMUM_SEVERITY` | No | `Info` | `minimum_severity` for reimports (`Info`, `Low`, `Medium`, `High`, `Critical`). |
 
 ---
 

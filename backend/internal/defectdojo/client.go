@@ -191,7 +191,7 @@ type importContext struct {
 // resolveContext maps the configured IDs (if any) to names, because DefectDojo's
 // reimport-scan only resolves its target by test id or by product/engagement names.
 func (c *Client) resolveContext(ctx context.Context, cfg *domain.DefectDojoConfig, engagementID int) (importContext, error) {
-	ic := importContext{ProductType: DefaultProductType, Product: DefaultProduct, Engagement: DefaultEngagement}
+	ic := defaultContext()
 	if engagementID <= 0 {
 		engagementID = cfg.EngagementID
 	}
@@ -276,8 +276,9 @@ func (c *Client) reimport(ctx context.Context, cfg *domain.DefectDojoConfig, ic 
 		{"verified", "false"},
 		{"close_old_findings", strconv.FormatBool(closeOld)},
 		{"scan_date", time.Now().UTC().Format("2006-01-02")},
-		{"minimum_severity", "Info"},
+		{"minimum_severity", minimumSeverity()},
 	}
+	fields = append(fields, extraReimportFields()...)
 	if version != "" {
 		fields = append(fields, [2]string{"version", version})
 	}

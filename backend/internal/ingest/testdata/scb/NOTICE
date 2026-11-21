@@ -1,0 +1,27 @@
+nmap-basic-findings.json is a secureCodeBox findings.json produced by the
+secureCodeBox nmap scanner, copied from the OWASP secureCodeBox project:
+
+  https://github.com/secureCodeBox/secureCodeBox
+  path: scanners/nmap/examples/basic-example/findings.yaml
+  commit: 870c0d6a5c5445c40fc0dd50bd5327ae95276176
+
+Modification: the leading 4-line SPDX comment header was removed so the file
+is plain JSON; its content is otherwise unchanged. The header read:
+
+  SPDX-FileCopyrightText: the secureCodeBox authors
+  SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+
+AegisASI uses it only as a test fixture for its secureCodeBox importer
+(see ../../scb_test.go).
