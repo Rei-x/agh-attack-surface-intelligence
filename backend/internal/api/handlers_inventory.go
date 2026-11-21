@@ -385,6 +385,8 @@ type summaryService struct {
 	TriageStatus      string                     `json:"triage_status"`
 	Triage            *domain.TriageInfo         `json:"triage,omitempty"`
 	Tags              []string                   `json:"tags"`
+
+	PolicyViolations []domain.PolicyHit `json:"policy_violations,omitempty"`
 }
 
 type summaryHost struct {
@@ -437,6 +439,7 @@ func summarizeHosts(hosts []domain.Host) []summaryHost {
 				TriageStatus: s.TriageStatus, Triage: s.Triage, Tags: s.Tags,
 				Technologies: make([]summaryTech, 0, len(s.Technologies)),
 			}
+			ss.PolicyViolations = s.PolicyViolations
 			for _, t := range s.Technologies {
 				ss.Technologies = append(ss.Technologies, summaryTech{Name: t.Name, Category: t.Category, Version: t.Version, Confidence: t.Confidence})
 			}

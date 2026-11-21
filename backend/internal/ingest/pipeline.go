@@ -47,6 +47,8 @@ type Pipeline struct {
 	analyzer Analyzer
 	emit     func(domain.LiveEvent)
 	notifier atomic.Value // notifierBox
+
+	postIngest atomic.Value // postIngestBox (zone policy evaluation)
 }
 
 // ChangeNotifier receives the change events produced by one pipeline run (e.g. the
@@ -558,6 +560,11 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 	// Save encrypted snapshot of current inventory for scan-to-scan diffing
 	allHostsNow, _, _ := p.store.ListHosts(ctx, db.HostFilter{})
 	_ = p.store.SaveScanSnapshot(ctx, run.ID, allHostsNow)
+
+	// Zone policies are checked against the updated inventory (see post_ingest.go).
+	for _, ev := range p.runPostIngest(ctx, run) {
+		recordChange(ev)
+	}
 
 	// Finalize ScanRun metrics (only auto-complete if we created it for ingest; active runner controls its own status if still running)
 	finished := time.Now().UTC()

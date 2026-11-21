@@ -21,6 +21,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/notify"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/policy"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
 )
 
@@ -60,6 +61,7 @@ type Server struct {
 
 	notifier *notify.Notifier // outbound alert webhook (fed by the ingest pipeline)
 	agents   *agenthub.Coordinator
+	policy   *policy.Engine // zone policies (handlers_policy.go)
 
 	routes []string      // registered mux patterns (see handle)
 	logins *loginLimiter // failed-login throttling
@@ -109,6 +111,7 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 	s.runner = NewAgentAwareRunner(runner, s.agents)
 	s.notifier = notify.New(store)
 	pipeline.SetNotifier(s.notifier)
+	s.initPolicy()
 	s.registerRoutes()
 	return s
 }
@@ -240,6 +243,8 @@ func (s *Server) registerRoutes() {
 	for _, rt := range s.agents.Routes() {
 		s.handle(rt.Pattern, rt.Handler)
 	}
+
+	s.registerPolicyRoutes()
 
 	// Static SPA fallback
 	s.handle("/", s.handleSPA)

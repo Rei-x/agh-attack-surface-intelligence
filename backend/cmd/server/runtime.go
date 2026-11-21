@@ -159,6 +159,9 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 		if err := db.SeedDefaults(ctx, rt.Store, opts.SeedDemo); err != nil {
 			return fail(fmt.Errorf("seed defaults: %w", err))
 		}
+		if opts.SeedDemo {
+			seedDemoPolicies(ctx, rt.Store)
+		}
 		boot, err := secureAccounts(ctx, rt.Store, opts.SeedDemo)
 		if err != nil {
 			return fail(fmt.Errorf("secure accounts: %w", err))
