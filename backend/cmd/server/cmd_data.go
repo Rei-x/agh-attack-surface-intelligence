@@ -21,7 +21,7 @@ import (
 )
 
 // scanTypeImportNmap marks runs imported from nmap XML via the CLI.
-const scanTypeImportNmap = "IMPORT_NMAP"
+const scanTypeImportNmap = domain.ScanTypeImportNmap
 
 func lockedHint(err error) error {
 	var le *localdata.ErrLocked
@@ -156,11 +156,12 @@ func detectImportFormat(path string, data []byte) string {
 
 const exportUsage = `Usage: aegis export [flags]
 
-Exports the current inventory (decrypted) as JSON or CSV. Writes to stdout unless -o is given.`
+Exports the current inventory (decrypted) as JSON, CSV, nmap XML, a URL list
+(httpx/nuclei/gowitness) or ECS NDJSON (ELK/Splunk). Writes to stdout unless -o is given.`
 
 func cmdExport(args []string) error {
 	fs := newFlagSet("export", exportUsage)
-	format := fs.String("format", "json", "json | csv")
+	format := fs.String("format", "json", "json | csv | nmap | urls | ecs")
 	out := fs.String("o", "", "output file (default stdout)")
 	scanID := fs.String("scan", "", "export the inventory snapshot taken at this scan run")
 	state := fs.String("state", "", "filter by lifecycle state (NEW, ACTIVE, MISSING, ...)")
@@ -171,8 +172,10 @@ func cmdExport(args []string) error {
 	}
 	quietLogs(false)
 	f := strings.ToLower(*format)
-	if f != "json" && f != "csv" {
-		return fmt.Errorf("--format must be json or csv")
+	switch f {
+	case "json", "csv", "nmap", "urls", "ecs":
+	default:
+		return fmt.Errorf("--format must be json, csv, nmap, urls or ecs")
 	}
 	ctx := context.Background()
 	rt, err := openRuntime(ctx, runtimeOptions{DataDir: *dataDir, Command: "export", ReadOnly: true})
@@ -220,9 +223,16 @@ func cmdExport(args []string) error {
 		defer file.Close()
 		w = file
 	}
-	if f == "csv" {
+	switch f {
+	case "csv":
 		err = ingest.ExportCSV(w, hosts)
-	} else {
+	case "nmap":
+		err = ingest.ExportNmapXML(w, hosts)
+	case "urls":
+		err = ingest.ExportURLs(w, hosts)
+	case "ecs":
+		err = ingest.ExportECS(w, hosts)
+	default:
 		err = ingest.ExportJSON(w, hosts)
 	}
 	if err != nil {

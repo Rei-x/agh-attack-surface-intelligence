@@ -12,6 +12,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
 )
 
 func (s *Server) handleIngestManual(w http.ResponseWriter, r *http.Request) {
@@ -58,9 +59,12 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 		if format == "" && hdr != nil {
-			if strings.HasSuffix(strings.ToLower(hdr.Filename), ".csv") {
+			switch fn := strings.ToLower(hdr.Filename); {
+			case strings.HasSuffix(fn, ".csv"):
 				format = "csv"
-			} else {
+			case strings.HasSuffix(fn, ".xml"):
+				format = "nmap"
+			default:
 				format = "json"
 			}
 		}
@@ -106,6 +110,8 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 		trimmed := bytes.TrimSpace(data)
 		if len(trimmed) > 0 && (trimmed[0] == '[' || trimmed[0] == '{') {
 			format = "json"
+		} else if len(trimmed) > 0 && trimmed[0] == '<' {
+			format = "nmap"
 		} else {
 			format = "csv"
 		}
@@ -114,6 +120,7 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 	var observations []domain.ObservedHost
 	var err error
 	runType := domain.ScanTypeImportJSON
+	rawXML := ""
 
 	switch format {
 	case "csv":
@@ -125,8 +132,17 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 	case "passive":
 		runType = domain.ScanTypePassive
 		observations, err = ingest.ParseJSON(bytes.NewReader(data))
+	case "nmap", "xml":
+		// Raw nmap -oX output: same parser the live scanner uses, and the XML is kept on the
+		// run so it can be downloaded again or pushed to DefectDojo like a scanned run.
+		runType = domain.ScanTypeImportNmap
+		rawXML = string(data)
+		observations, err = scanner.ParseNmapXML(data)
+		if err == nil && len(observations) == 0 {
+			err = fmt.Errorf("nmap xml contains no hosts")
+		}
 	default:
-		writeErr(w, http.StatusBadRequest, "unsupported import format (use csv, json, or passive)")
+		writeErr(w, http.StatusBadRequest, "unsupported import format (use csv, json, nmap, or passive)")
 		return
 	}
 	if err != nil {
@@ -138,6 +154,7 @@ func (s *Server) handleIngestImport(w http.ResponseWriter, r *http.Request) {
 		RunType:      runType,
 		ScanName:     scanName,
 		TriggeredBy:  currentUsername(r),
+		RawNmapXML:   rawXML,
 		Observations: observations,
 	})
 	if err != nil {
@@ -204,8 +221,20 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s.json"`, stamp))
 		_ = ingest.ExportJSON(w, hosts)
+	case "nmap", "xml":
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-nmap.xml"`, stamp))
+		_ = ingest.ExportNmapXML(w, hosts)
+	case "urls":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-urls.txt"`, stamp))
+		_ = ingest.ExportURLs(w, hosts)
+	case "ecs", "ndjson":
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-asi-%s-ecs.ndjson"`, stamp))
+		_ = ingest.ExportECS(w, hosts)
 	default:
-		writeErr(w, http.StatusBadRequest, "format must be json or csv")
+		writeErr(w, http.StatusBadRequest, "format must be json, csv, nmap, urls or ecs")
 	}
 }
 
@@ -223,4 +252,21 @@ func hostHasTag(h domain.Host, tag string) bool {
 		}
 	}
 	return false
+}
+
+// handleScanNmapXML serves the merged raw nmap XML (-oX) of a single run, exactly as produced
+// by the chunk workers (or as uploaded for IMPORT_NMAP runs).
+func (s *Server) handleScanNmapXML(w http.ResponseWriter, r *http.Request) {
+	run, err := s.store.GetScanRun(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	if strings.TrimSpace(run.RawNmapXML) == "" {
+		writeErr(w, http.StatusNotFound, "this run has no nmap xml")
+		return
+	}
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="aegis-run-%s-nmap.xml"`, run.ID))
+	_, _ = io.WriteString(w, run.RawNmapXML)
 }

@@ -126,6 +126,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/v1/scans", mw.RequirePerm(domain.PermScansRun, s.handleStartScan))
 	s.mux.HandleFunc("GET /api/v1/scans/diff", mw.RequirePerm(domain.PermScansRead, s.handleScanDiff))
 	s.mux.HandleFunc("GET /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansRead, s.handleGetScan))
+	s.mux.HandleFunc("GET /api/v1/scans/{id}/nmap.xml", mw.RequirePerm(domain.PermScansRead, s.handleScanNmapXML))
 	s.mux.HandleFunc("PUT /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansWrite, s.handleUpdateScanMeta))
 	s.mux.HandleFunc("POST /api/v1/scans/{id}/pause", mw.RequirePerm(domain.PermScansRun, s.handlePauseScan))
 	s.mux.HandleFunc("POST /api/v1/scans/{id}/resume", mw.RequirePerm(domain.PermScansRun, s.handleResumeScan))

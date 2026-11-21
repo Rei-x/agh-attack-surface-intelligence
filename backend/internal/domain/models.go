@@ -30,6 +30,7 @@ const (
 	ScanTypeManual     = "MANUAL"
 	ScanTypeImportCSV  = "IMPORT_CSV"
 	ScanTypeImportJSON = "IMPORT_JSON"
+	ScanTypeImportNmap = "IMPORT_NMAP" // raw nmap XML (-oX) upload
 	ScanTypePassive    = "PASSIVE"
 )
 
