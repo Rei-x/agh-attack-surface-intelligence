@@ -61,6 +61,7 @@ import {
   StatStrip,
 } from '@/components/common';
 import type {
+  ProfileSchedule,
   ScanChunk,
   ScanProfile,
   ScanRun,
@@ -116,6 +117,7 @@ export function ScansPage() {
     window_start: '22:00',
     window_end: '06:00',
     timezone: 'Europe/Warsaw',
+    schedule_cron: '',
     missing_threshold: 2,
     grace_period_hours: 24,
     retry_unstable_count: 2,
@@ -289,6 +291,7 @@ export function ScansPage() {
         window_start: profileForm.window_start,
         window_end: profileForm.window_end,
         timezone: profileForm.timezone,
+        schedule_cron: profileForm.schedule_cron.trim(),
         missing_threshold: profileForm.missing_threshold,
         grace_period_hours: profileForm.grace_period_hours,
         retry_unstable_count: profileForm.retry_unstable_count,
@@ -795,6 +798,7 @@ export function ScansPage() {
                     <TableRow>
                       <TableHead>Profil</TableHead>
                       <TableHead>Limity</TableHead>
+                      <TableHead>Harmonogram</TableHead>
                       <TableHead className="text-right" />
                     </TableRow>
                   </TableHeader>
@@ -821,6 +825,9 @@ export function ScansPage() {
                             {p.max_rate_pps} PPS · HTTP {p.http_rps} RPS · K={p.missing_threshold} T=
                             {p.grace_period_hours}h
                           </div>
+                        </TableCell>
+                        <TableCell className="max-w-[240px] whitespace-normal font-mono text-[11px] text-muted-foreground">
+                          <ScheduleCell schedule={p.schedule} cron={p.schedule_cron} />
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-1">
@@ -914,6 +921,17 @@ export function ScansPage() {
                         value={profileForm.http_rps}
                         onChange={(e) =>
                           setProfileForm((p) => ({ ...p, http_rps: Number(e.target.value) }))
+                        }
+                        className="font-mono"
+                      />
+                    </Field>
+                    <Field label="Harmonogram (cron, 5 pól)" htmlFor="pf-cron">
+                      <Input
+                        id="pf-cron"
+                        value={profileForm.schedule_cron}
+                        placeholder="np. 0 22 * * * (puste = tylko ręcznie)"
+                        onChange={(e) =>
+                          setProfileForm((p) => ({ ...p, schedule_cron: e.target.value }))
                         }
                         className="font-mono"
                       />
@@ -1470,6 +1488,49 @@ export function ScansPage() {
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/** Recurring schedule summary: cron, next run (window-adjusted), last run, last skip reason. */
+function ScheduleCell({ schedule, cron }: { schedule?: ProfileSchedule; cron?: string }) {
+  if (!cron && !schedule?.cron) return <span>tylko ręcznie</span>;
+  if (schedule?.cron_error) {
+    return <span className="text-rose-500">błędny cron: {schedule.cron_error}</span>;
+  }
+  return (
+    <div className="space-y-0.5">
+      <div className="text-foreground">{schedule?.cron || cron}</div>
+      {schedule?.next_run_at && (
+        <div>
+          następny: {formatDateTime(schedule.next_run_at)}
+          {schedule.deferred_by_window && (
+            <Pill tone="warning" className="ml-1">
+              po otwarciu okna
+            </Pill>
+          )}
+          {schedule.pending_catch_up && (
+            <Pill tone="violet" className="ml-1">
+              zaległy
+            </Pill>
+          )}
+        </div>
+      )}
+      {schedule?.active_run && (
+        <div className="text-amber-600 dark:text-amber-300">
+          aktywny: {schedule.active_run.status} — kolejny slot zostanie pominięty
+        </div>
+      )}
+      {schedule?.last_run && (
+        <div>
+          ostatni: {formatDateTime(schedule.last_run.started_at)} · {schedule.last_run.status}
+        </div>
+      )}
+      {schedule?.last_skip_reason && (
+        <div className="truncate" title={schedule.last_skip_reason}>
+          pominięto: {schedule.last_skip_reason}
+        </div>
+      )}
     </div>
   );
 }

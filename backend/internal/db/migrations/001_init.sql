@@ -284,3 +284,20 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+
+-- Chunk-level transparency: exact nmap command lines, per-process rate share, worker slot.
+ALTER TABLE scan_chunks ADD COLUMN IF NOT EXISTS nmap_commands JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE scan_chunks ADD COLUMN IF NOT EXISTS max_rate_pps INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_chunks ADD COLUMN IF NOT EXISTS worker INTEGER NOT NULL DEFAULT 0;
+
+-- Recurring scan scheduler state (survives restarts; one row per profile).
+CREATE TABLE IF NOT EXISTS scan_schedule_state (
+    profile_id TEXT PRIMARY KEY,
+    cron TEXT NOT NULL DEFAULT '',
+    anchor_at TIMESTAMPTZ,
+    last_fire_at TIMESTAMPTZ,
+    last_run_id TEXT NOT NULL DEFAULT '',
+    last_skip_at TIMESTAMPTZ,
+    last_skip_reason TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

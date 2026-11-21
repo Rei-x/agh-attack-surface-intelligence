@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/auth"
@@ -16,6 +17,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
 )
 
 const AppVersion = "1.0.0"
@@ -40,6 +42,9 @@ type Server struct {
 	dojo     *defectdojo.Client
 	hub      *SSEHub
 	mux      *http.ServeMux
+
+	schedOnce  sync.Once
+	localSched *scheduler.Scheduler
 }
 
 // NewServer constructs a fully wired AegisASI HTTP Server.
@@ -104,7 +109,9 @@ func (s *Server) registerRoutes() {
 
 	s.mux.HandleFunc("GET /api/v1/profiles", mw.RequirePerm(domain.PermScansRead, s.handleListProfiles))
 	s.mux.HandleFunc("POST /api/v1/profiles", mw.RequirePerm(domain.PermScansWrite, s.handleCreateProfile))
+	s.mux.HandleFunc("GET /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansRead, s.handleGetProfile))
 	s.mux.HandleFunc("PUT /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansWrite, s.handleUpdateProfile))
+	s.mux.HandleFunc("POST /api/v1/profiles/{id}/run", mw.RequirePerm(domain.PermScansRun, s.handleRunProfileNow))
 	s.mux.HandleFunc("DELETE /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteProfile))
 
 	// Scan Runs & Diff

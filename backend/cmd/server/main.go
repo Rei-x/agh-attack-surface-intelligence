@@ -14,6 +14,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
 )
 
 func main() {
@@ -59,6 +60,7 @@ func main() {
 	pipeline := ingest.NewPipeline(store, analyzer, hub.Publish)
 	runner := NewLiveScanRunner(store, pipeline, hub)
 	runner.StartWindowWatcher(ctx)
+	scheduler.Start(ctx, store, runner) // recurring scans from ScanProfile.ScheduleCron
 
 	srv := api.NewServer(api.Config{
 		JWTSecret: vault.JWTSecret(jwtSecretOverride),

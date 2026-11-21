@@ -31,53 +31,71 @@ type NmapRunner struct {
 	ConnectTimeout    time.Duration
 	BannerReadTimeout time.Duration
 	Concurrency       int
+	// Options tunes nmap flags; nil means DefaultNmapOptions().
+	Options *NmapOptions
 }
 
-// NewNmapRunner returns a runner configured with safe timeouts.
+// NewNmapRunner returns a runner configured with safe timeouts and ASI_NMAP_* option overrides.
 func NewNmapRunner(useNmap bool) *NmapRunner {
 	bin, err := exec.LookPath("nmap")
 	if err != nil {
 		useNmap = false
 	}
+	opts := NmapOptionsFromEnv()
 	return &NmapRunner{
 		UseNmap:           useNmap && bin != "",
 		NmapBinary:        bin,
 		ConnectTimeout:    1500 * time.Millisecond,
 		BannerReadTimeout: 1200 * time.Millisecond,
 		Concurrency:       32,
+		Options:           &opts,
 	}
+}
+
+func (r *NmapRunner) options() NmapOptions {
+	if r.Options == nil {
+		return DefaultNmapOptions()
+	}
+	return *r.Options
 }
 
 // DiscoverHosts performs Stage 1 host discovery using `nmap -sn` when enabled,
 // or pure-Go TCP probing across probePorts when nmap is unavailable/disabled.
 func (r *NmapRunner) DiscoverHosts(ctx context.Context, ips []string, probePorts []int, maxRatePPS int, gov *Governor) ([]string, error) {
-	if len(ips) == 0 {
-		return nil, nil
-	}
-	if r.UseNmap && r.NmapBinary != "" {
-		active, err := r.discoverWithNmap(ctx, ips, maxRatePPS)
-		if err == nil {
-			return active, nil
-		}
-		// Fallback to pure-Go if nmap execution fails (e.g. unprivileged sandbox).
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-	}
-	return r.discoverPureGo(ctx, ips, probePorts, gov)
+	alive, _, err := r.DiscoverHostsDetailed(ctx, ips, probePorts, maxRatePPS, gov)
+	return alive, err
 }
 
-func (r *NmapRunner) discoverWithNmap(ctx context.Context, ips []string, maxRatePPS int) ([]string, error) {
-	if maxRatePPS <= 0 {
-		maxRatePPS = 300
+// DiscoverHostsDetailed is DiscoverHosts that also returns the exact command line executed
+// (or a description of the pure-Go fallback) for transparency in the Coverage Ledger.
+func (r *NmapRunner) DiscoverHostsDetailed(ctx context.Context, ips []string, probePorts []int, maxRatePPS int, gov *Governor) ([]string, string, error) {
+	if len(ips) == 0 {
+		return nil, "", nil
 	}
-	args := []string{
-		"-sn",
-		"-n",
-		"--max-rate", strconv.Itoa(maxRatePPS),
-		"-oX", "-",
+	fallbackReason := "nmap disabled or not installed"
+	if r.UseNmap && r.NmapBinary != "" {
+		active, cmdLine, err := r.discoverWithNmap(ctx, ips, probePorts, maxRatePPS)
+		if err == nil {
+			return active, cmdLine, nil
+		}
+		if ctx.Err() != nil {
+			return nil, cmdLine, ctx.Err()
+		}
+		// Fallback to pure-Go if nmap execution fails (e.g. unprivileged sandbox).
+		fallbackReason = "nmap failed: " + truncateStr(err.Error(), 160)
 	}
-	args = append(args, ips...)
+	alive, err := r.discoverPureGo(ctx, ips, probePorts, gov)
+	desc := fmt.Sprintf("aegis-go-fallback discovery tcp-connect ports=%s targets=%s (%s)",
+		joinPorts(discoveryFallbackPorts(probePorts)), strings.Join(CompactIPv4Targets(ips), " "), fallbackReason)
+	return alive, desc, err
+}
+
+func (r *NmapRunner) discoverWithNmap(ctx context.Context, ips []string, profilePorts []int, maxRatePPS int) ([]string, string, error) {
+	args := r.options().BuildDiscoveryArgs(ips, profilePorts, maxRatePPS)
+	cmdLine := FormatCommand(r.NmapBinary, args)
+	if err := ValidateSafeNmapArgs(args); err != nil {
+		return nil, cmdLine, err
+	}
 
 	cmd := exec.CommandContext(ctx, r.NmapBinary, args...)
 	var stdout, stderr bytes.Buffer
@@ -85,12 +103,12 @@ func (r *NmapRunner) discoverWithNmap(ctx context.Context, ips []string, maxRate
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("nmap -sn failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
+		return nil, cmdLine, fmt.Errorf("nmap -sn failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
 	}
 
 	hosts, err := ParseNmapXML(stdout.Bytes())
 	if err != nil {
-		return nil, err
+		return nil, cmdLine, err
 	}
 	var alive []string
 	for _, h := range hosts {
@@ -99,18 +117,29 @@ func (r *NmapRunner) discoverWithNmap(ctx context.Context, ips []string, maxRate
 		}
 	}
 	sort.Strings(alive)
-	return alive, nil
+	return alive, cmdLine, nil
 }
 
-func (r *NmapRunner) discoverPureGo(ctx context.Context, ips []string, probePorts []int, gov *Governor) ([]string, error) {
+func discoveryFallbackPorts(probePorts []int) []int {
 	if len(probePorts) == 0 {
 		probePorts = []int{80, 443, 22, 8080, 8443}
 	}
-	// Limit discovery probes per host to at most 6 ports for speed.
-	checkPorts := probePorts
-	if len(checkPorts) > 6 {
-		checkPorts = checkPorts[:6]
+	if len(probePorts) > 6 {
+		probePorts = probePorts[:6]
 	}
+	return probePorts
+}
+
+func truncateStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
+func (r *NmapRunner) discoverPureGo(ctx context.Context, ips []string, probePorts []int, gov *Governor) ([]string, error) {
+	// Limit discovery probes per host to at most 6 ports for speed.
+	checkPorts := discoveryFallbackPorts(probePorts)
 
 	workers := r.Concurrency
 	if workers <= 0 {
@@ -179,41 +208,39 @@ func (r *NmapRunner) discoverPureGo(ctx context.Context, ips []string, probePort
 // ScanServices runs Stage 2 safe service/version detection strictly on activeIPs and allowed ports.
 // Returns per-IP observed services AND a valid Nmap XML document (for DefectDojo import).
 func (r *NmapRunner) ScanServices(ctx context.Context, activeIPs []string, ports []int, maxRatePPS int, gov *Governor) (map[string][]domain.ObservedService, string, error) {
-	if len(activeIPs) == 0 || len(ports) == 0 {
-		return map[string][]domain.ObservedService{}, "", nil
-	}
-
-	if r.UseNmap && r.NmapBinary != "" {
-		res, xmlStr, err := r.scanWithNmap(ctx, activeIPs, ports, maxRatePPS)
-		if err == nil {
-			return res, xmlStr, nil
-		}
-		if ctx.Err() != nil {
-			return nil, "", ctx.Err()
-		}
-	}
-	return r.ScanServicesPureGo(ctx, activeIPs, ports, gov)
+	res, xmlStr, _, err := r.ScanServicesDetailed(ctx, activeIPs, ports, maxRatePPS, gov)
+	return res, xmlStr, err
 }
 
-func (r *NmapRunner) scanWithNmap(ctx context.Context, activeIPs []string, ports []int, maxRatePPS int) (map[string][]domain.ObservedService, string, error) {
-	if maxRatePPS <= 0 {
-		maxRatePPS = 200
+// ScanServicesDetailed is ScanServices that also returns the exact command line executed.
+func (r *NmapRunner) ScanServicesDetailed(ctx context.Context, activeIPs []string, ports []int, maxRatePPS int, gov *Governor) (map[string][]domain.ObservedService, string, string, error) {
+	if len(activeIPs) == 0 || len(ports) == 0 {
+		return map[string][]domain.ObservedService{}, "", "", nil
 	}
-	portStrs := make([]string, len(ports))
-	for i, p := range ports {
-		portStrs[i] = strconv.Itoa(p)
+
+	fallbackReason := "nmap disabled or not installed"
+	if r.UseNmap && r.NmapBinary != "" {
+		res, xmlStr, cmdLine, err := r.scanWithNmap(ctx, activeIPs, ports, maxRatePPS)
+		if err == nil {
+			return res, xmlStr, cmdLine, nil
+		}
+		if ctx.Err() != nil {
+			return nil, "", cmdLine, ctx.Err()
+		}
+		fallbackReason = "nmap failed: " + truncateStr(err.Error(), 160)
 	}
-	args := []string{
-		"-sT",
-		"-sV",
-		"--version-intensity", "5",
-		"-Pn",
-		"-n",
-		"-p", strings.Join(portStrs, ","),
-		"--max-rate", strconv.Itoa(maxRatePPS),
-		"-oX", "-",
+	res, xmlStr, err := r.ScanServicesPureGo(ctx, activeIPs, ports, gov)
+	desc := fmt.Sprintf("aegis-go-fallback service tcp-connect+passive-banner ports=%s targets=%s (%s)",
+		joinPorts(ports), strings.Join(CompactIPv4Targets(activeIPs), " "), fallbackReason)
+	return res, xmlStr, desc, err
+}
+
+func (r *NmapRunner) scanWithNmap(ctx context.Context, activeIPs []string, ports []int, maxRatePPS int) (map[string][]domain.ObservedService, string, string, error) {
+	args := r.options().BuildServiceArgs(activeIPs, ports, maxRatePPS)
+	cmdLine := FormatCommand(r.NmapBinary, args)
+	if err := ValidateSafeNmapArgs(args); err != nil {
+		return nil, "", cmdLine, err
 	}
-	args = append(args, activeIPs...)
 
 	cmd := exec.CommandContext(ctx, r.NmapBinary, args...)
 	var stdout, stderr bytes.Buffer
@@ -221,20 +248,20 @@ func (r *NmapRunner) scanWithNmap(ctx context.Context, activeIPs []string, ports
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, "", fmt.Errorf("nmap -sT -sV failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
+		return nil, "", cmdLine, fmt.Errorf("nmap -sT -sV failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
 	}
 
 	xmlBytes := stdout.Bytes()
 	hosts, err := ParseNmapXML(xmlBytes)
 	if err != nil {
-		return nil, string(xmlBytes), err
+		return nil, string(xmlBytes), cmdLine, err
 	}
 
 	out := make(map[string][]domain.ObservedService, len(hosts))
 	for _, h := range hosts {
 		out[h.IP] = h.Services
 	}
-	return out, string(xmlBytes), nil
+	return out, string(xmlBytes), cmdLine, nil
 }
 
 // ScanServicesPureGo performs safe TCP connect + passive banner grab fallback and synthesizes valid Nmap XML.

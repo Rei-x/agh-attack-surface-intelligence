@@ -2,8 +2,6 @@ package scanner
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +25,14 @@ type RunResult struct {
 	RawNmapXML     string                `json:"raw_nmap_xml,omitempty"`
 	GovernorStats  GovernorStats         `json:"governor_stats"`
 	PausedByWindow bool                  `json:"paused_by_window"`
+	// ScannedIPs lists the IPs of chunks completed during THIS Execute call (one window
+	// segment). Callers must use it — not the full scope — when marking hosts missing,
+	// otherwise hosts scanned in an earlier window would be wrongly flagged as gone.
+	ScannedIPs []string `json:"-"`
+	// ChunkWorkers is the number of concurrent chunk workers used in this segment.
+	ChunkWorkers int `json:"chunk_workers"`
+	// PerWorkerRatePPS is the --max-rate given to each concurrent nmap process.
+	PerWorkerRatePPS int `json:"per_worker_rate_pps"`
 }
 
 // EngineConfig configures the 4-stage scanning engine.
@@ -42,6 +48,16 @@ type EngineConfig struct {
 	// Optional test hooks for deterministic discovery/service scanning without network calls.
 	CustomDiscoveryFn   func(ctx context.Context, ips []string) ([]string, error)
 	CustomServiceScanFn func(ctx context.Context, activeIPs []string, ports []int) (map[string][]domain.ObservedService, string, error)
+
+	// MaxChunkWorkers bounds concurrent chunk workers (each runs its own nmap process).
+	// 0 = DefaultChunkWorkers() (ASI_CHUNK_WORKERS env or 4). Further bounded by profile
+	// Concurrency, by MaxRatePPS/MinWorkerRatePPS and by the number of pending chunks.
+	MaxChunkWorkers int
+	// WindowPollInterval controls how often a running scan re-checks its time window so an
+	// overrunning scan is stopped mid-chunk (default 1s).
+	WindowPollInterval time.Duration
+	// DisableAdaptiveChunking turns off in-run chunk re-sizing from measured throughput.
+	DisableAdaptiveChunking bool
 }
 
 // Engine orchestrates Stage 1 (host discovery) -> Stage 2 (service detection)
@@ -94,7 +110,7 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 		ports, _ := ParsePorts(profile.AllowedPorts)
 		cal := Calibrate(ctx, resolution.IPs, profile.ChunkTargetSec, profile.Concurrency, func(pctx context.Context, ip string) (bool, time.Duration) {
 			t0 := time.Now()
-			alive, _ := e.discoverStage(pctx, []string{ip}, ports, profile.MaxRatePPS, nil)
+			alive, _, _ := e.discoverStage(pctx, []string{ip}, ports, profile.MaxRatePPS, nil)
 			return len(alive) > 0, time.Since(t0)
 		})
 		if cal.ChunkSize > 0 {
@@ -117,406 +133,6 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 	}
 
 	return run, resolution, nil
-}
-
-// Execute runs or resumes a ScanRun across chunks, enforcing time windows cleanly at chunk boundaries.
-func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domain.ScanProfile, resolution *TargetResolution, cb RunCallbacks) (*RunResult, error) {
-	if run == nil {
-		return nil, fmt.Errorf("scan run is nil")
-	}
-
-	windowGuard, err := NewWindowGuard(profile.WindowEnabled, profile.WindowStart, profile.WindowEnd, profile.Timezone)
-	if err != nil {
-		return nil, err
-	}
-
-	ports, err := ParsePorts(profile.AllowedPorts)
-	if err != nil {
-		return nil, err
-	}
-
-	emit := func(evType string, payload map[string]any) {
-		if cb.OnEvent != nil {
-			cb.OnEvent(domain.LiveEvent{
-				Type:      evType,
-				ScanRunID: run.ID,
-				Timestamp: e.cfg.Now(),
-				Payload:   payload,
-			})
-		}
-	}
-
-	maxRate := float64(profile.MaxRatePPS)
-	if maxRate <= 0 {
-		maxRate = 300
-	}
-	httpRPS := float64(profile.HTTPRPS)
-	if httpRPS <= 0 {
-		httpRPS = 15
-	}
-	concurrency := profile.Concurrency
-	if concurrency <= 0 {
-		concurrency = 32
-	}
-	retryUnstable := profile.RetryUnstableCount
-	if retryUnstable <= 0 {
-		retryUnstable = 2
-	}
-
-	gov := NewGovernor(GovernorConfig{
-		GlobalRatePerSec:  maxRate,
-		PerHostRatePerSec: httpRPS,
-		MinRatePerSec:     math.Max(5, maxRate*0.1),
-		OnThrottle: func(te ThrottleEvent) {
-			emit("governor.throttle", map[string]any{
-				"host":        te.Host,
-				"reason":      te.Reason,
-				"old_rate":    te.OldRate,
-				"new_rate":    te.NewRate,
-				"error_count": te.ErrorCount,
-			})
-		},
-	})
-
-	unstableSet := make(map[string]struct{}, len(e.cfg.UnstableHosts))
-	for _, ip := range e.cfg.UnstableHosts {
-		unstableSet[ip] = struct{}{}
-	}
-
-	ipToDomains := map[string][]string{}
-	if resolution != nil && resolution.IPToDomains != nil {
-		ipToDomains = resolution.IPToDomains
-	}
-
-	run.Status = domain.ScanStatusRunning
-	if run.StartedAt.IsZero() {
-		run.StartedAt = e.cfg.Now()
-	}
-
-	var xmlDocs []string
-	if run.RawNmapXML != "" {
-		xmlDocs = append(xmlDocs, run.RawNmapXML)
-	}
-	var allObserved []domain.ObservedHost
-
-	// Track already-completed chunks when resuming.
-	var totalChunkMs int64
-	for _, ch := range run.Chunks {
-		if ch.Status == domain.ChunkStatusDone {
-			totalChunkMs += ch.DurationMs
-		}
-	}
-
-	for i := range run.Chunks {
-		chunk := &run.Chunks[i]
-		// Exact Resume: skip chunks already finished in prior window!
-		if chunk.Status == domain.ChunkStatusDone {
-			continue
-		}
-
-		// Check context cancellation before starting chunk.
-		if err := ctx.Err(); err != nil {
-			run.Status = domain.ScanStatusStopped
-			chunk.Status = domain.ChunkStatusPaused
-			mergedXML := MergeNmapXML(xmlDocs)
-			run.RawNmapXML = mergedXML
-			run.HasRawNmapXML = mergedXML != ""
-			if cb.OnCheckpoint != nil {
-				cb.OnCheckpoint(run)
-			}
-			return &RunResult{
-				ScanRun:       run,
-				ObservedHosts: allObserved,
-				RawNmapXML:    mergedXML,
-				GovernorStats: gov.Stats(),
-			}, err
-		}
-
-		// Hard Time Window Gate at chunk boundary.
-		now := e.cfg.Now()
-		if !windowGuard.IsOpen(now) {
-			run.Status = domain.ScanStatusPausedWindow
-			run.WindowPausedCount++
-			chunk.Status = domain.ChunkStatusPending
-			nextOpen := windowGuard.NextOpen(now)
-			mergedXML := MergeNmapXML(xmlDocs)
-			run.RawNmapXML = mergedXML
-			run.HasRawNmapXML = mergedXML != ""
-
-			emit("scan.paused_window", map[string]any{
-				"chunk_index":       chunk.ChunkIndex,
-				"completed_chunks":  run.CompletedChunks,
-				"total_chunks":      run.TotalChunks,
-				"next_window_open":  nextOpen.Format(time.RFC3339),
-				"window_paused_cnt": run.WindowPausedCount,
-			})
-			if cb.OnCheckpoint != nil {
-				cb.OnCheckpoint(run)
-			}
-			return &RunResult{
-				ScanRun:        run,
-				ObservedHosts:  allObserved,
-				RawNmapXML:     mergedXML,
-				GovernorStats:  gov.Stats(),
-				PausedByWindow: true,
-			}, nil
-		}
-
-		// Execute chunk across the 4 stages.
-		chunkStart := e.cfg.Now()
-		chunk.Status = domain.ChunkStatusRunning
-		chunk.StartedAt = &chunkStart
-		chunk.Error = ""
-		if cb.OnChunkUpdate != nil {
-			cb.OnChunkUpdate(*chunk)
-		}
-		emit("scan.chunk", map[string]any{
-			"chunk_id":    chunk.ID,
-			"chunk_index": chunk.ChunkIndex,
-			"status":      chunk.Status,
-			"ip_count":    chunk.IPCount,
-		})
-
-		chunkObserved, chunkXML, chunkErr := e.executeChunk(ctx, chunk.Targets, ports, profile, concurrency, retryUnstable, gov, unstableSet, ipToDomains)
-		if chunkErr != nil && ctx.Err() != nil {
-			chunk.Status = domain.ChunkStatusPaused
-			run.Status = domain.ScanStatusStopped
-			mergedXML := MergeNmapXML(xmlDocs)
-			run.RawNmapXML = mergedXML
-			run.HasRawNmapXML = mergedXML != ""
-			if cb.OnChunkUpdate != nil {
-				cb.OnChunkUpdate(*chunk)
-			}
-			if cb.OnCheckpoint != nil {
-				cb.OnCheckpoint(run)
-			}
-			return &RunResult{
-				ScanRun:       run,
-				ObservedHosts: allObserved,
-				RawNmapXML:    mergedXML,
-				GovernorStats: gov.Stats(),
-			}, ctx.Err()
-		}
-
-		chunkEnd := e.cfg.Now()
-		durMs := chunkEnd.Sub(chunkStart).Milliseconds()
-		if durMs < 1 {
-			durMs = 1
-		}
-		chunk.FinishedAt = &chunkEnd
-		chunk.DurationMs = durMs
-		totalChunkMs += durMs
-
-		if chunkErr != nil {
-			chunk.Status = domain.ChunkStatusFailed
-			chunk.Error = chunkErr.Error()
-		} else {
-			chunk.Status = domain.ChunkStatusDone
-		}
-
-		if chunkXML != "" {
-			xmlDocs = append(xmlDocs, chunkXML)
-		}
-
-		activeCount := 0
-		svcCount := 0
-		for _, obs := range chunkObserved {
-			allObserved = append(allObserved, obs)
-			if obs.IsAlive {
-				activeCount++
-				svcCount += len(obs.Services)
-			}
-			if cb.OnHostObserved != nil {
-				cb.OnHostObserved(obs)
-			}
-		}
-
-		chunk.ActiveHosts = activeCount
-		chunk.Services = svcCount
-
-		// Recompute run progress & ETA.
-		run.CompletedChunks++
-		run.ScannedIPs += chunk.IPCount
-		run.ActiveHosts += activeCount
-		run.ServicesFound += svcCount
-		run.DurationMs = totalChunkMs
-
-		if totalChunkMs > 0 {
-			hps := float64(run.ScannedIPs) / (float64(totalChunkMs) / 1000.0)
-			run.HostsPerSec = math.Round(hps*100) / 100
-			remainingIPs := run.TotalIPs - run.ScannedIPs
-			if remainingIPs < 0 {
-				remainingIPs = 0
-			}
-			if hps > 0 {
-				run.ETASeconds = int64(math.Ceil(float64(remainingIPs) / hps))
-			}
-		}
-
-		if cb.OnChunkUpdate != nil {
-			cb.OnChunkUpdate(*chunk)
-		}
-		emit("scan.chunk", map[string]any{
-			"chunk_id":     chunk.ID,
-			"chunk_index":  chunk.ChunkIndex,
-			"status":       chunk.Status,
-			"active_hosts": chunk.ActiveHosts,
-			"services":     chunk.Services,
-			"duration_ms":  chunk.DurationMs,
-		})
-		emit("scan.progress", map[string]any{
-			"scanned_ips":      run.ScannedIPs,
-			"total_ips":        run.TotalIPs,
-			"completed_chunks": run.CompletedChunks,
-			"total_chunks":     run.TotalChunks,
-			"active_hosts":     run.ActiveHosts,
-			"services_found":   run.ServicesFound,
-			"hosts_per_sec":    run.HostsPerSec,
-			"eta_seconds":      run.ETASeconds,
-			"window_open":      windowGuard.IsOpen(e.cfg.Now()),
-		})
-		if cb.OnCheckpoint != nil {
-			cb.OnCheckpoint(run)
-		}
-	}
-
-	finished := e.cfg.Now()
-	mergedXML := MergeNmapXML(xmlDocs)
-	run.RawNmapXML = mergedXML
-	run.HasRawNmapXML = mergedXML != ""
-	run.Status = domain.ScanStatusCompleted
-	run.ETASeconds = 0
-	run.FinishedAt = &finished
-
-	emit("scan.completed", map[string]any{
-		"total_ips":      run.TotalIPs,
-		"active_hosts":   run.ActiveHosts,
-		"services_found": run.ServicesFound,
-		"duration_ms":    run.DurationMs,
-		"has_nmap_xml":   run.HasRawNmapXML,
-	})
-	if cb.OnCheckpoint != nil {
-		cb.OnCheckpoint(run)
-	}
-
-	return &RunResult{
-		ScanRun:       run,
-		ObservedHosts: allObserved,
-		RawNmapXML:    mergedXML,
-		GovernorStats: gov.Stats(),
-	}, nil
-}
-
-func (e *Engine) executeChunk(
-	ctx context.Context,
-	chunkIPs []string,
-	ports []int,
-	profile domain.ScanProfile,
-	concurrency int,
-	retryUnstable int,
-	gov *Governor,
-	unstableSet map[string]struct{},
-	ipToDomains map[string][]string,
-) ([]domain.ObservedHost, string, error) {
-	// Stage 1: Host Discovery.
-	activeIPs, err := e.discoverStage(ctx, chunkIPs, ports, profile.MaxRatePPS, gov)
-	if err != nil {
-		return nil, "", err
-	}
-
-	aliveSet := make(map[string]bool, len(activeIPs))
-	for _, ip := range activeIPs {
-		aliveSet[ip] = true
-	}
-
-	// Stage 4 (early verification): Unstable host verification re-probe for previously-seen hosts missed in Stage 1.
-	var toReprobe []string
-	for _, ip := range chunkIPs {
-		if !aliveSet[ip] {
-			if _, isTracked := unstableSet[ip]; isTracked {
-				toReprobe = append(toReprobe, ip)
-			}
-		}
-	}
-	if len(toReprobe) > 0 && retryUnstable > 0 {
-		for attempt := 0; attempt < retryUnstable && len(toReprobe) > 0; attempt++ {
-			if ctx.Err() != nil {
-				return nil, "", ctx.Err()
-			}
-			recovered, rerr := e.discoverStage(ctx, toReprobe, ports, profile.MaxRatePPS, gov)
-			if rerr != nil {
-				break
-			}
-			var stillMissing []string
-			recSet := make(map[string]bool, len(recovered))
-			for _, ip := range recovered {
-				recSet[ip] = true
-				if !aliveSet[ip] {
-					aliveSet[ip] = true
-					activeIPs = append(activeIPs, ip)
-				}
-			}
-			for _, ip := range toReprobe {
-				if !recSet[ip] {
-					stillMissing = append(stillMissing, ip)
-				}
-			}
-			toReprobe = stillMissing
-		}
-	}
-
-	// Stage 2: Service Detection strictly on active hosts & allowed ports.
-	var svcMap map[string][]domain.ObservedService
-	var chunkXML string
-	if len(activeIPs) > 0 {
-		svcMap, chunkXML, err = e.serviceScanStage(ctx, activeIPs, ports, profile.MaxRatePPS, gov)
-		if err != nil {
-			return nil, "", err
-		}
-	}
-
-	// Stage 3: Safe HTTP/HTTPS/TLS Fingerprinting with bounded worker pool.
-	if profile.EnableHTTPFingerprint && len(activeIPs) > 0 {
-		e.fingerprintStage(ctx, activeIPs, svcMap, profile, concurrency, gov, ipToDomains)
-	}
-
-	now := e.cfg.Now()
-	observed := make([]domain.ObservedHost, 0, len(chunkIPs))
-	for _, ip := range chunkIPs {
-		domains := ipToDomains[ip]
-		var hostname string
-		if len(domains) > 0 {
-			hostname = domains[0]
-		}
-		isAlive := aliveSet[ip]
-		svcs := svcMap[ip]
-		if len(svcs) > 0 {
-			isAlive = true
-		}
-		observed = append(observed, domain.ObservedHost{
-			IP:         ip,
-			Hostname:   hostname,
-			Domains:    append([]string(nil), domains...),
-			IsAlive:    isAlive,
-			ObservedAt: now,
-			Services:   svcs,
-		})
-	}
-	return observed, chunkXML, nil
-}
-
-func (e *Engine) discoverStage(ctx context.Context, ips []string, ports []int, maxRatePPS int, gov *Governor) ([]string, error) {
-	if e.cfg.CustomDiscoveryFn != nil {
-		return e.cfg.CustomDiscoveryFn(ctx, ips)
-	}
-	return e.cfg.NmapRunner.DiscoverHosts(ctx, ips, ports, maxRatePPS, gov)
-}
-
-func (e *Engine) serviceScanStage(ctx context.Context, activeIPs []string, ports []int, maxRatePPS int, gov *Governor) (map[string][]domain.ObservedService, string, error) {
-	if e.cfg.CustomServiceScanFn != nil {
-		return e.cfg.CustomServiceScanFn(ctx, activeIPs, ports)
-	}
-	return e.cfg.NmapRunner.ScanServices(ctx, activeIPs, ports, maxRatePPS, gov)
 }
 
 func (e *Engine) fingerprintStage(

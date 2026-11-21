@@ -100,12 +100,28 @@ export const ChunkMatrix = memo(function ChunkMatrix({ chunks }: { chunks: ScanC
                 {hover.targets.length > 2 ? ` +${hover.targets.length - 2}` : ''}
               </span>
             )}
+            {hover.worker ? (
+              <span>
+                worker {hover.worker}
+                {hover.max_rate_pps ? ` · ${hover.max_rate_pps} PPS` : ''}
+              </span>
+            ) : null}
             {hover.error && <span className="truncate text-rose-500">{hover.error}</span>}
           </>
         ) : (
           <span>Najedź na kafelek, aby zobaczyć szczegóły chunka</span>
         )}
       </div>
+      {hover?.nmap_commands && hover.nmap_commands.length > 0 && (
+        <div className="space-y-1 rounded-md bg-muted/50 p-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+          {hover.nmap_commands.map((cmd, i) => (
+            <div key={i} className="break-all">
+              <span className="select-none text-foreground/60">$ </span>
+              {cmd}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 });
