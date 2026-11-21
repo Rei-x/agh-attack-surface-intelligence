@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: aegis-asi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aegis_asi}
+      POSTGRES_USER: ${POSTGRES_USER:-aegis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_dev_pass}
+      TZ: ${TZ:-Europe/Warsaw}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aegis} -d ${POSTGRES_DB:-aegis_asi}"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    networks:
+      - aegis-net
+
+  aegis-asi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aegis-asi-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${ASI_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev_pass}@postgres:5432/${POSTGRES_DB:-aegis_asi}?sslmode=disable
+      ASI_MASTER_KEY: ${ASI_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      ASI_JWT_SECRET: ${ASI_JWT_SECRET:-aegis-asi-dev-jwt-secret-replace-in-production}
+      ASI_SEED_DEMO: ${ASI_SEED_DEMO:-true}
+      ASI_STATIC_DIR: /app/static
+      ASI_LISTEN_ADDR: :8080
+      TZ: ${TZ:-Europe/Warsaw}
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - aegis-net
+
+volumes:
+  pgdata:
+
+networks:
+  aegis-net:
+    name: aegis-asi-net
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/24
+          ip_range: 172.28.0.128/25
+          gateway: 172.28.0.1

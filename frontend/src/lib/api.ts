@@ -1,0 +1,509 @@
+import type {
+  AuditLog,
+  ChangeEvent,
+  CryptoStatusResponse,
+  DashboardSummary,
+  DefectDojoConfig,
+  DefectDojoExport,
+  DemoAccount,
+  GraphResponse,
+  HealthResponse,
+  Host,
+  LoginResponse,
+  Role,
+  ScanDiffResponse,
+  ScanProfile,
+  ScanRun,
+  Service,
+  ServiceCluster,
+  ServiceObservation,
+  Signature,
+  SignatureTestResult,
+  SignatureValidationResult,
+  Target,
+  TargetEstimate,
+  TargetExclusion,
+  User,
+} from '../types/api';
+
+const TOKEN_KEY = 'aegis_asi_token';
+
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export class ApiError extends Error {
+  status: number;
+  body?: unknown;
+
+  constructor(status: number, message: string, body?: unknown) {
+    super(message);
+    this.status = status;
+    this.body = body;
+  }
+}
+
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  unauthorizedHandler = fn;
+}
+
+export function unwrapList<T>(data: unknown, keys: string[] = ['items', 'data']): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    for (const k of keys) {
+      if (Array.isArray(obj[k])) return obj[k] as T[];
+    }
+  }
+  return [];
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit & { skipAuth?: boolean; rawResponse?: boolean } = {}
+): Promise<T> {
+  const { skipAuth, rawResponse, headers, ...rest } = options;
+  const reqHeaders = new Headers(headers || {});
+
+  if (!skipAuth) {
+    const token = getStoredToken();
+    if (token) {
+      reqHeaders.set('Authorization', `Bearer ${token}`);
+    }
+  }
+
+  if (rest.body && !(rest.body instanceof FormData) && !reqHeaders.has('Content-Type')) {
+    reqHeaders.set('Content-Type', 'application/json');
+  }
+
+  const res = await fetch(path, {
+    ...rest,
+    headers: reqHeaders,
+  });
+
+  if (res.status === 401 && !skipAuth) {
+    setStoredToken(null);
+    if (unauthorizedHandler) unauthorizedHandler();
+  }
+
+  if (!res.ok) {
+    let message = `Błąd HTTP ${res.status}`;
+    let parsed: unknown = undefined;
+    try {
+      const text = await res.text();
+      if (text) {
+        try {
+          parsed = JSON.parse(text);
+          const pObj = parsed as Record<string, unknown>;
+          const errStr = (pObj.error || pObj.message || pObj.detail) as string | undefined;
+          if (errStr) message = errStr;
+        } catch {
+          message = text;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    if (res.status === 403 && !message.includes('403') && !message.toLowerCase().includes('uprawnie')) {
+      message = `Brak uprawnień (403 Forbidden): ${message}`;
+    }
+    throw new ApiError(res.status, message, parsed);
+  }
+
+  if (rawResponse) {
+    return res as unknown as T;
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
+function buildQuery(params: Record<string, string | number | boolean | undefined | null>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') {
+      qs.set(k, String(v));
+    }
+  }
+  const str = qs.toString();
+  return str ? `?${str}` : '';
+}
+
+export const api = {
+  // Health & Auth
+  health: () => request<HealthResponse>('/api/v1/health', { skipAuth: true }),
+  demoAccounts: async (): Promise<DemoAccount[]> => {
+    const res = await request<unknown>('/api/v1/auth/demo-accounts', { skipAuth: true });
+    return unwrapList<DemoAccount>(res, ['accounts', 'demo_accounts', 'items', 'data']);
+  },
+  login: (username: string, password: string) =>
+    request<LoginResponse>('/api/v1/auth/login', {
+      method: 'POST',
+      skipAuth: true,
+      body: JSON.stringify({ username, password }),
+    }),
+  me: async (): Promise<User> => {
+    const res = await request<unknown>('/api/v1/auth/me');
+    if (res && typeof res === 'object' && 'user' in (res as Record<string, unknown>)) {
+      return (res as { user: User }).user;
+    }
+    return res as User;
+  },
+
+  // Dashboard, Graph & Clusters
+  dashboardSummary: () => request<DashboardSummary>('/api/v1/dashboard/summary'),
+  graph: (params?: { state?: string; min_score?: number; admin_only?: boolean }) =>
+    request<GraphResponse>(`/api/v1/graph${buildQuery(params || {})}`),
+  clusters: async (groupBy?: string): Promise<ServiceCluster[]> => {
+    const res = await request<unknown>(`/api/v1/clusters${buildQuery({ group_by: groupBy })}`);
+    return unwrapList<ServiceCluster>(res, ['clusters', 'items', 'data']);
+  },
+
+  // Targets & Exclusions
+  listTargets: async (): Promise<Target[]> => {
+    const res = await request<unknown>('/api/v1/targets');
+    return unwrapList<Target>(res, ['targets', 'items', 'data']);
+  },
+  createTarget: (payload: Partial<Target>) =>
+    request<Target>('/api/v1/targets', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteTarget: (id: string) => request<void>(`/api/v1/targets/${id}`, { method: 'DELETE' }),
+
+  estimateTargets: (payload: {
+    targets: string[];
+    exclusions?: string[];
+    ports?: string;
+    allowed_ports?: string;
+    max_rate_pps?: number;
+    concurrency?: number;
+    chunk_target_sec?: number;
+    window_enabled?: boolean;
+    window_start?: string;
+    window_end?: string;
+    timezone?: string;
+  }) =>
+    request<TargetEstimate>('/api/v1/targets/estimate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  listExclusions: async (): Promise<TargetExclusion[]> => {
+    const res = await request<unknown>('/api/v1/exclusions');
+    return unwrapList<TargetExclusion>(res, ['exclusions', 'items', 'data']);
+  },
+  createExclusion: (payload: { value: string; reason?: string }) =>
+    request<TargetExclusion>('/api/v1/exclusions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteExclusion: (id: string) => request<void>(`/api/v1/exclusions/${id}`, { method: 'DELETE' }),
+
+  // Scan Profiles & Runs
+  listProfiles: async (): Promise<ScanProfile[]> => {
+    const res = await request<unknown>('/api/v1/profiles');
+    return unwrapList<ScanProfile>(res, ['profiles', 'items', 'data']);
+  },
+  createProfile: (payload: Partial<ScanProfile>) =>
+    request<ScanProfile>('/api/v1/profiles', { method: 'POST', body: JSON.stringify(payload) }),
+  updateProfile: (id: string, payload: Partial<ScanProfile>) =>
+    request<ScanProfile>(`/api/v1/profiles/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteProfile: (id: string) => request<void>(`/api/v1/profiles/${id}`, { method: 'DELETE' }),
+
+  listScans: async (): Promise<ScanRun[]> => {
+    const res = await request<unknown>('/api/v1/scans');
+    return unwrapList<ScanRun>(res, ['scans', 'runs', 'items', 'data']);
+  },
+  getScan: (id: string) => request<ScanRun>(`/api/v1/scans/${id}`),
+  startScan: (payload: {
+    profile_id?: string;
+    name?: string;
+    notes?: string;
+    targets?: string[];
+    allowed_ports?: string;
+  }) => request<ScanRun>('/api/v1/scans', { method: 'POST', body: JSON.stringify(payload) }),
+  updateScan: (id: string, payload: { name?: string; notes?: string }) =>
+    request<ScanRun>(`/api/v1/scans/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  pauseScan: (id: string) => request<ScanRun>(`/api/v1/scans/${id}/pause`, { method: 'POST' }),
+  resumeScan: (id: string) => request<ScanRun>(`/api/v1/scans/${id}/resume`, { method: 'POST' }),
+  stopScan: (id: string) => request<ScanRun>(`/api/v1/scans/${id}/stop`, { method: 'POST' }),
+  deleteScan: (id: string) => request<void>(`/api/v1/scans/${id}`, { method: 'DELETE' }),
+
+  // Hosts & Services & Preserved Overrides
+  listHosts: async (params?: {
+    q?: string;
+    state?: string;
+    tag?: string;
+    min_score?: number;
+    env?: string;
+    has_admin?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<{ hosts: Host[]; total: number }> => {
+    const res = await request<unknown>(`/api/v1/hosts${buildQuery(params || {})}`);
+    const hosts = unwrapList<Host>(res, ['hosts', 'items', 'data']);
+    const total =
+      res && typeof res === 'object' && 'total' in (res as Record<string, unknown>)
+        ? Number((res as Record<string, unknown>).total)
+        : hosts.length;
+    return { hosts, total };
+  },
+  getHost: (id: string) => request<Host>(`/api/v1/hosts/${id}`),
+  patchHostOverrides: (
+    id: string,
+    payload: {
+      hostname?: string;
+      environment?: string;
+      owner?: string;
+      notes?: string;
+      tags?: string[];
+      lifecycle_state?: string;
+      unlock_fields?: string[];
+    }
+  ) =>
+    request<Host>(`/api/v1/hosts/${id}/overrides`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteHost: (id: string) => request<void>(`/api/v1/hosts/${id}`, { method: 'DELETE' }),
+
+  listServices: async (params?: {
+    q?: string;
+    host_id?: string;
+    min_score?: number;
+    admin_only?: boolean;
+    triage_status?: string;
+  }): Promise<Service[]> => {
+    const res = await request<unknown>(`/api/v1/services${buildQuery(params || {})}`);
+    return unwrapList<Service>(res, ['services', 'items', 'data']);
+  },
+  patchServiceOverrides: (
+    id: string,
+    payload: {
+      service_name?: string;
+      product?: string;
+      version?: string;
+      http_title?: string;
+      notes?: string;
+      tags?: string[];
+      triage_status?: string;
+      unlock_fields?: string[];
+    }
+  ) =>
+    request<Service>(`/api/v1/services/${id}/overrides`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  getServiceObservations: async (id: string): Promise<ServiceObservation[]> => {
+    const res = await request<unknown>(`/api/v1/services/${id}/observations`);
+    return unwrapList<ServiceObservation>(res, ['observations', 'items', 'data']);
+  },
+
+  // Diff & Changes
+  listChanges: async (params?: {
+    scan_id?: string;
+    severity?: string;
+    type?: string;
+    anomaly_only?: boolean;
+  }): Promise<ChangeEvent[]> => {
+    const res = await request<unknown>(`/api/v1/changes${buildQuery(params || {})}`);
+    return unwrapList<ChangeEvent>(res, ['changes', 'events', 'items', 'data']);
+  },
+  diffScans: (fromId: string, toId: string) =>
+    request<ScanDiffResponse>(`/api/v1/scans/diff${buildQuery({ from: fromId, to: toId })}`),
+  acknowledgeChange: (id: string) =>
+    request<ChangeEvent>(`/api/v1/changes/${id}/acknowledge`, { method: 'POST' }),
+
+  // Ingest & Export
+  ingestManual: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>('/api/v1/ingest/manual', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  ingestImportFile: (file: File, format: 'csv' | 'json' | 'passive', scanName?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('format', format);
+    if (scanName) fd.append('scan_name', scanName);
+    return request<Record<string, unknown>>('/api/v1/ingest/import', {
+      method: 'POST',
+      body: fd,
+    });
+  },
+  exportData: async (params: {
+    format: 'json' | 'csv';
+    scan_id?: string;
+    state?: string;
+    tag?: string;
+  }) => {
+    const res = await request<Response>(`/api/v1/export${buildQuery(params)}`, {
+      rawResponse: true,
+    });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aegis-asi-export-${new Date().toISOString().slice(0, 10)}.${params.format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  // Signatures Studio
+  listSignatures: async (): Promise<Signature[]> => {
+    const res = await request<unknown>('/api/v1/signatures');
+    return unwrapList<Signature>(res, ['signatures', 'items', 'data']);
+  },
+  createSignature: (payload: Partial<Signature>) =>
+    request<Signature>('/api/v1/signatures', { method: 'POST', body: JSON.stringify(payload) }),
+  updateSignature: (id: string, payload: Partial<Signature>) =>
+    request<Signature>(`/api/v1/signatures/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteSignature: (id: string) =>
+    request<void>(`/api/v1/signatures/${id}`, { method: 'DELETE' }),
+  validateSignature: (payload: Partial<Signature>) =>
+    request<SignatureValidationResult>('/api/v1/signatures/validate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  testSignature: (payload: Partial<Signature>) =>
+    request<SignatureTestResult>('/api/v1/signatures/test', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  importSignatures: (payload: unknown) =>
+    request<Record<string, unknown>>('/api/v1/signatures/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  exportSignatures: async () => {
+    const res = await request<Response>('/api/v1/signatures/export', { rawResponse: true });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aegis-asi-signatures-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  // DefectDojo v2
+  getDefectDojoConfig: () => request<DefectDojoConfig>('/api/v1/integrations/defectdojo'),
+  updateDefectDojoConfig: (payload: Partial<DefectDojoConfig>) =>
+    request<DefectDojoConfig>('/api/v1/integrations/defectdojo', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  testDefectDojo: (payload?: Partial<DefectDojoConfig>) =>
+    request<Record<string, unknown>>('/api/v1/integrations/defectdojo/test', {
+      method: 'POST',
+      body: payload ? JSON.stringify(payload) : undefined,
+    }),
+  pushDefectDojoFindings: (payload: {
+    service_ids?: string[];
+    change_ids?: string[];
+    engagement_id?: number;
+    severity?: string;
+  }) =>
+    request<Record<string, unknown>>('/api/v1/integrations/defectdojo/push-findings', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  pushDefectDojoNmap: (payload: { scan_run_id: string; engagement_id?: number }) =>
+    request<Record<string, unknown>>('/api/v1/integrations/defectdojo/push-nmap', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listDefectDojoHistory: async (): Promise<DefectDojoExport[]> => {
+    const res = await request<unknown>('/api/v1/integrations/defectdojo/history');
+    return unwrapList<DefectDojoExport>(res, ['exports', 'history', 'items', 'data']);
+  },
+
+  // Admin: Users, Roles, Permissions, Crypto, Audit
+  listUsers: async (): Promise<User[]> => {
+    const res = await request<unknown>('/api/v1/admin/users');
+    return unwrapList<User>(res, ['users', 'items', 'data']);
+  },
+  createUser: (payload: {
+    username: string;
+    email?: string;
+    password: string;
+    role_id?: string;
+    role_slug?: string;
+    active?: boolean;
+  }) => request<User>('/api/v1/admin/users', { method: 'POST', body: JSON.stringify(payload) }),
+  updateUser: (
+    id: string,
+    payload: {
+      email?: string;
+      password?: string;
+      role_id?: string;
+      role_slug?: string;
+      active?: boolean;
+    }
+  ) =>
+    request<User>(`/api/v1/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteUser: (id: string) => request<void>(`/api/v1/admin/users/${id}`, { method: 'DELETE' }),
+
+  listRoles: async (): Promise<Role[]> => {
+    const res = await request<unknown>('/api/v1/admin/roles');
+    return unwrapList<Role>(res, ['roles', 'items', 'data']);
+  },
+  createRole: (payload: {
+    slug: string;
+    name: string;
+    description?: string;
+    permissions: string[];
+  }) => request<Role>('/api/v1/admin/roles', { method: 'POST', body: JSON.stringify(payload) }),
+  updateRole: (
+    id: string,
+    payload: { name?: string; description?: string; permissions?: string[] }
+  ) =>
+    request<Role>(`/api/v1/admin/roles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteRole: (id: string) => request<void>(`/api/v1/admin/roles/${id}`, { method: 'DELETE' }),
+  listPermissions: async (): Promise<string[]> => {
+    const res = await request<unknown>('/api/v1/admin/permissions');
+    return unwrapList<string>(res, ['permissions', 'items', 'data']);
+  },
+
+  cryptoStatus: () => request<CryptoStatusResponse>('/api/v1/admin/crypto/status'),
+  rotateCryptoKey: () =>
+    request<Record<string, unknown>>('/api/v1/admin/crypto/rotate', { method: 'POST' }),
+
+  listAuditLogs: async (params?: { limit?: number; status?: string; action?: string }): Promise<AuditLog[]> => {
+    const res = await request<unknown>(`/api/v1/admin/audit${buildQuery(params || {})}`);
+    return unwrapList<AuditLog>(res, ['logs', 'audit', 'items', 'data']);
+  },
+};

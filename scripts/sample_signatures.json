@@ -1,0 +1,75 @@
+[
+  {
+    "name": "AGH Exposed Debug Token Header",
+    "description": "Detects non-production debug headers (X-Debug-Token or X-Staging-Debug) exposed on campus web services.",
+    "category": "staging",
+    "match_mode": "any",
+    "matchers": [
+      {
+        "type": "header",
+        "key": "X-Debug-Token",
+        "pattern": ".+",
+        "regex": true
+      },
+      {
+        "type": "header",
+        "key": "X-Staging-Debug",
+        "pattern": "true",
+        "regex": false
+      }
+    ],
+    "confidence_weight": 0.92,
+    "interesting_points": 25,
+    "tags": ["staging", "debug-header", "cbi-agh-custom"],
+    "enabled": true
+  },
+  {
+    "name": "AGH USOS Test/Staging Portal",
+    "description": "Identifies non-production USOS portals via HTML title or /version staging suffix.",
+    "category": "staging",
+    "match_mode": "any",
+    "matchers": [
+      {
+        "type": "html_body",
+        "pattern": "Staging - USOS Test Portal",
+        "regex": false
+      },
+      {
+        "type": "safe_path",
+        "key": "/version",
+        "pattern": "([0-9]+\\.[0-9]+\\.[0-9]+-[a-z0-9.-]*staging)",
+        "regex": true,
+        "status_codes": [200],
+        "version_group": 1
+      }
+    ],
+    "confidence_weight": 0.90,
+    "interesting_points": 20,
+    "tags": ["usos", "staging", "university"],
+    "enabled": true
+  },
+  {
+    "name": "AGH Exposed Maintenance Admin Panel",
+    "description": "Flags Moodle or portal maintenance pages where /admin becomes publicly reachable (HTTP 200).",
+    "category": "admin_panel",
+    "match_mode": "all",
+    "matchers": [
+      {
+        "type": "html_body",
+        "pattern": "Maintenance - Admin Exposed",
+        "regex": false
+      },
+      {
+        "type": "safe_path",
+        "key": "/admin",
+        "pattern": "Administration",
+        "regex": false,
+        "status_codes": [200]
+      }
+    ],
+    "confidence_weight": 0.95,
+    "interesting_points": 35,
+    "tags": ["admin_panel", "maintenance-leak", "high-priority"],
+    "enabled": true
+  }
+]

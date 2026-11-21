@@ -1,0 +1,586 @@
+export type HostLifecycleState =
+  | 'NEW'
+  | 'ACTIVE'
+  | 'INTERMITTENT'
+  | 'MISSING'
+  | 'INACTIVE'
+  | 'REACTIVATED';
+
+export type ScanStatus =
+  | 'QUEUED'
+  | 'CALIBRATING'
+  | 'RUNNING'
+  | 'PAUSED_WINDOW'
+  | 'PAUSED_USER'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'STOPPED';
+
+export type ScanType = 'ACTIVE' | 'MANUAL' | 'IMPORT_CSV' | 'IMPORT_JSON' | 'PASSIVE';
+
+export type ChunkStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'PAUSED' | 'FAILED';
+
+export interface HealthResponse {
+  status: string;
+  version?: string;
+  db?: string;
+  nmap_available?: boolean;
+  encryption_active?: boolean;
+  key_version?: string;
+}
+
+export interface Role {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  is_system: boolean;
+  permissions: string[];
+  created_at?: string;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  email?: string;
+  role_id?: string;
+  role?: string;
+  role_slug?: string;
+  role_name?: string;
+  permissions: string[];
+  active?: boolean;
+  created_at?: string;
+}
+
+export interface DemoAccount {
+  username: string;
+  password: string;
+  role?: string;
+  role_slug?: string;
+  role_name?: string;
+  label?: string;
+  description?: string;
+  permissions?: string[];
+}
+
+export interface LoginResponse {
+  token: string;
+  user: User;
+}
+
+export interface Target {
+  id: string;
+  value: string;
+  kind: string;
+  label?: string;
+  tags?: string[];
+  enabled: boolean;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface TargetExclusion {
+  id: string;
+  value: string;
+  reason?: string;
+  created_by?: string;
+  created_at?: string;
+}
+
+export interface TargetEstimate {
+  total_ips: number;
+  excluded_ips: number;
+  effective_ips: number;
+  recommended_chunk_size: number;
+  chunk_count: number;
+  estimated_seconds: number;
+  fits_in_window: boolean;
+  estimated_windows?: number;
+}
+
+export interface ScanProfile {
+  id: string;
+  name: string;
+  description?: string;
+  targets: string[];
+  allowed_ports: string;
+  max_rate_pps: number;
+  http_rps: number;
+  concurrency: number;
+  chunk_target_sec: number;
+  schedule_cron?: string;
+  window_enabled: boolean;
+  window_start: string;
+  window_end: string;
+  timezone: string;
+  missing_threshold: number;
+  grace_period_hours: number;
+  retry_unstable_count: number;
+  enable_http_fingerprint: boolean;
+  user_agent?: string;
+  enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScanChunk {
+  id: string;
+  scan_run_id: string;
+  chunk_index: number;
+  targets?: string[];
+  ip_count: number;
+  status: ChunkStatus | string;
+  active_hosts: number;
+  services_found: number;
+  duration_ms: number;
+  error?: string;
+  started_at?: string;
+  finished_at?: string;
+}
+
+export interface ScanRun {
+  id: string;
+  profile_id?: string;
+  name: string;
+  run_type: ScanType | string;
+  status: ScanStatus | string;
+  notes?: string;
+  total_ips: number;
+  scanned_ips: number;
+  total_chunks: number;
+  completed_chunks: number;
+  active_hosts: number;
+  services_found: number;
+  changes_detected: number;
+  hosts_per_sec: number;
+  eta_seconds: number;
+  duration_ms: number;
+  window_paused_count: number;
+  has_raw_nmap_xml?: boolean;
+  triggered_by?: string;
+  started_at: string;
+  finished_at?: string;
+  chunks?: ScanChunk[];
+}
+
+export interface RedirectHop {
+  url: string;
+  status_code: number;
+}
+
+export interface CookieInfo {
+  name: string;
+  value?: string;
+  path?: string;
+  domain?: string;
+  http_only: boolean;
+  secure: boolean;
+  same_site?: string;
+  flags?: string[];
+}
+
+export interface TLSInfo {
+  version: string;
+  cipher_suite?: string;
+  subject_cn: string;
+  issuer: string;
+  sans?: string[];
+  not_before: string;
+  not_after: string;
+  days_to_expiry: number;
+  is_self_signed: boolean;
+  is_expired: boolean;
+  sha256: string;
+}
+
+export interface SafePathHit {
+  path: string;
+  status_code: number;
+  title?: string;
+  snippet?: string;
+}
+
+export interface HTTPFingerprint {
+  url?: string;
+  scheme?: string;
+  status_code: number;
+  title?: string;
+  server_header?: string;
+  headers?: Record<string, string>;
+  missing_sec_headers?: string[];
+  interesting_headers?: string[];
+  cookies?: CookieInfo[];
+  redirect_chain?: RedirectHop[];
+  tls?: TLSInfo;
+  favicon_mmh3?: string;
+  favicon_sha256?: string;
+  meta_generator?: string;
+  footer_version?: string;
+  body_snippet?: string;
+  safe_path_hits?: SafePathHit[];
+  response_time_ms?: number;
+}
+
+export interface TechEvidence {
+  signal_type: string;
+  detail: string;
+  weight: number;
+}
+
+export interface DetectedTechnology {
+  name: string;
+  category: string;
+  version?: string;
+  confidence: number;
+  evidence?: TechEvidence[];
+}
+
+export interface InterestingnessFactor {
+  reason: string;
+  points: number;
+}
+
+export interface TimeSlotStat {
+  slot: string;
+  seen: number;
+  total: number;
+  ratio: number;
+}
+
+export interface Service {
+  id: string;
+  host_id: string;
+  host_ip?: string;
+  port: number;
+  protocol: string;
+  state: string;
+  service_name: string;
+  product?: string;
+  version?: string;
+  cpe?: string;
+  banner?: string;
+  http?: HTTPFingerprint;
+  technologies?: DetectedTechnology[];
+  matched_signatures?: string[];
+  is_admin_panel: boolean;
+  is_staging_env: boolean;
+  is_iot: boolean;
+  cluster_key?: string;
+  interestingness: number;
+  interesting_factors?: InterestingnessFactor[];
+  triage_status: string;
+  notes?: string;
+  tags?: string[];
+  locked_fields?: string[];
+  scanner_observed?: Record<string, unknown>;
+  first_seen?: string;
+  last_seen?: string;
+}
+
+export interface Host {
+  id: string;
+  ip: string;
+  hostname?: string;
+  domains?: string[];
+  os_guess?: string;
+  lifecycle_state: HostLifecycleState | string;
+  environment?: string;
+  owner?: string;
+  notes?: string;
+  tags?: string[];
+  first_seen?: string;
+  last_seen?: string;
+  total_scans_seen: number;
+  total_scans_checked: number;
+  consecutive_misses: number;
+  state_transitions: number;
+  stability_score: number;
+  interestingness: number;
+  interesting_factors?: InterestingnessFactor[];
+  time_of_day_stats?: TimeSlotStat[];
+  locked_fields?: string[];
+  scanner_observed?: Record<string, unknown>;
+  services?: Service[];
+  service_count: number;
+  recent_changes?: ChangeEvent[];
+}
+
+export interface ChangeEvent {
+  id: string;
+  scan_run_id: string;
+  prev_scan_run_id?: string;
+  host_id: string;
+  host_ip: string;
+  service_id?: string;
+  port?: number;
+  event_type: string;
+  severity: 'info' | 'low' | 'medium' | 'high' | string;
+  summary: string;
+  time_slot?: string;
+  is_expected_schedule?: boolean;
+  is_time_anomaly?: boolean;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
+  created_at: string;
+}
+
+export interface SignatureMatcher {
+  type: string;
+  key?: string;
+  pattern: string;
+  regex: boolean;
+  status_codes?: number[];
+  version_group?: number;
+}
+
+export interface Signature {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  match_mode: 'any' | 'all' | string;
+  matchers: SignatureMatcher[];
+  confidence_weight: number;
+  interesting_points: number;
+  tags?: string[];
+  is_builtin: boolean;
+  enabled: boolean;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SignatureValidationResult {
+  valid: boolean;
+  errors?: string[];
+  warnings?: string[];
+  reason?: string;
+}
+
+export interface SignatureTestMatch {
+  host_id?: string;
+  host_ip: string;
+  service_id?: string;
+  port: number;
+  service_name?: string;
+  http_title?: string;
+  version?: string;
+  confidence?: number;
+  matched_rules?: string[];
+  evidence?: TechEvidence[];
+}
+
+export interface SignatureTestResult {
+  matches: SignatureTestMatch[];
+  tested_services?: number;
+  total_matches?: number;
+}
+
+export interface AuditLog {
+  id: string;
+  user_id?: string;
+  username: string;
+  role_slug: string;
+  action: string;
+  resource: string;
+  resource_id?: string;
+  status: 'success' | 'denied' | 'error' | string;
+  details?: Record<string, unknown>;
+  ip_address?: string;
+  created_at: string;
+}
+
+export interface DefectDojoConfig {
+  url: string;
+  api_token?: string;
+  has_api_token?: boolean;
+  product_id: number;
+  engagement_id: number;
+  verify_tls: boolean;
+  auto_push_nmap: boolean;
+}
+
+export interface DefectDojoExport {
+  id: string;
+  export_type: string;
+  source_id: string;
+  title: string;
+  external_id?: string;
+  external_url?: string;
+  status: string;
+  error_message?: string;
+  exported_by: string;
+  created_at: string;
+}
+
+export interface LiveEvent {
+  type: string;
+  scan_run_id?: string;
+  timestamp: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ServiceCluster {
+  cluster_key: string;
+  group_by: string;
+  label: string;
+  count: number;
+  host_ips: string[];
+  service_ids: string[];
+  max_interestingness: number;
+  sample_techs?: string[];
+}
+
+export interface GraphNode {
+  id: string;
+  kind: 'scope' | 'host' | 'service' | 'technology' | 'signature' | string;
+  label: string;
+  state?: string;
+  interestingness?: number;
+  meta?: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+}
+
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface DashboardTimelinePoint {
+  scan_id?: string;
+  label?: string;
+  name?: string;
+  started_at?: string;
+  timestamp?: string;
+  active_hosts: number;
+  services_found?: number;
+  services?: number;
+  changes_detected?: number;
+  changes?: number;
+}
+
+export interface DashboardSummary {
+  kpis?: {
+    total_ips?: number;
+    scope_ips?: number;
+    total_hosts?: number;
+    active_hosts?: number;
+    unstable_hosts?: number;
+    total_services?: number;
+    services_found?: number;
+    recent_changes?: number;
+    changes_last_scan?: number;
+    interesting_findings?: number;
+  };
+  total_ips?: number;
+  scope_ips?: number;
+  total_hosts?: number;
+  active_hosts?: number;
+  unstable_hosts?: number;
+  total_services?: number;
+  services_found?: number;
+  recent_changes_count?: number;
+  changes_last_scan?: number;
+  interesting_findings_count?: number;
+  active_scan?: ScanRun | null;
+  timeline?: DashboardTimelinePoint[];
+  top_findings?: Service[];
+  top_interesting?: Service[];
+  lifecycle_breakdown?: Record<string, number>;
+  recent_changes?: ChangeEvent[];
+}
+
+export interface ChangedServiceDiff {
+  id?: string;
+  host_id: string;
+  host_ip: string;
+  port?: number;
+  protocol?: string;
+  severity?: string;
+  summary: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  time_slot?: string;
+  is_time_anomaly?: boolean;
+  is_expected_schedule?: boolean;
+  acknowledged_by?: string;
+  acknowledged_at?: string;
+}
+
+export interface ScanDiffResponse {
+  from_scan?: ScanRun;
+  to_scan?: ScanRun;
+  from_scan_id?: string;
+  to_scan_id?: string;
+  new_hosts?: Host[];
+  missing_hosts?: Host[];
+  new_services?: Service[];
+  closed_services?: Service[];
+  changed_services?: ChangedServiceDiff[];
+  time_anomalies?: ChangeEvent[];
+  changes?: ChangeEvent[];
+  summary?: {
+    new_hosts?: number;
+    missing_hosts?: number;
+    new_services?: number;
+    closed_services?: number;
+    changed_services?: number;
+    time_anomalies?: number;
+    total_changes?: number;
+  };
+}
+
+export interface CryptoStatusResponse {
+  active?: boolean;
+  encryption_active?: boolean;
+  algorithm?: string;
+  blind_index?: string;
+  key_version?: string;
+  active_kid?: string;
+  rotated_at?: string;
+  encrypted_tables?: string[];
+  sample?: {
+    table?: string;
+    column?: string;
+    record_id?: string;
+    raw_ciphertext?: string;
+    ciphertext?: string;
+    decrypted_value?: string;
+    plaintext?: string;
+    aad?: string;
+    blind_index?: string;
+  };
+  samples?: Array<{
+    table?: string;
+    column?: string;
+    record_id?: string;
+    raw_ciphertext?: string;
+    ciphertext?: string;
+    decrypted_value?: string;
+    plaintext?: string;
+    aad?: string;
+    blind_index?: string;
+  }>;
+}
+
+export interface ServiceObservation {
+  id?: string;
+  scan_run_id?: string;
+  observed_at?: string;
+  created_at?: string;
+  port?: number;
+  protocol?: string;
+  service_name?: string;
+  product?: string;
+  version?: string;
+  banner?: string;
+  http?: HTTPFingerprint;
+}

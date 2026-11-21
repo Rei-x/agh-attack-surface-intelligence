@@ -1,0 +1,88 @@
+{
+  "scan_name": "CBI AGH Passive Telemetry Import (Sample)",
+  "observations": [
+    {
+      "ip": "198.51.100.20",
+      "hostname": "sso-stage.agh.edu.pl",
+      "domains": ["sso-stage.agh.edu.pl"],
+      "os_guess": "Ubuntu Linux 24.04",
+      "is_alive": true,
+      "environment": "staging",
+      "tags": ["sso", "keycloak", "staging"],
+      "notes": "Imported from passive reverse-proxy telemetry",
+      "services": [
+        {
+          "port": 443,
+          "protocol": "tcp",
+          "state": "open",
+          "service_name": "https",
+          "product": "Keycloak",
+          "version": "24.0.2",
+          "banner": "Keycloak/24.0.2",
+          "http": {
+            "url": "https://sso-stage.agh.edu.pl/",
+            "scheme": "https",
+            "status_code": 200,
+            "title": "Sign in to AGH SSO Staging - Keycloak",
+            "server_header": "Keycloak/24.0.2",
+            "headers": {
+              "Server": "Keycloak/24.0.2",
+              "X-Environment": "staging",
+              "X-Debug-Mode": "enabled"
+            },
+            "cookies": [
+              {
+                "name": "AUTH_SESSION_ID",
+                "path": "/realms/agh/",
+                "http_only": true,
+                "secure": false,
+                "same_site": "Lax"
+              }
+            ]
+          },
+          "tags": ["identity", "staging"]
+        }
+      ]
+    },
+    {
+      "ip": "198.51.100.21",
+      "hostname": "monitor.cbi.agh.edu.pl",
+      "domains": ["monitor.cbi.agh.edu.pl"],
+      "os_guess": "Debian GNU/Linux 12",
+      "is_alive": true,
+      "environment": "prod",
+      "tags": ["monitoring", "zabbix"],
+      "notes": "Imported from CMDB JSON snapshot",
+      "services": [
+        {
+          "port": 80,
+          "protocol": "tcp",
+          "state": "open",
+          "service_name": "http",
+          "product": "Zabbix",
+          "version": "6.4.12",
+          "http": {
+            "url": "http://monitor.cbi.agh.edu.pl/",
+            "scheme": "http",
+            "status_code": 200,
+            "title": "Zabbix 6.4 — AGH Campus Monitoring",
+            "server_header": "nginx/1.24.0",
+            "headers": {
+              "Server": "nginx/1.24.0",
+              "X-Powered-By": "PHP/8.1.27"
+            },
+            "cookies": [
+              {
+                "name": "zbx_session",
+                "path": "/",
+                "http_only": true,
+                "secure": false
+              }
+            ]
+          },
+          "tags": ["monitoring", "admin_panel"]
+        }
+      ]
+    }
+  ]
+}

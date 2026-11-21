@@ -1,0 +1,399 @@
+package api
+
+import (
+	"context"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+)
+
+// --- Targets & Exclusions ---
+
+func (s *Server) handleListTargets(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListTargets(r.Context())
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"targets": items})
+}
+
+func (s *Server) handleCreateTarget(w http.ResponseWriter, r *http.Request) {
+	var t domain.Target
+	if err := decodeJSON(r, &t); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	t.Value = strings.TrimSpace(t.Value)
+	if t.Value == "" {
+		writeErr(w, http.StatusBadRequest, "target value is required")
+		return
+	}
+	if t.Kind == "" {
+		t.Kind = inferTargetKind(t.Value)
+	}
+	t.Enabled = true
+	t.CreatedBy = currentUsername(r)
+	if err := s.store.CreateTarget(r.Context(), &t); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, t)
+}
+
+func (s *Server) handleDeleteTarget(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteTarget(r.Context(), r.PathValue("id")); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleEstimateTargets(w http.ResponseWriter, r *http.Request) {
+	var raw struct {
+		EstimateRequest
+		AllowedPorts string `json:"allowed_ports"`
+	}
+	if err := decodeJSON(r, &raw); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req := raw.EstimateRequest
+	if req.Ports == "" && raw.AllowedPorts != "" {
+		req.Ports = raw.AllowedPorts
+	}
+	// Merge stored exclusions if caller didn't supply explicit exclusions
+	if len(req.Exclusions) == 0 {
+		if exList, err := s.store.ListExclusions(r.Context()); err == nil {
+			for _, ex := range exList {
+				req.Exclusions = append(req.Exclusions, ex.Value)
+			}
+		}
+	}
+	est, err := s.runner.EstimateTargets(r.Context(), req)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, est)
+}
+
+func (s *Server) handleListExclusions(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListExclusions(r.Context())
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"exclusions": items})
+}
+
+func (s *Server) handleCreateExclusion(w http.ResponseWriter, r *http.Request) {
+	var ex domain.TargetExclusion
+	if err := decodeJSON(r, &ex); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	ex.Value = strings.TrimSpace(ex.Value)
+	if ex.Value == "" {
+		writeErr(w, http.StatusBadRequest, "exclusion value is required")
+		return
+	}
+	ex.CreatedBy = currentUsername(r)
+	if err := s.store.CreateExclusion(r.Context(), &ex); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, ex)
+}
+
+func (s *Server) handleDeleteExclusion(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteExclusion(r.Context(), r.PathValue("id")); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Profiles ---
+
+func (s *Server) handleListProfiles(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListProfiles(r.Context())
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"profiles": items})
+}
+
+func (s *Server) handleCreateProfile(w http.ResponseWriter, r *http.Request) {
+	var p domain.ScanProfile
+	if err := decodeJSON(r, &p); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if strings.TrimSpace(p.Name) == "" {
+		writeErr(w, http.StatusBadRequest, "profile name is required")
+		return
+	}
+	applyProfileDefaults(&p)
+	if err := s.store.CreateProfile(r.Context(), &p); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, p)
+}
+
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	var p domain.ScanProfile
+	if err := decodeJSON(r, &p); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	p.ID = r.PathValue("id")
+	applyProfileDefaults(&p)
+	if err := s.store.UpdateProfile(r.Context(), &p); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteProfile(r.Context(), r.PathValue("id")); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Scan Runs ---
+
+func (s *Server) handleListScans(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListScanRuns(r.Context(), queryInt(r, "limit", 100))
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"scans": items})
+}
+
+func (s *Server) handleGetScan(w http.ResponseWriter, r *http.Request) {
+	run, err := s.store.GetScanRun(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ProfileID    string   `json:"profile_id"`
+		Name         string   `json:"name"`
+		Notes        string   `json:"notes"`
+		Targets      []string `json:"targets"`
+		AllowedPorts string   `json:"allowed_ports"`
+		MaxRatePPS   int      `json:"max_rate_pps"`
+		Concurrency  int      `json:"concurrency"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	var profile *domain.ScanProfile
+	var err error
+	if req.ProfileID != "" {
+		profile, err = s.store.GetProfile(r.Context(), req.ProfileID)
+		if err != nil {
+			writeStoreErr(w, err)
+			return
+		}
+	} else {
+		profile = &domain.ScanProfile{
+			Name:                  nonEmptyStr(req.Name, "Ad-hoc Scan"),
+			Targets:               req.Targets,
+			AllowedPorts:          req.AllowedPorts,
+			MaxRatePPS:            req.MaxRatePPS,
+			Concurrency:           req.Concurrency,
+			EnableHTTPFingerprint: true,
+			Enabled:               true,
+		}
+		applyProfileDefaults(profile)
+	}
+	if len(profile.Targets) == 0 {
+		writeErr(w, http.StatusBadRequest, "no targets specified in profile or request")
+		return
+	}
+
+	run := &domain.ScanRun{
+		ID:          db.NewID(),
+		ProfileID:   profile.ID,
+		Name:        nonEmptyStr(req.Name, profile.Name+" "+time.Now().UTC().Format("2006-01-02 15:04")),
+		RunType:     domain.ScanTypeActive,
+		Status:      domain.ScanStatusQueued,
+		Notes:       req.Notes,
+		TriggeredBy: currentUsername(r),
+		StartedAt:   time.Now().UTC(),
+	}
+	if err := s.store.CreateScanRun(r.Context(), run); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+
+	exclusions, _ := s.store.ListExclusions(r.Context())
+	bgCtx := context.Background()
+	go func() {
+		if err := s.runner.StartScan(bgCtx, run, profile, exclusions); err != nil {
+			now := time.Now().UTC()
+			run.Status = domain.ScanStatusFailed
+			run.FinishedAt = &now
+			_ = s.store.UpdateScanRun(bgCtx, run)
+		}
+	}()
+
+	writeJSON(w, http.StatusAccepted, run)
+}
+
+func (s *Server) handleUpdateScanMeta(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name  string `json:"name"`
+		Notes string `json:"notes"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	updated, err := s.store.UpdateScanRunMeta(r.Context(), r.PathValue("id"), req.Name, req.Notes)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) handlePauseScan(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.runner.PauseScan(r.Context(), id); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	run, err := s.store.GetScanRun(r.Context(), id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+func (s *Server) handleResumeScan(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.runner.ResumeScan(r.Context(), id); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	run, err := s.store.GetScanRun(r.Context(), id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+func (s *Server) handleStopScan(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.runner.StopScan(r.Context(), id); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	run, err := s.store.GetScanRun(r.Context(), id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+func (s *Server) handleDeleteScan(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteScanRun(r.Context(), r.PathValue("id")); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleScanDiff(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	fromID := strings.TrimSpace(r.URL.Query().Get("from"))
+	toID := strings.TrimSpace(r.URL.Query().Get("to"))
+	if fromID == "" || toID == "" {
+		writeErr(w, http.StatusBadRequest, "from and to scan IDs are required")
+		return
+	}
+	fromHosts, err := s.store.GetScanSnapshot(ctx, fromID)
+	if err != nil {
+		fromHosts = []domain.Host{}
+	}
+	toHosts, err := s.store.GetScanSnapshot(ctx, toID)
+	if err != nil {
+		toHosts, _, _ = s.store.ListHosts(ctx, db.HostFilter{})
+	}
+	toChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{ScanRunID: toID, Limit: 500})
+	diff := ComputeScanDiff(fromID, toID, fromHosts, toHosts, toChanges)
+	writeJSON(w, http.StatusOK, diff)
+}
+
+func inferTargetKind(v string) string {
+	if strings.Contains(v, "/") {
+		return "cidr"
+	}
+	if strings.Contains(v, "-") {
+		return "range"
+	}
+	for _, ch := range v {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+			return "domain"
+		}
+	}
+	return "ip"
+}
+
+func applyProfileDefaults(p *domain.ScanProfile) {
+	if p.AllowedPorts == "" {
+		p.AllowedPorts = "22,80,443,8080,8443"
+	}
+	if p.MaxRatePPS <= 0 {
+		p.MaxRatePPS = 500
+	}
+	if p.HTTPRPS <= 0 {
+		p.HTTPRPS = 25
+	}
+	if p.Concurrency <= 0 {
+		p.Concurrency = 32
+	}
+	if p.ChunkTargetSec <= 0 {
+		p.ChunkTargetSec = 60
+	}
+	if p.Timezone == "" {
+		p.Timezone = "Europe/Warsaw"
+	}
+	if p.MissingThreshold <= 0 {
+		p.MissingThreshold = 2
+	}
+	if p.GracePeriodHours <= 0 {
+		p.GracePeriodHours = 24
+	}
+	if p.UserAgent == "" {
+		p.UserAgent = "AegisASI-CBI-AGH/1.0"
+	}
+}
+
+func nonEmptyStr(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return strings.TrimSpace(a)
+	}
+	return b
+}

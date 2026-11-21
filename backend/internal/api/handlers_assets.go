@@ -1,0 +1,209 @@
+package api
+
+import (
+	"net/http"
+	"strings"
+
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+)
+
+func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filter := db.HostFilter{
+		Query:    q.Get("q"),
+		State:    q.Get("state"),
+		Tag:      q.Get("tag"),
+		MinScore: queryInt(r, "min_score", 0),
+		Env:      q.Get("env"),
+		HasAdmin: queryBool(r, "has_admin") || queryBool(r, "admin_only"),
+		Page:     queryInt(r, "page", 1),
+		Limit:    queryInt(r, "limit", 0),
+	}
+	hosts, total, err := s.store.ListHosts(r.Context(), filter)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"hosts": hosts,
+		"total": total,
+		"page":  filter.Page,
+	})
+}
+
+func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	host, err := s.store.GetHost(ctx, r.PathValue("id"))
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	allChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{Limit: 100})
+	hostChanges := make([]domain.ChangeEvent, 0)
+	for _, ev := range allChanges {
+		if ev.HostID == host.ID {
+			hostChanges = append(hostChanges, ev)
+			if len(hostChanges) >= 20 {
+				break
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		*domain.Host
+		RecentChanges []domain.ChangeEvent `json:"recent_changes"`
+	}{
+		Host:          host,
+		RecentChanges: hostChanges,
+	})
+}
+
+func (s *Server) handlePatchHostOverrides(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if _, err := s.store.GetHost(ctx, id); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+
+	var body map[string]any
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	var unlock []string
+	if rawUnlock, ok := body["unlock_fields"].([]any); ok {
+		for _, u := range rawUnlock {
+			if s, ok := u.(string); ok {
+				unlock = append(unlock, s)
+			}
+		}
+	}
+	patch := make(map[string]any)
+	for k, v := range body {
+		if db.AllowedHostOverrideFields[k] {
+			patch[k] = v
+		}
+	}
+	if err := s.store.PatchOverrides(ctx, "host", id, patch, unlock, currentUsername(r)); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	updated, err := s.store.GetHost(ctx, id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteHost(r.Context(), r.PathValue("id")); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filter := db.ServiceFilter{
+		HostID:   q.Get("host_id"),
+		Query:    q.Get("q"),
+		Port:     queryInt(r, "port", 0),
+		Tag:      q.Get("tag"),
+		MinScore: queryInt(r, "min_score", 0),
+		HasAdmin: queryBool(r, "has_admin") || queryBool(r, "admin_only"),
+		State:    q.Get("state"),
+	}
+	svcs, err := s.store.ListServices(r.Context(), filter)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	triage := strings.TrimSpace(q.Get("triage_status"))
+	if triage != "" {
+		filtered := make([]domain.Service, 0, len(svcs))
+		for _, svc := range svcs {
+			if strings.EqualFold(svc.TriageStatus, triage) {
+				filtered = append(filtered, svc)
+			}
+		}
+		svcs = filtered
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"services": svcs, "total": len(svcs)})
+}
+
+func (s *Server) handlePatchServiceOverrides(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if _, err := s.store.GetService(ctx, id); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+
+	var body map[string]any
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	var unlock []string
+	if rawUnlock, ok := body["unlock_fields"].([]any); ok {
+		for _, u := range rawUnlock {
+			if s, ok := u.(string); ok {
+				unlock = append(unlock, s)
+			}
+		}
+	}
+	patch := make(map[string]any)
+	for k, v := range body {
+		if db.AllowedServiceOverrideFields[k] {
+			patch[k] = v
+		}
+	}
+	if err := s.store.PatchOverrides(ctx, "service", id, patch, unlock, currentUsername(r)); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	updated, err := s.store.GetService(ctx, id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) handleServiceObservations(w http.ResponseWriter, r *http.Request) {
+	obs, err := s.store.ListServiceObservations(r.Context(), r.PathValue("id"), queryInt(r, "limit", 50))
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"observations": obs})
+}
+
+func (s *Server) handleListChanges(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	events, err := s.store.ListChangeEvents(r.Context(), db.ChangeFilter{
+		ScanRunID:   q.Get("scan_id"),
+		Severity:    q.Get("severity"),
+		EventType:   q.Get("type"),
+		AnomalyOnly: queryBool(r, "anomaly_only"),
+		Limit:       queryInt(r, "limit", 200),
+	})
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"changes": events})
+}
+
+func (s *Server) handleAcknowledgeChange(w http.ResponseWriter, r *http.Request) {
+	ev, err := s.store.AcknowledgeChange(r.Context(), r.PathValue("id"), currentUsername(r))
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ev)
+}

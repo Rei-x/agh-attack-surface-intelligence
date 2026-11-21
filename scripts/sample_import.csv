@@ -1,0 +1,5 @@
+ip,hostname,port,protocol,service_name,product,version,http_title,status_code,server_header,environment,tags,notes
+198.51.100.10,repo.wi.agh.edu.pl,443,tcp,https,GitLab CE,16.9.2,AGH Faculty GitLab,200,nginx/1.24.0,prod,git;internal;wi-agh,Imported from faculty asset inventory
+198.51.100.11,dev-api.wi.agh.edu.pl,8080,tcp,http,Spring Boot,3.2.1,Swagger UI - Dev API,200,Apache-Coyote/1.1,dev,staging;api;spring,Development API endpoint discovered via passive DNS
+198.51.100.12,cam-gate-a1.agh.edu.pl,80,tcp,http,Hikvision Web,5.5.82,Hikvision Network Camera,200,App-webs/,prod,iot;camera;building-a1,Campus gate camera on isolated VLAN
+198.51.100.13,dbadmin.test.agh.edu.pl,80,tcp,http,phpMyAdmin,5.2.1,phpMyAdmin 5.2.1 - Test,200,Apache/2.4.57,test,admin_panel;database;test,Legacy test database admin tool flagged for review

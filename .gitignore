@@ -3,8 +3,8 @@ bin/
 dist/
 *.exe
 *.out
-aegis-asi
-server
+/aegis-asi
+/server
 
 # Node / Frontend
 node_modules/
