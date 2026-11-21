@@ -411,6 +411,10 @@ type Service struct {
 	IsAdminPanel       bool                    `json:"is_admin_panel"`
 	IsStagingEnv       bool                    `json:"is_staging_env"`
 	IsIoT              bool                    `json:"is_iot"`
+	// Outdated / KnownVulns are derived from product/version evidence by internal/eol on
+	// ingest and on read (not stored).
+	Outdated           []OutdatedComponent     `json:"outdated,omitempty"`
+	KnownVulns         []VulnHint              `json:"known_vulns,omitempty"`
 	ClusterKey         string                  `json:"cluster_key,omitempty"`
 	Interestingness    int                     `json:"interestingness"`
 	InterestingFactors []InterestingnessFactor `json:"interesting_factors,omitempty"`
