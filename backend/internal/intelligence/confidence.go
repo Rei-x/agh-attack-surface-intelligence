@@ -350,7 +350,13 @@ func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *s
 		sigNames = append(sigNames, m.Signature.Name)
 		switch m.Signature.Category {
 		case "admin_panel":
-			svc.IsAdminPanel = true
+			// Built-in admin signatures only contribute identity; whether the service
+			// really exposes a console is decided by AdminPanelEvidence below (a database
+			// port, a generic login or an /admin redirect is not an admin panel).
+			// Analyst-written signatures keep their declared meaning.
+			if !m.Signature.IsBuiltin {
+				svc.IsAdminPanel = true
+			}
 		case "staging":
 			svc.IsStagingEnv = true
 		case "iot":
@@ -359,14 +365,15 @@ func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *s
 	}
 	svc.MatchedSignatures = sigNames
 
-	// Also mark admin/staging from HTTP safe paths or title heuristics.
+	if reason := AdminPanelEvidence(obs, svc.Technologies); reason != "" {
+		svc.IsAdminPanel = true
+		svc.Technologies = addFlagEvidence(svc.Technologies, "Admin Panel / Management Console", "admin_panel", reason)
+	}
+	if reason := StagingEvidence(obs); reason != "" {
+		svc.IsStagingEnv = true
+		svc.Technologies = addFlagEvidence(svc.Technologies, "Staging / Dev / Test Environment", "staging", reason)
+	}
 	if svc.HTTP != nil {
-		for _, hit := range svc.HTTP.SafePathHits {
-			p := strings.ToLower(hit.Path)
-			if p == "/admin" || p == "/wp-login.php" || p == "/phpmyadmin" {
-				svc.IsAdminPanel = true
-			}
-		}
 		tl := strings.ToLower(svc.HTTP.Title + " " + svc.HTTP.URL)
 		if strings.Contains(tl, "staging") || strings.Contains(tl, "dev.") || strings.Contains(tl, "test.") {
 			svc.IsStagingEnv = true
@@ -379,6 +386,27 @@ func EnrichService(svc *domain.Service, obs domain.ObservedService, sigEngine *s
 	svc.InterestingFactors = factors
 
 	return matches
+}
+
+// addFlagEvidence records why a flag was raised as evidence on the matching generic
+// finding (creating it when no signature produced one), so the UI can show the reason.
+func addFlagEvidence(techs []domain.DetectedTechnology, name, category, reason string) []domain.DetectedTechnology {
+	ev := domain.TechEvidence{SignalType: "html", Detail: reason, Weight: 0.8}
+	for i := range techs {
+		if strings.EqualFold(techs[i].Name, name) {
+			for _, e := range techs[i].Evidence {
+				if e.Detail == reason {
+					return techs
+				}
+			}
+			techs[i].Evidence = append(techs[i].Evidence, ev)
+			return techs
+		}
+	}
+	conf, expl := FuseConfidenceExplained([]domain.TechEvidence{ev}, 1, false)
+	return append(techs, domain.DetectedTechnology{
+		Name: name, Category: category, Confidence: conf, Evidence: []domain.TechEvidence{ev}, Explanation: expl,
+	})
 }
 
 func canonicalTech(raw, category string) (string, string) {

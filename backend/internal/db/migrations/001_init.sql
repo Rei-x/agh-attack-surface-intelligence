@@ -290,6 +290,10 @@ ALTER TABLE scan_chunks ADD COLUMN IF NOT EXISTS nmap_commands JSONB NOT NULL DE
 ALTER TABLE scan_chunks ADD COLUMN IF NOT EXISTS max_rate_pps INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE scan_chunks ADD COLUMN IF NOT EXISTS worker INTEGER NOT NULL DEFAULT 0;
 
+-- Provenance of the identified service product / version (nmap, cpe, http-server-header, ...).
+ALTER TABLE services ADD COLUMN IF NOT EXISTS product_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE services ADD COLUMN IF NOT EXISTS version_source TEXT NOT NULL DEFAULT '';
+
 -- Recurring scan scheduler state (survives restarts; one row per profile).
 CREATE TABLE IF NOT EXISTS scan_schedule_state (
     profile_id TEXT PRIMARY KEY,

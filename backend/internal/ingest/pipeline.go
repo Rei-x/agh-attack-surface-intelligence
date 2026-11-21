@@ -312,6 +312,12 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 
 			analysis := p.analyzer.AnalyzeService(osvc, customSigs)
 			prevSvc, existed := prevSvcMap[k]
+			product, version := osvc.Product, osvc.Version
+			productSource, versionSource := "", ""
+			if analysis.Product != "" {
+				product, version = analysis.Product, analysis.Version
+				productSource, versionSource = analysis.ProductSource, analysis.VersionSource
+			}
 
 			svcModel := &domain.Service{
 				HostID:             savedHost.ID,
@@ -320,8 +326,10 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 				Protocol:           proto,
 				State:              state,
 				ServiceName:        nonEmpty(osvc.ServiceName, inferServiceName(osvc.Port)),
-				Product:            osvc.Product,
-				Version:            osvc.Version,
+				Product:            product,
+				Version:            version,
+				ProductSource:      productSource,
+				VersionSource:      versionSource,
 				CPE:                osvc.CPE,
 				Banner:             osvc.Banner,
 				HTTP:               osvc.HTTP,
@@ -396,8 +404,8 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 					After: map[string]any{
 						"port":    osvc.Port,
 						"service": svcModel.ServiceName,
-						"product": osvc.Product,
-						"version": osvc.Version,
+						"product": product,
+						"version": version,
 						"title":   httpTitle(osvc.HTTP),
 					},
 				})

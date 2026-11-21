@@ -617,8 +617,10 @@ func BuiltinSignatures() []domain.Signature {
 			InterestingPts:   18,
 			Tags:             []string{"iot", "nas", "storage", "synology"},
 			Matchers: []domain.SignatureMatcher{
-				{Type: "title", Pattern: `(?i)Synology DiskStation|Synology RackStation`, Regex: true},
-				{Type: "html_body", Pattern: `(?i)SYNO\.SDS|webman/index\.cgi`, Regex: true},
+				// DSM 6: "<HOST> - Synology DiskStation"; DSM 7: "<HOST> - Synology NAS"
+				{Type: "title", Pattern: `(?i)Synology (?:DiskStation|RackStation|NAS)\b`, Regex: true},
+				// login page loads webman/sso/synoSSO-1.0.0.js and SYNO.* webapi modules
+				{Type: "html_body", Pattern: `(?i)SYNO\.SDS|SYNO\.Core\.|webman/index\.cgi|webman/sso/synoSSO`, Regex: true},
 			},
 		},
 		{
@@ -631,7 +633,8 @@ func BuiltinSignatures() []domain.Signature {
 			InterestingPts:   28,
 			Tags:             []string{"iot", "bmc", "management", "idrac", "ilo"},
 			Matchers: []domain.SignatureMatcher{
-				{Type: "title", Pattern: `(?i)Integrated Dell Remote Access Controller|iDRAC\d*|HP Integrated Lights-Out|iLO \d`, Regex: true},
+				{Type: "title", Pattern: `(?i)Integrated (?:Dell )?Remote Access Controller|iDRAC\d*|HP Integrated Lights-Out|iLO \d`, Regex: true},
+				{Type: "html_body", Pattern: `(?i)Integrated Dell Remote Access Controller|Integrated Lights-Out`, Regex: true},
 				{Type: "tls_cert", Pattern: `(?i)iDRAC|Default iLO|HP-iLO`, Regex: true},
 			},
 		},
@@ -709,14 +712,15 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"admin", "management"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)\b(admin(?:istration|istrator)?|management console|control panel|backoffice|cpanel|plesk|webmin)\b`, Regex: true},
-				{Type: "safe_path", Key: "/admin", Pattern: "/admin", StatusCodes: []int{200, 301, 302, 401, 403}},
+				// 200/401 only: nearly every app redirects /admin to its generic login, and 403 is a closed door.
+				{Type: "safe_path", Key: "/admin", Pattern: "/admin", StatusCodes: []int{200, 401}},
 			},
 		},
 		{
 			ID:               "builtin-admin-login-portal",
 			Name:             "Authentication / Login Portal",
-			Description:      "Detects exposed /login endpoints or authentication portals.",
-			Category:         "admin_panel",
+			Description:      "Detects exposed /login endpoints or authentication portals (end-user logins are not admin panels).",
+			Category:         "custom",
 			MatchMode:        "any",
 			ConfidenceWeight: 0.72,
 			InterestingPts:   12,
@@ -730,7 +734,7 @@ func BuiltinSignatures() []domain.Signature {
 			ID:               "builtin-admin-db-exposed",
 			Name:             "Exposed Database Service",
 			Description:      "Detects directly exposed database ports (MySQL, PostgreSQL, Redis, MongoDB, Elasticsearch).",
-			Category:         "admin_panel",
+			Category:         "custom",
 			MatchMode:        "any",
 			ConfidenceWeight: 0.86,
 			InterestingPts:   24,
