@@ -9,7 +9,19 @@
 #   AEGIS_DOWNLOAD_BASE  alternative base URL holding aegis-<os>-<arch> + checksums.txt (mirror)
 #
 # The script verifies the SHA-256 checksum from checksums.txt and never uses sudo.
+#
+# Remote scanning agent (Linux + systemd, run as root): install the binary and the
+# aegis-agent service in one go. Arguments after --agent go to `aegis agent install`:
+#
+#   curl -fsSL .../install.sh | sudo sh -s -- --agent --server https://aegis.example.edu \
+#        --token aet_... [--name wydzial-x] [--allow-cidr 10.20.0.0/16]
 set -eu
+
+AGENT=0
+if [ "${1:-}" = "--agent" ]; then
+  AGENT=1
+  shift
+fi
 
 REPO="Rei-x/agh-attack-surface-intelligence"
 VERSION="${AEGIS_VERSION:-latest}"
@@ -95,6 +107,13 @@ chmod 0755 "$tmp/$asset"
 mv -f "$tmp/$asset" "$target"
 say "installed $target"
 "$target" version || true
+
+if [ "$AGENT" = 1 ]; then
+  [ "$os" = linux ] || die "--agent installs a systemd service (Linux); elsewhere run: aegis agent --server ... --token ..."
+  [ "$(id -u)" = 0 ] || die "--agent must run as root (pipe into: sudo sh -s -- --agent ...)"
+  command -v nmap >/dev/null 2>&1 || say "note: nmap not found - the agent uses its built-in TCP connect scanner (apt install nmap for richer fingerprints)"
+  exec "$target" agent install "$@"
+fi
 
 case ":$PATH:" in
   *":$dir:"*) ;;

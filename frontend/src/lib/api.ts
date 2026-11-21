@@ -1,4 +1,7 @@
 import type {
+  Agent,
+  AgentEnrollToken,
+  CreatedAgentToken,
   AuditLog,
   ChangeEvent,
   CryptoStatusResponse,
@@ -548,6 +551,22 @@ export const api = {
     const res = await request<unknown>('/api/v1/integrations/defectdojo/history');
     return unwrapList<DefectDojoExport>(res, ['exports', 'history', 'items', 'data']);
   },
+
+  // Remote scanning agents
+  listAgents: async (): Promise<{ agents: Agent[]; offline_after_sec: number }> => {
+    const res = await request<{ agents?: Agent[]; offline_after_sec?: number }>('/api/v1/agents');
+    return { agents: res?.agents ?? [], offline_after_sec: res?.offline_after_sec ?? 90 };
+  },
+  updateAgent: (id: string, payload: { name?: string; site?: string; disabled?: boolean }) =>
+    request<Agent>(`/api/v1/agents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteAgent: (id: string) => request<void>(`/api/v1/agents/${id}`, { method: 'DELETE' }),
+  listAgentTokens: async (): Promise<AgentEnrollToken[]> => {
+    const res = await request<unknown>('/api/v1/agents/tokens');
+    return unwrapList<AgentEnrollToken>(res, ['tokens', 'items']);
+  },
+  createAgentToken: (payload: { name?: string; site?: string; ttl_hours?: number }) =>
+    request<CreatedAgentToken>('/api/v1/agents/tokens', { method: 'POST', body: JSON.stringify(payload) }),
+  revokeAgentToken: (id: string) => request<void>(`/api/v1/agents/tokens/${id}`, { method: 'DELETE' }),
 
   // Admin: Users, Roles, Permissions, Crypto, Audit
   listUsers: async (): Promise<User[]> => {

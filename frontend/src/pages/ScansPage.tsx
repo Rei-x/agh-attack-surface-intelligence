@@ -32,6 +32,7 @@ import {
 } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { TagRulesPanel } from '@/components/TagRulesPanel';
+import { AgentsPanel } from '@/components/AgentsPanel';
 import { Button } from '@/components/ui/button';
 import { ChunkMatrix } from '@/components/ChunkMatrix';
 import { NmapCommandsPanel } from '@/components/NmapCommandsPanel';
@@ -63,6 +64,7 @@ import {
   StatStrip,
 } from '@/components/common';
 import type {
+  Agent,
   ProfileSchedule,
   ScanChunk,
   ScanProfile,
@@ -72,7 +74,9 @@ import type {
   TargetExclusion,
 } from '@/types/api';
 
-type ScansTab = 'runs' | 'profiles' | 'scopes' | 'ingest';
+type ScansTab = 'runs' | 'profiles' | 'scopes' | 'ingest' | 'agents';
+
+const LOCAL_AGENT = '__local__';
 
 const ALL = '__all__';
 
@@ -134,6 +138,7 @@ export function ScansPage() {
   const [targets, setTargets] = useState<Target[]>([]);
   const [exclusions, setExclusions] = useState<TargetExclusion[]>([]);
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [scans, setScans] = useState<ScanRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [launchProfileId, setLaunchProfileId] = useState('');
@@ -174,6 +179,7 @@ export function ScansPage() {
     grace_period_hours: 24,
     retry_unstable_count: 2,
     enable_http_fingerprint: true,
+    agent_id: LOCAL_AGENT,
   });
 
   // Coverage Ledger selected scan & metadata editor
@@ -234,6 +240,10 @@ export function ScansPage() {
       setExclusions(ex);
       setProfiles(pr);
       setScans(sc);
+      api
+        .listAgents()
+        .then((res) => setAgents(res.agents))
+        .catch(() => setAgents([]));
     } catch (err) {
       toast.error('Błąd ładowania', (err as Error).message);
     } finally {
@@ -348,6 +358,7 @@ export function ScansPage() {
         grace_period_hours: profileForm.grace_period_hours,
         retry_unstable_count: profileForm.retry_unstable_count,
         enable_http_fingerprint: profileForm.enable_http_fingerprint,
+        agent_id: profileForm.agent_id === LOCAL_AGENT ? '' : profileForm.agent_id,
         enabled: true,
       });
       setProfileForm((p) => ({ ...p, name: '', description: '' }));
@@ -594,6 +605,7 @@ export function ScansPage() {
           <TabsTrigger value="profiles">Profile ({profiles.length})</TabsTrigger>
           <TabsTrigger value="scopes">Zakresy</TabsTrigger>
           <TabsTrigger value="ingest">Import / Eksport</TabsTrigger>
+          <TabsTrigger value="agents">Agenci ({agents.length})</TabsTrigger>
         </TabsList>
 
         {/* ───────────── RUNS & COVERAGE LEDGER ───────────── */}
@@ -866,6 +878,14 @@ export function ScansPage() {
                         <TableCell className="max-w-[280px] whitespace-normal">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-medium">{p.name}</span>
+                            {p.agent_id && (
+                              <Pill
+                                tone={agents.find((a) => a.id === p.agent_id)?.status === 'online' ? 'violet' : 'warning'}
+                                title="Skanowany przez zdalnego agenta"
+                              >
+                                agent: {agents.find((a) => a.id === p.agent_id)?.name ?? 'usunięty'}
+                              </Pill>
+                            )}
                             {p.window_enabled && (
                               <Pill tone="warning">
                                 <RiTimeLine className="size-3" />
@@ -973,6 +993,27 @@ export function ScansPage() {
                           setProfileForm((p) => ({ ...p, targetsText: e.target.value }))
                         }
                         className="font-mono text-xs"
+                      />
+                    </Field>
+                    <Field
+                      label="Skanuje"
+                      htmlFor="pf-agent"
+                      className="sm:col-span-2"
+                      hint="Zdalny agent skanuje z wnętrza swojej sieci; wyniki trafiają do tego samego potoku."
+                    >
+                      <SimpleSelect
+                        id="pf-agent"
+                        value={profileForm.agent_id}
+                        onValueChange={(v) => setProfileForm((p) => ({ ...p, agent_id: v || LOCAL_AGENT }))}
+                        options={[
+                          { value: LOCAL_AGENT, label: 'Ten serwer (lokalnie)' },
+                          ...agents
+                            .filter((a) => !a.disabled)
+                            .map((a) => ({
+                              value: a.id,
+                              label: `Agent: ${a.name}${a.site ? ` (${a.site})` : ''} · ${a.status}`,
+                            })),
+                        ]}
                       />
                     </Field>
                     <Field label="Porty" htmlFor="pf-ports" className="sm:col-span-2">
@@ -1617,6 +1658,10 @@ export function ScansPage() {
               </Card>
             </div>
           </div>
+        </TabsContent>
+        {/* REMOTE AGENTS */}
+        <TabsContent value="agents" className="pt-4">
+          <AgentsPanel canManage={can(PERMISSIONS.ADMIN_SETTINGS)} />
         </TabsContent>
       </Tabs>
     </div>
