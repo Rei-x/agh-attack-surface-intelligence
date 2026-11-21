@@ -60,16 +60,34 @@ func (s *Server) watchScansForVerify(v *verify.Service) {
 	}
 }
 
+// activeChecker is implemented by the local scan runner: a run stays active until its
+// results are ingested (the engine marks the run COMPLETED before ingest finishes).
+type activeChecker interface {
+	IsScanActive(scanRunID string) bool
+}
+
 func (s *Server) verifyAfterScan(v *verify.Service, runID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 	deadline := time.Now().Add(2 * time.Minute)
+	var local activeChecker
+	if ar, ok := s.runner.(*AgentAwareRunner); ok {
+		local, _ = ar.ScanRunner.(activeChecker)
+	} else {
+		local, _ = s.runner.(activeChecker)
+	}
 	for {
 		run, err := s.store.GetScanRun(ctx, runID)
 		if err == nil && run != nil {
 			switch run.Status {
 			case domain.ScanStatusCompleted:
 				if !v.Results.Profile(run.ProfileID).Enabled {
+					return
+				}
+				for wait := time.Now().Add(30 * time.Minute); local != nil && local.IsScanActive(runID) && time.Now().Before(wait); {
+					time.Sleep(time.Second)
+				}
+				if run, err = s.store.GetScanRun(ctx, runID); err != nil || run.Status != domain.ScanStatusCompleted {
 					return
 				}
 				v.AfterScan(ctx, run)
