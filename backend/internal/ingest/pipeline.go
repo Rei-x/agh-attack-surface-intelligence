@@ -693,6 +693,18 @@ func inferServiceName(port int) string {
 		return "postgresql"
 	case 6379:
 		return "redis"
+	case 3389:
+		return "ms-wbt-server"
+	case 445:
+		return "microsoft-ds"
+	case 21:
+		return "ftp"
+	case 23:
+		return "telnet"
+	case 1433:
+		return "ms-sql-s"
+	case 5900:
+		return "vnc"
 	default:
 		return "tcp"
 	}

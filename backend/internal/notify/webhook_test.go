@@ -117,6 +117,11 @@ func TestWebhookTestAndErrorsDoNotLeakURL(t *testing.T) {
 	if err := ValidateURL("ftp://x"); err == nil {
 		t.Fatal("non-http URL must be rejected")
 	}
+	routine := domain.ChangeEvent{EventType: "HOST_STATE_CHANGED", Severity: "info", After: map[string]any{"lifecycle_state": "ACTIVE"}}
+	missing := domain.ChangeEvent{EventType: "HOST_STATE_CHANGED", Severity: "info", After: map[string]any{"lifecycle_state": "INTERMITTENT"}}
+	if IsStateEvent(routine) || !IsStateEvent(missing) {
+		t.Fatal("NEW->ACTIVE confirmation must not alert, degradation must")
+	}
 	if got := SelectEvents(&domain.WebhookConfig{MinSeverity: "medium"}, []domain.ChangeEvent{{Severity: "medium"}, {Severity: "low", EventType: "HOST_INACTIVE"}}); len(got) != 1 {
 		t.Fatalf("state changes must be opt-in: %+v", got)
 	}

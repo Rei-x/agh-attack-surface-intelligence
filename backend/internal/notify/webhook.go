@@ -44,8 +44,18 @@ var stateEventTypes = map[string]bool{
 	"TIME_ANOMALY":       true,
 }
 
-// IsStateEvent reports whether an event is a host lifecycle state change.
-func IsStateEvent(ev domain.ChangeEvent) bool { return stateEventTypes[ev.EventType] }
+// IsStateEvent reports whether an event is an alert-worthy host lifecycle state change.
+// The routine NEW -> ACTIVE confirmation on the second sighting is not.
+func IsStateEvent(ev domain.ChangeEvent) bool {
+	if !stateEventTypes[ev.EventType] {
+		return false
+	}
+	if ev.EventType == "HOST_STATE_CHANGED" {
+		after, _ := ev.After["lifecycle_state"].(string)
+		return after != domain.HostStateActive && after != domain.HostStateNew
+	}
+	return true
+}
 
 // LoadConfig returns the stored webhook config (zero value + defaults when unset).
 func LoadConfig(ctx context.Context, store db.Store) (*domain.WebhookConfig, error) {
