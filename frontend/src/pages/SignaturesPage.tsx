@@ -76,6 +76,7 @@ const MATCHER_TYPES = [
   'footer_version',
   'safe_path',
   'tls_cert',
+  'jarm',
   'banner',
   'port',
 ];

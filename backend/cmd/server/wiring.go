@@ -123,6 +123,7 @@ func (a *IntelligenceAnalyzer) EvaluateLifecycle(prev *domain.Host, seen bool, n
 		IsExpectedSchedule: tr.IsExpectedSchedule,
 		IsTimeAnomaly:      tr.IsTimeAnomaly,
 		Summary:            tr.Reason,
+		Liveness:           working.Liveness,
 	}
 }
 

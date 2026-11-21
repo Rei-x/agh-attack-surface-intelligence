@@ -38,6 +38,7 @@ type LifecycleTransition struct {
 	IsExpectedSchedule bool
 	IsTimeAnomaly      bool
 	Summary            string
+	Liveness           *domain.LivenessEstimate // Bayesian P(host still exists) + reason (nil if analyzer has none)
 }
 
 // SignatureTestHit describes a service matched in the retroactive Signature Playground.

@@ -324,6 +324,27 @@ type TimeSlotStat struct {
 	Seen  int     `json:"seen"`
 	Total int     `json:"total"`
 	Ratio float64 `json:"ratio"`
+
+	// Beta-Bernoulli availability posterior for this time-of-day slot (see
+	// intelligence/liveness.go). Alpha/Beta include the prior and are
+	// exponentially forgotten; StreakMisses are misses of the current,
+	// still-unexplained outage (folded into Beta once the host answers again).
+	Alpha        float64   `json:"alpha,omitempty"`
+	Beta         float64   `json:"beta,omitempty"`
+	PUp          float64   `json:"p_up,omitempty"` // posterior mean availability in this slot
+	StreakMisses int       `json:"streak_misses,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+}
+
+// LivenessEstimate explains the Bayesian "is this host gone?" decision.
+type LivenessEstimate struct {
+	PAlive       float64 `json:"p_alive"`       // P(host still exists | history, current outage)
+	PUpSlot      float64 `json:"p_up_slot"`     // P(host answers in the current slot) = p_alive * E[availability]
+	Slot         string  `json:"slot"`          // slot the estimate refers to
+	StreakMisses int     `json:"streak_misses"` // misses in the current outage (all slots)
+	Threshold    float64 `json:"threshold"`     // INACTIVE when p_alive < threshold (plus min guards)
+	Reason       string  `json:"reason"`
+	Model        string  `json:"model"`
 }
 
 type Host struct {
@@ -347,6 +368,7 @@ type Host struct {
 	Interestingness    int                     `json:"interestingness"` // 0..100
 	InterestingFactors []InterestingnessFactor `json:"interesting_factors,omitempty"`
 	TimeOfDayStats     []TimeSlotStat          `json:"time_of_day_stats,omitempty"`
+	Liveness           *LivenessEstimate       `json:"liveness,omitempty"` // derived from TimeOfDayStats
 	LockedFields       []string                `json:"locked_fields,omitempty"`
 	ScannerObserved    map[string]any          `json:"scanner_observed,omitempty"` // shown when analyst overrode a field
 	Services           []Service               `json:"services,omitempty"`

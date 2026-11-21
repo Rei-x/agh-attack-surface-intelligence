@@ -3,6 +3,7 @@ package intelligence
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
@@ -10,8 +11,15 @@ import (
 
 // LifecycleConfig controls host hysteresis thresholds and grace periods.
 type LifecycleConfig struct {
-	MissingThreshold int // consecutive missed scans required before INACTIVE (default 3)
-	GracePeriodHours int // minimum hours since LastSeen before INACTIVE (default 72)
+	MissingThreshold int // minimum guard: consecutive missed scans before INACTIVE (default 3)
+	GracePeriodHours int // minimum guard: hours since LastSeen before INACTIVE (default 72)
+
+	// Bayesian liveness model (liveness.go). Zero values select the defaults.
+	InactiveProbability float64 // INACTIVE when P(alive | outage) < this (default 0.05)
+	PriorAlive          float64 // prior P(host still exists) at the start of an outage (default 0.9)
+	PriorUpAlpha        float64 // Beta prior on per-slot availability (default 2)
+	PriorUpBeta         float64 //   -> prior mean 0.8 with 2.5 pseudo-observations (default 0.5)
+	HalfLifeHours       float64 // exponential forgetting half-life of availability evidence (default 336h = 14 days)
 }
 
 // DefaultLifecycleConfig returns conservative production defaults for CBI AGH.
@@ -29,7 +37,7 @@ func normalizeLifecycleConfig(cfg LifecycleConfig) LifecycleConfig {
 	if cfg.GracePeriodHours <= 0 {
 		cfg.GracePeriodHours = 72
 	}
-	return cfg
+	return normalizeLivenessConfig(cfg)
 }
 
 // TransitionResult summarizes a host lifecycle evaluation step and time-of-day analysis.
@@ -42,6 +50,8 @@ type TransitionResult struct {
 	TimeSlot           string `json:"time_slot"`
 	IsExpectedSchedule bool   `json:"is_expected_schedule"`
 	IsTimeAnomaly      bool   `json:"is_time_anomaly"`
+
+	Liveness domain.LivenessEstimate `json:"liveness"`
 }
 
 var allTimeSlots = []string{
@@ -136,6 +146,11 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 
 	host.TotalScansChecked++
 
+	// Bayesian liveness: update slot posteriors / current outage, then estimate.
+	updateLivenessPosterior(host.TimeOfDayStats, slot, observedAlive, observedAt, prevState == domain.HostStateInactive, cfg)
+	live := EstimateLiveness(*host, observedAt, cfg)
+	host.Liveness = &live
+
 	if observedAlive {
 		if host.FirstSeen.IsZero() {
 			host.FirstSeen = observedAt
@@ -189,8 +204,12 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 			elapsedSinceLastSeen = observedAt.Sub(host.LastSeen)
 		}
 
+		// Minimum guards from the scan profile (kept for operator control / backward compat).
 		meetsMisses := host.ConsecutiveMisses >= cfg.MissingThreshold
 		meetsGrace := host.LastSeen.IsZero() || elapsedSinceLastSeen >= graceDuration
+		// Principled criterion: posterior probability that the host still exists.
+		meetsPosterior := live.PAlive < cfg.InactiveProbability
+		thr := pct(cfg.InactiveProbability)
 
 		switch {
 		case prevState == "":
@@ -198,23 +217,32 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 			reason = "host never observed online"
 		case prevState == domain.HostStateInactive:
 			newState = domain.HostStateInactive
-			reason = "host remains inactive"
-		case meetsMisses && meetsGrace:
+			reason = "host remains inactive; " + live.Reason
+		case meetsMisses && meetsGrace && meetsPosterior:
 			newState = domain.HostStateInactive
-			if prevState != domain.HostStateInactive {
-				host.StateTransitions++
-			}
-			reason = fmt.Sprintf("missed %d consecutive scans (>= %d) and exceeded %dh grace period", host.ConsecutiveMisses, cfg.MissingThreshold, cfg.GracePeriodHours)
+			host.StateTransitions++
+			reason = fmt.Sprintf("INACTIVE: %s < próg %d%%; minimum spełnione: %d braków (min. %d), %.0fh od ostatniej odpowiedzi (min. %dh)",
+				live.Reason, thr, host.ConsecutiveMisses, cfg.MissingThreshold, elapsedSinceLastSeen.Hours(), cfg.GracePeriodHours)
 		default:
 			newState = domain.HostStateMissing
 			if prevState != domain.HostStateMissing {
 				host.StateTransitions++
 			}
-			if isExpected {
-				reason = fmt.Sprintf("host offline during expected off-hours slot %s (%d/%d misses)", slot, host.ConsecutiveMisses, cfg.MissingThreshold)
-			} else {
-				reason = fmt.Sprintf("host missed scan (%d/%d misses, grace period not yet elapsed)", host.ConsecutiveMisses, cfg.MissingThreshold)
+			var waiting []string
+			if !meetsPosterior {
+				waiting = append(waiting, fmt.Sprintf("P(istnieje) %d%% ≥ próg %d%%", pct(live.PAlive), thr))
 			}
+			if !meetsMisses {
+				waiting = append(waiting, fmt.Sprintf("%d braków (min. %d)", host.ConsecutiveMisses, cfg.MissingThreshold))
+			}
+			if !meetsGrace {
+				waiting = append(waiting, fmt.Sprintf("%.0fh od ostatniej odpowiedzi (min. %dh)", elapsedSinceLastSeen.Hours(), cfg.GracePeriodHours))
+			}
+			prefix := "MISSING"
+			if isExpected {
+				prefix = fmt.Sprintf("brak odpowiedzi w %s %s zgodny z harmonogramem hosta", slotNamePL(slot), slot)
+			}
+			reason = fmt.Sprintf("%s: %s; jeszcze nie INACTIVE (%s)", prefix, live.Reason, strings.Join(waiting, ", "))
 		}
 	}
 
@@ -242,6 +270,7 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 		TimeSlot:           slot,
 		IsExpectedSchedule: isExpected,
 		IsTimeAnomaly:      isAnomaly,
+		Liveness:           live,
 	}
 }
 
