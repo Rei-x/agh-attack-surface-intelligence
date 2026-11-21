@@ -234,9 +234,12 @@ func newFinding(h *domain.Host, kind, title, severity, description string) Chang
 func serviceDescription(h *domain.Host, s *domain.Service, kind, evidence string) string {
 	var b strings.Builder
 	writeHostLines(&b, h)
-	svc := strings.TrimSpace(s.ServiceName + " " + s.Product)
+	// Product/version only where they are the point: nmap identification can improve
+	// between runs ("postgresql" -> "postgresql PostgreSQL DB"), and every wording change
+	// is a new hash, i.e. a closed + re-created finding in DefectDojo.
+	svc := s.ServiceName
 	if kind == KindEOL || kind == KindKnownVuln {
-		svc = strings.TrimSpace(svc + " " + versionShort(s.Version))
+		svc = strings.TrimSpace(svc + " " + s.Product + " " + versionShort(s.Version))
 	}
 	fmt.Fprintf(&b, "- **Usługa:** `%d/%s` %s\n", s.Port, nonEmpty(s.Protocol, "tcp"), svc)
 	if !s.FirstSeen.IsZero() {

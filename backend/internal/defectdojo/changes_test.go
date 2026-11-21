@@ -127,6 +127,7 @@ func TestBuildChangeFindingsStableAcrossRuns(t *testing.T) {
 	hosts[0].LastSeen = changesNow.Add(6 * time.Hour)
 	hosts[0].Services[0].LastSeen = changesNow.Add(6 * time.Hour)
 	hosts[0].Services[0].Interestingness = 42
+	hosts[0].Services[1].Product = "Microsoft Terminal Services" // nmap identified it better this time
 	run2 := BuildChangeFindings(hosts, changesNow.Add(6*time.Hour))
 	a, _ := json.Marshal(run1)
 	b, _ := json.Marshal(run2)
