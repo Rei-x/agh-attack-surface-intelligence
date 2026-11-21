@@ -292,4 +292,3 @@ func TestCheckServerURLRequiresTLS(t *testing.T) {
 		t.Fatal("invalid CIDR accepted")
 	}
 }
-
