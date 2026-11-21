@@ -483,6 +483,8 @@ type nmapHostXML struct {
 	Hostnames nmapHostnamesXML `xml:"hostnames"`
 	Ports     nmapPortsXML     `xml:"ports"`
 	OS        *nmapOSXML       `xml:"os,omitempty"`
+	// HostScripts holds <hostscript><script/></hostscript> (e.g. smb-protocols) from imported XML.
+	HostScript *nmapHostScriptXML `xml:"hostscript,omitempty"`
 }
 
 type nmapStatusXML struct {
@@ -513,6 +515,7 @@ type nmapPortXML struct {
 	PortID   int             `xml:"portid,attr"`
 	State    nmapStateXML    `xml:"state"`
 	Service  *nmapServiceXML `xml:"service,omitempty"`
+	Scripts  []nmapScriptXML `xml:"script,omitempty"`
 }
 
 type nmapStateXML struct {
@@ -568,15 +571,7 @@ func ParseNmapXML(xmlBytes []byte) ([]domain.ObservedHost, error) {
 	now := time.Now().UTC()
 	out := make([]domain.ObservedHost, 0, len(doc.Hosts))
 	for _, h := range doc.Hosts {
-		var ip string
-		for _, a := range h.Addresses {
-			if a.AddrType == "ipv4" || a.AddrType == "ipv6" || ip == "" {
-				ip = a.Addr
-				if a.AddrType == "ipv4" {
-					break
-				}
-			}
-		}
+		ip := nmapHostIP(h.Addresses)
 		if ip == "" {
 			continue
 		}
@@ -619,7 +614,11 @@ func ParseNmapXML(xmlBytes []byte) ([]domain.ObservedHost, error) {
 					svc.CPE = p.Service.CPEs[0]
 				}
 			}
+			applyNmapScripts(&svc, p.Scripts)
 			svcs = append(svcs, svc)
+		}
+		if h.HostScript != nil {
+			applyNmapHostScripts(svcs, h.HostScript.Scripts)
 		}
 
 		out = append(out, domain.ObservedHost{
@@ -632,7 +631,7 @@ func ParseNmapXML(xmlBytes []byte) ([]domain.ObservedHost, error) {
 			Services:   svcs,
 		})
 	}
-	return out, nil
+	return mergeDuplicateHosts(out), nil
 }
 
 // GenerateNmapXML builds a DefectDojo-compatible Nmap XML document from ObservedHost records.
