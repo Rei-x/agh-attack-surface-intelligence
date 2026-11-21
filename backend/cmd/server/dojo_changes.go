@@ -25,6 +25,7 @@ func (r *LiveScanRunner) pushChangeFindings(ctx context.Context, cfg *domain.Def
 		hosts = hostsInScope(ctx, hosts, profile.Targets)
 	}
 	findings := defectdojo.BuildChangeFindings(hosts, time.Now().UTC())
+	findings = append(findings, policyChangeFindings(ctx, r.store, hosts)...) // zone policy violations (policy_seed.go)
 	title := defectdojo.ChangesTestTitle(profileName)
 	imp, err := r.dojo.ImportChangeFindings(ctx, cfg, 0, title, run.Name, findings)
 	exp := &domain.DefectDojoExport{
