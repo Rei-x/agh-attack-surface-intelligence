@@ -81,3 +81,17 @@ func TestHostnamePrefersIPv4(t *testing.T) {
 		t.Fatalf("IPv6-only name must keep its address, got %v", res.IPs)
 	}
 }
+
+func TestJoinPortsCollapsesRanges(t *testing.T) {
+	full, _ := ParsePorts("1-65535")
+	if got := joinPorts(full); got != "1-65535" {
+		t.Fatalf("full range: got %q", got)
+	}
+	if got := joinPorts([]int{22, 80, 81, 443, 8000, 8001, 8002, 8080}); got != "22,80,81,443,8000-8002,8080" {
+		t.Fatalf("got %q", got)
+	}
+	top, _ := ParsePorts(AutoPorts(100))
+	if n := len(joinPorts(top)); n > 8000 {
+		t.Fatalf("top-1000 list renders to %d bytes", n)
+	}
+}
