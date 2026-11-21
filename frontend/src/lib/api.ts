@@ -188,7 +188,12 @@ function saveBlob(blob: Blob, filename: string): void {
 
 export const api = {
   // Health & Auth
-  health: () => request<HealthResponse>('/api/v1/health', { skipAuth: true }),
+  // 503 = degraded (DB down / disk full): still return the body so the UI can show why.
+  health: () =>
+    request<HealthResponse>('/api/v1/health', { skipAuth: true }).catch((e: unknown) => {
+      if (e instanceof ApiError && e.status === 503 && e.body) return e.body as HealthResponse;
+      throw e;
+    }),
   demoAccounts: async (): Promise<DemoAccount[]> => {
     const res = await request<unknown>('/api/v1/auth/demo-accounts', { skipAuth: true });
     return unwrapList<DemoAccount>(res, ['accounts', 'demo_accounts', 'items', 'data']);

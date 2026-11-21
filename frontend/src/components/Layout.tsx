@@ -260,6 +260,11 @@ export function Layout() {
         </header>
 
         <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 lg:p-8">
+          {health?.status === 'degraded' && (
+            <div role="alert" className="mb-4 rounded-md border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              Problem z magazynem danych: {health.db}
+            </div>
+          )}
           <Outlet />
         </main>
         {can(PERMISSIONS.SCANS_RUN) && (

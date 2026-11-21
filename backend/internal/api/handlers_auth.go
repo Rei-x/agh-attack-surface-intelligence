@@ -11,13 +11,14 @@ import (
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	dbStatus := s.store.BackendName()
+	dbStatus, status, code := s.store.BackendName(), "ok", http.StatusOK
 	if err := s.store.Ping(r.Context()); err != nil {
-		dbStatus = "error: " + err.Error()
+		// 503 so container health checks and load balancers notice (DB down, disk full).
+		dbStatus, status, code = "error: "+err.Error(), "degraded", http.StatusServiceUnavailable
 	}
 	st := s.vault.Status()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":            "ok",
+	writeJSON(w, code, map[string]any{
+		"status":            status,
 		"version":           AppVersion,
 		"db":                dbStatus,
 		"nmap_available":    s.runner.NmapAvailable(),

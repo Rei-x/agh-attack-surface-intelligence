@@ -53,6 +53,7 @@ type FileStore struct {
 	saveMu    sync.Mutex
 	savedGen  uint64
 	wroteOnce bool
+	saveErr   error // last persist failure (disk full, read-only dir); nil after a good save
 
 	changeCh  chan struct{}
 	stopCh    chan struct{}
@@ -101,6 +102,14 @@ func OpenFileStore(path string, vault *crypto.Vault, opts FileStoreOptions) (*Fi
 	}
 
 	fs.savedGen = fs.Generation()
+	if !opts.ReadOnly {
+		// Temp files left by a crash mid-write (the snapshot itself is replaced atomically).
+		if stale, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")); len(stale) > 0 {
+			for _, p := range stale {
+				_ = os.Remove(p)
+			}
+		}
+	}
 	if opts.ReadOnly {
 		close(fs.doneCh)
 		return fs, nil
@@ -219,6 +228,18 @@ func (f *FileStore) savedGenSnapshot() uint64 {
 	return f.savedGen
 }
 
+// Ping reports a failing snapshot write (disk full, permissions) so /health and the UI show
+// that recent changes are not being persisted, instead of only logging it.
+func (f *FileStore) Ping(_ context.Context) error {
+	f.saveMu.Lock()
+	defer f.saveMu.Unlock()
+	if f.saveErr != nil {
+		return fmt.Errorf("zapis danych na dysk nie działa - zmiany nie są utrwalane (sprawdź wolne miejsce i uprawnienia do %s) / persisting the store fails: %w",
+			filepath.Dir(f.path), f.saveErr)
+	}
+	return nil
+}
+
 // Flush writes the current state to disk if it changed since the last save.
 func (f *FileStore) Flush() error {
 	if f.opts.ReadOnly {
@@ -226,6 +247,12 @@ func (f *FileStore) Flush() error {
 	}
 	f.saveMu.Lock()
 	defer f.saveMu.Unlock()
+	err := f.flushLocked()
+	f.saveErr = err
+	return err
+}
+
+func (f *FileStore) flushLocked() error {
 
 	raw, gen, err := f.ExportState()
 	if err != nil {
