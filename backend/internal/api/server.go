@@ -22,6 +22,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/notify"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
 )
 
 // AppVersion is overridden at build time via -ldflags "-X .../internal/api.AppVersion=..."
@@ -63,6 +64,8 @@ type Server struct {
 
 	routes []string      // registered mux patterns (see handle)
 	logins *loginLimiter // failed-login throttling
+
+	shots *screenshot.Store // web screenshot gallery (handlers_screenshots.go), nil = off
 }
 
 // NewServer constructs a fully wired Dzięcioł HTTP Server.
@@ -231,6 +234,9 @@ func (s *Server) registerRoutes() {
 	for _, rt := range s.agents.Routes() {
 		s.handle(rt.Pattern, rt.Handler)
 	}
+
+	// Web screenshot gallery
+	s.registerScreenshotRoutes()
 
 	// Static SPA fallback
 	s.handle("/", s.handleSPA)

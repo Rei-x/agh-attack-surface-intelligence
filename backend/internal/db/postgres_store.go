@@ -656,7 +656,11 @@ func (s *PostgresStore) ListProfiles(ctx context.Context) ([]domain.ScanProfile,
 		_ = json.Unmarshal(targetsRaw, &p.Targets)
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	s.loadProfileScreenshots(ctx, out)
+	return out, nil
 }
 
 func (s *PostgresStore) GetProfile(ctx context.Context, id string) (*domain.ScanProfile, error) {
@@ -677,7 +681,9 @@ func (s *PostgresStore) GetProfile(ctx context.Context, id string) (*domain.Scan
 		return nil, err
 	}
 	_ = json.Unmarshal(targetsRaw, &p.Targets)
-	return &p, nil
+	one := []domain.ScanProfile{p}
+	s.loadProfileScreenshots(ctx, one)
+	return &one[0], nil
 }
 
 func (s *PostgresStore) CreateProfile(ctx context.Context, p *domain.ScanProfile) error {
@@ -698,7 +704,10 @@ func (s *PostgresStore) CreateProfile(ctx context.Context, p *domain.ScanProfile
 		p.ID, p.Name, p.Description, targetsJSON, p.AllowedPorts, p.MaxRatePPS, p.HTTPRPS, p.Concurrency, p.ChunkTargetSec,
 		p.ScheduleCron, p.WindowEnabled, p.WindowStart, p.WindowEnd, p.Timezone, p.MissingThreshold, p.GracePeriodHours,
 		p.RetryUnstableCount, p.EnableHTTPFingerprint, p.UserAgent, p.Enabled, p.CreatedAt, p.UpdatedAt, p.AgentID)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.saveProfileScreenshots(ctx, p)
 }
 
 func (s *PostgresStore) UpdateProfile(ctx context.Context, p *domain.ScanProfile) error {
@@ -719,7 +728,7 @@ func (s *PostgresStore) UpdateProfile(ctx context.Context, p *domain.ScanProfile
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return s.saveProfileScreenshots(ctx, p)
 }
 
 func (s *PostgresStore) DeleteProfile(ctx context.Context, id string) error {

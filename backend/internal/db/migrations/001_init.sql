@@ -320,3 +320,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
 -- Remote scanning agents: a profile may be routed to an enrolled agent (dzieciol agent).
 -- The agent registry, enrollment tokens and job leases live in app_settings (encrypted).
 ALTER TABLE scan_profiles ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAULT '';
+
+-- Web screenshots: per-profile switch (default on).
+ALTER TABLE scan_profiles ADD COLUMN IF NOT EXISTS capture_screenshots BOOLEAN NOT NULL DEFAULT TRUE;

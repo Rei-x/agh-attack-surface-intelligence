@@ -24,6 +24,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"version":           AppVersion,
 		"db":                dbStatus,
 		"nmap_available":    s.runner.NmapAvailable(),
+		"screenshots":       publicScreenshotStatus(),
 		"encryption_active": st.Active,
 		"key_version":       st.ActiveKeyVersion,
 	})
