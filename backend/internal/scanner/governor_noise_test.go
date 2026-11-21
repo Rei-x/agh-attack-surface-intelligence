@@ -106,4 +106,3 @@ func TestGovernorTimeoutsSingleHostVsManyAndDistress(t *testing.T) {
 		t.Fatalf("explicit 429 distress should halve nmap shares, distress=%.2f", f)
 	}
 }
-

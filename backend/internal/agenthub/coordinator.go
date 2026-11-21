@@ -306,6 +306,7 @@ func publicToken(t domain.AgentEnrollToken) domain.AgentEnrollToken {
 	return t
 }
 
+// ListEnrollTokens returns enrollment tokens newest first, without their hashes.
 func (c *Coordinator) ListEnrollTokens(ctx context.Context) []domain.AgentEnrollToken {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -317,6 +318,7 @@ func (c *Coordinator) ListEnrollTokens(ctx context.Context) []domain.AgentEnroll
 	return out
 }
 
+// RevokeEnrollToken deletes an enrollment token.
 func (c *Coordinator) RevokeEnrollToken(ctx context.Context, id string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -66,9 +66,10 @@ type EngineConfig struct {
 	DisableAdaptiveChunking bool
 }
 
-// Engine orchestrates Stage 1 (host discovery) -> Stage 2 (service detection)
-// -> Stage 3 (HTTP/HTTPS fingerprinting) -> Stage 4 (unstable host verification re-probe)
-// with bounded concurrency, Target Noise Governor, and exact time-window Pause/Resume.
+// Engine runs, per ledger chunk, Stage 1 (host discovery: nmap sweep or TCP connect) with the
+// Stage 4 re-probe of previously-seen hosts that went missing, then Stage 2 (nmap -sV) and
+// Stage 3 (HTTP/HTTPS/TLS fingerprinting). Chunks move through the stages pipelined, under one
+// rate budget, the Target Noise Governor and exact time-window pause/resume.
 type Engine struct {
 	cfg EngineConfig
 }

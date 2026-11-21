@@ -489,15 +489,15 @@ func classifyDialErr(gov *Governor, host string, err error) {
 // ==================== Pure-Go Nmap XML Parser & Aggregator ====================
 
 type nmapRunXML struct {
-	XMLName    xml.Name      `xml:"nmaprun"`
-	Scanner    string        `xml:"scanner,attr"`
-	Args       string        `xml:"args,attr"`
-	Start      int64         `xml:"start,attr"`
-	StartStr   string        `xml:"startstr,attr,omitempty"`
-	Version    string        `xml:"version,attr"`
-	XMLOutVer  string        `xml:"xmloutputversion,attr"`
-	Hosts      []nmapHostXML `xml:"host"`
-	RunStats   *nmapStatsXML `xml:"runstats,omitempty"`
+	XMLName   xml.Name      `xml:"nmaprun"`
+	Scanner   string        `xml:"scanner,attr"`
+	Args      string        `xml:"args,attr"`
+	Start     int64         `xml:"start,attr"`
+	StartStr  string        `xml:"startstr,attr,omitempty"`
+	Version   string        `xml:"version,attr"`
+	XMLOutVer string        `xml:"xmloutputversion,attr"`
+	Hosts     []nmapHostXML `xml:"host"`
+	RunStats  *nmapStatsXML `xml:"runstats,omitempty"`
 }
 
 type nmapHostXML struct {

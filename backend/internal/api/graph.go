@@ -43,11 +43,11 @@ type GraphResponse struct {
 }
 
 // BuildGraph constructs the interactive Attack Surface Topology:
-// - Detailed mode (<= limit hosts or drilled-down /24):
-//   Scope/Subnet -> Host (state, score) -> Service (port/proto) -> Technology / Signature.
-// - Clustered mode (> limit hosts, e.g. 10,000+ IPs):
-//   Root Scope -> /24 Subnet Clusters -> Aggregated Service Clusters -> Technologies
-//   keeping rendered node counts crisp (~40-140 nodes) so the UI stays 60 FPS at 10k+ scale!
+//   - Detailed mode (<= limit hosts or drilled-down /24):
+//     Scope/Subnet -> Host (state, score) -> Service (port/proto) -> Technology / Signature.
+//   - Clustered mode (> limit hosts, e.g. 10,000+ IPs):
+//     Root Scope -> /24 Subnet Clusters -> Aggregated Service Clusters -> Technologies
+//     keeping rendered node counts crisp (~40-140 nodes) so the UI stays 60 FPS at 10k+ scale!
 func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter) GraphResponse {
 	limit := filter.Limit
 	if limit <= 0 {

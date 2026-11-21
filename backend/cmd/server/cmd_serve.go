@@ -59,7 +59,7 @@ func cmdServe(args []string) error {
 	if err != nil {
 		var le *localdata.ErrLocked
 		if errors.As(err, &le) {
-			return fmt.Errorf("%v\n  another aegis process is using this data directory; stop it first or pass a different --data-dir", err)
+			return fmt.Errorf("%w\n  another aegis process is using this data directory; stop it first or pass a different --data-dir", err)
 		}
 		return err
 	}

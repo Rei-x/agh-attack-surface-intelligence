@@ -49,6 +49,7 @@ const (
 	OutcomeRefused      = "refused" // local safety policy (--allow-cidr) rejected the job
 )
 
+// EnrollRequest is sent once by a new agent to exchange an enrollment token for a credential.
 type EnrollRequest struct {
 	Token        string                   `json:"token"`
 	Name         string                   `json:"name"`
@@ -57,6 +58,7 @@ type EnrollRequest struct {
 	Capabilities domain.AgentCapabilities `json:"capabilities"`
 }
 
+// EnrollResponse returns the agent identity and its long-lived credential.
 type EnrollResponse struct {
 	AgentID      string `json:"agent_id"`
 	Name         string `json:"name"`
@@ -65,12 +67,14 @@ type EnrollResponse struct {
 	HeartbeatSec int    `json:"heartbeat_sec"`
 }
 
+// HeartbeatRequest is the periodic liveness report of an agent.
 type HeartbeatRequest struct {
 	Version      string                   `json:"version"`
 	Capabilities domain.AgentCapabilities `json:"capabilities"`
 	CurrentRunID string                   `json:"current_run_id,omitempty"`
 }
 
+// HeartbeatResponse carries the server clock and pending pause/stop controls.
 type HeartbeatResponse struct {
 	ServerTime   time.Time         `json:"server_time"`
 	HeartbeatSec int               `json:"heartbeat_sec"`
@@ -103,6 +107,7 @@ type JobSpec struct {
 	UnstableHosts []string                 `json:"unstable_hosts,omitempty"`
 }
 
+// StartRequest reports the agent's chunk plan when it starts (or resumes) a job.
 type StartRequest struct {
 	TotalIPs   int                `json:"total_ips"`
 	ETASeconds int64              `json:"eta_seconds"`
@@ -117,6 +122,7 @@ type Timing struct {
 	WindowPausedCount int     `json:"window_paused_count"`
 }
 
+// ProgressRequest streams timing, chunk states and live events of a running job.
 type ProgressRequest struct {
 	Timing Timing             `json:"timing"`
 	Chunks []domain.ScanChunk `json:"chunks,omitempty"`

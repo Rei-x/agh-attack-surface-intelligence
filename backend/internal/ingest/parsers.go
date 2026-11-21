@@ -26,13 +26,13 @@ type ManualEntryRequest struct {
 	Notes       string                   `json:"notes,omitempty"`
 	Services    []domain.ObservedService `json:"services,omitempty"`
 	// Convenience flat fields if user submits a single service directly in form
-	Port        int                      `json:"port,omitempty"`
-	Protocol    string                   `json:"protocol,omitempty"`
-	ServiceName string                   `json:"service_name,omitempty"`
-	Product     string                   `json:"product,omitempty"`
-	Version     string                   `json:"version,omitempty"`
-	Banner      string                   `json:"banner,omitempty"`
-	HTTP        *domain.HTTPFingerprint  `json:"http,omitempty"`
+	Port        int                     `json:"port,omitempty"`
+	Protocol    string                  `json:"protocol,omitempty"`
+	ServiceName string                  `json:"service_name,omitempty"`
+	Product     string                  `json:"product,omitempty"`
+	Version     string                  `json:"version,omitempty"`
+	Banner      string                  `json:"banner,omitempty"`
+	HTTP        *domain.HTTPFingerprint `json:"http,omitempty"`
 }
 
 // ParseManual normalizes a manual form submission into an ObservedHost.

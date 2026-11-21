@@ -1,9 +1,9 @@
 package api
 
 import (
-	"net/url"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -207,9 +207,9 @@ func (s *Server) handlePushDefectDojoFindings(w http.ResponseWriter, r *http.Req
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"pushed":    succeeded,
-		"total":     len(results),
-		"results":   results,
+		"pushed":  succeeded,
+		"total":   len(results),
+		"results": results,
 	})
 }
 

@@ -5,11 +5,15 @@ dist/
 *.out
 /aegis-asi
 /server
+/aegis
+/backend/aegis
+/backend/server
 
 # Node / Frontend
 node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo
 .pnpm-store/
 
 # Go

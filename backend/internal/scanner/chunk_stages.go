@@ -26,7 +26,7 @@ type chunkWork struct {
 	svcMap map[string][]domain.ObservedService
 	// guessed holds "ip:port" of services nmap named only from the port table.
 	guessed map[string]bool
-	xml    string
+	xml     string
 }
 
 func (w *chunkWork) record(cmds ...string) {

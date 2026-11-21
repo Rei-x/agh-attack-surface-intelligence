@@ -261,11 +261,6 @@ func (v *Vault) RotateDEK() (string, string, error) {
 	return v.generateAndActivateDEKLocked()
 }
 
-// IsEncrypted reports whether s uses the AegisASI envelope ciphertext prefix.
-func IsEncrypted(s string) bool {
-	return strings.HasPrefix(s, encPrefix)
-}
-
 // Encrypt encrypts plaintext using AES-256-GCM with the active DEK and AAD (table:record_id:column).
 // Empty strings remain empty so optional columns stay distinguishable.
 func (v *Vault) Encrypt(plaintext, aad string) (string, error) {

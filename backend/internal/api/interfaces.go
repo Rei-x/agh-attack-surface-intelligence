@@ -30,8 +30,9 @@ type EstimateRequest struct {
 }
 
 // ScanRunner is the clean dependency boundary for active scanning orchestration.
-// The coordinator wires scanner-engine into this interface in cmd/server/main.go;
-// StubScanRunner provides a working fallback for tests and standalone builds.
+// Production wires cmd/server.LiveScanRunner (scanner.Engine), wrapped by
+// AgentAwareRunner so profiles bound to a remote agent are dispatched to it;
+// StubScanRunner is the fallback used by tests when no runner is injected.
 type ScanRunner interface {
 	EstimateTargets(ctx context.Context, req EstimateRequest) (domain.TargetEstimate, error)
 	StartScan(ctx context.Context, run *domain.ScanRun, profile *domain.ScanProfile, exclusions []domain.TargetExclusion) error
@@ -42,6 +43,7 @@ type ScanRunner interface {
 }
 
 // StubScanRunner is a safe default ScanRunner used when no external scanner engine is injected.
+// It never sends packets: scans complete immediately with no observations.
 type StubScanRunner struct {
 	store    db.Store
 	pipeline *ingest.Pipeline
@@ -51,6 +53,7 @@ type StubScanRunner struct {
 	cancels map[string]context.CancelFunc
 }
 
+// NewStubScanRunner returns a StubScanRunner that records scan runs in store.
 func NewStubScanRunner(store db.Store, pipeline *ingest.Pipeline, hub *SSEHub) *StubScanRunner {
 	return &StubScanRunner{
 		store:    store,
@@ -256,7 +259,7 @@ func estimateWindowDurationSec(startHHMM, endHHMM string) int64 {
 	if e > s {
 		return int64(e-s) * 60
 	}
-	return int64((24*60 - s) + e) * 60
+	return int64((24*60-s)+e) * 60
 }
 
 func parseHHMM(s string) (int, error) {

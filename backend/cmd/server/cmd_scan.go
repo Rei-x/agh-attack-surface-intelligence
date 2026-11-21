@@ -87,7 +87,7 @@ func cmdScan(args []string) error {
 	if err != nil {
 		var le *localdata.ErrLocked
 		if errors.As(err, &le) {
-			return fmt.Errorf("%v\n  The local store is single-writer. Either stop `aegis serve` and re-run this command,\n"+
+			return fmt.Errorf("%w\n  The local store is single-writer. Either stop `aegis serve` and re-run this command,\n"+
 				"  or start the scan from the web UI (Skaner) / API: POST /api/v1/scans", err)
 		}
 		return err
@@ -97,49 +97,16 @@ func cmdScan(args []string) error {
 	bg := context.Background()
 
 	// Build the profile: stored profile (optional) overridden by explicit flags.
-	profile := domain.ScanProfile{
-		Name:                  "CLI",
-		AllowedPorts:          ports,
-		MaxRatePPS:            *rate,
-		HTTPRPS:               *httpRPS,
-		Concurrency:           *concurrency,
-		ChunkTargetSec:        *chunkSec,
-		Timezone:              "Europe/Warsaw",
-		MissingThreshold:      2,
-		GracePeriodHours:      24,
-		RetryUnstableCount:    2,
-		EnableHTTPFingerprint: !*noHTTP,
-		UserAgent:             "AegisASI-CBI-AGH/" + appVersion(),
-		Enabled:               true,
-	}
+	var stored *domain.ScanProfile
 	if *profileRef != "" {
-		p, err := findProfile(bg, store, *profileRef)
-		if err != nil {
+		if stored, err = findProfile(bg, store, *profileRef); err != nil {
 			return err
 		}
-		base := *p
-		if setFlags["ports"] || setFlags["p"] {
-			base.AllowedPorts = ports
-		}
-		if setFlags["rate"] {
-			base.MaxRatePPS = *rate
-		}
-		if setFlags["http-rps"] {
-			base.HTTPRPS = *httpRPS
-		}
-		if setFlags["concurrency"] {
-			base.Concurrency = *concurrency
-		}
-		if setFlags["chunk-sec"] {
-			base.ChunkTargetSec = *chunkSec
-		}
-		if *noHTTP {
-			base.EnableHTTPFingerprint = false
-		}
-		// A terminal scan runs now; the profile's time window is not enforced here.
-		base.WindowEnabled = false
-		profile = base
 	}
+	profile := buildCLIProfile(stored, cliProfileFlags{
+		Ports: ports, Rate: *rate, HTTPRPS: *httpRPS, Concurrency: *concurrency,
+		ChunkSec: *chunkSec, NoHTTP: *noHTTP,
+	}, setFlags)
 	if len(targets) > 0 {
 		profile.Targets = targets
 	}
@@ -303,6 +270,60 @@ func cmdScan(args []string) error {
 		return errors.New("scan interrupted")
 	}
 	return nil
+}
+
+// cliProfileFlags are the `aegis scan` flags that map onto ScanProfile fields.
+type cliProfileFlags struct {
+	Ports       string
+	Rate        int
+	HTTPRPS     int
+	Concurrency int
+	ChunkSec    int
+	NoHTTP      bool
+}
+
+// buildCLIProfile returns the profile for a terminal scan: CLI defaults, or the stored
+// profile with only the explicitly set flags (set) overriding it.
+func buildCLIProfile(stored *domain.ScanProfile, f cliProfileFlags, set map[string]bool) domain.ScanProfile {
+	if stored == nil {
+		return domain.ScanProfile{
+			Name:                  "CLI",
+			AllowedPorts:          f.Ports,
+			MaxRatePPS:            f.Rate,
+			HTTPRPS:               f.HTTPRPS,
+			Concurrency:           f.Concurrency,
+			ChunkTargetSec:        f.ChunkSec,
+			Timezone:              "Europe/Warsaw",
+			MissingThreshold:      2,
+			GracePeriodHours:      24,
+			RetryUnstableCount:    2,
+			EnableHTTPFingerprint: !f.NoHTTP,
+			UserAgent:             "AegisASI-CBI-AGH/" + appVersion(),
+			Enabled:               true,
+		}
+	}
+	base := *stored
+	if set["ports"] || set["p"] {
+		base.AllowedPorts = f.Ports
+	}
+	if set["rate"] {
+		base.MaxRatePPS = f.Rate
+	}
+	if set["http-rps"] {
+		base.HTTPRPS = f.HTTPRPS
+	}
+	if set["concurrency"] {
+		base.Concurrency = f.Concurrency
+	}
+	if set["chunk-sec"] {
+		base.ChunkTargetSec = f.ChunkSec
+	}
+	if f.NoHTTP {
+		base.EnableHTTPFingerprint = false
+	}
+	// A terminal scan runs now; the profile's time window is not enforced here.
+	base.WindowEnabled = false
+	return base
 }
 
 func readTargetsFile(path string) ([]string, error) {

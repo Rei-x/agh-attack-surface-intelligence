@@ -222,16 +222,6 @@ func compileTerm(t *QueryTerm) error {
 	return nil
 }
 
-// HasServiceTerms reports whether any service-level term is present.
-func (q *AssetQuery) HasServiceTerms() bool {
-	for _, t := range q.Terms {
-		if serviceLevelKeys[t.Key] {
-			return true
-		}
-	}
-	return false
-}
-
 // MatchHost evaluates the query against a host (with its services loaded).
 func (q *AssetQuery) MatchHost(h *domain.Host) bool {
 	if q == nil {

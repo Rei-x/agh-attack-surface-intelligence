@@ -1069,9 +1069,9 @@ func (s *PostgresStore) ListHosts(ctx context.Context, filter HostFilter) ([]dom
 	defer rows.Close()
 
 	type rawHost struct {
-		h                                              domain.Host
+		h                                               domain.Host
 		ipEnc, hostnameEnc, domainsEnc, osEnc, notesEnc string
-		tagsRaw, factorsRaw, todRaw                    []byte
+		tagsRaw, factorsRaw, todRaw                     []byte
 	}
 	var rawList []rawHost
 	for rows.Next() {

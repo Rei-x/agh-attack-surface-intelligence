@@ -17,6 +17,7 @@ type SSEHub struct {
 	recent  []domain.LiveEvent
 }
 
+// NewSSEHub returns an empty hub for server-sent live events.
 func NewSSEHub() *SSEHub {
 	return &SSEHub{
 		clients: make(map[chan domain.LiveEvent]struct{}),
