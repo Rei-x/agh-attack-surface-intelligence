@@ -159,6 +159,11 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 		if err := db.SeedDefaults(ctx, rt.Store, opts.SeedDemo); err != nil {
 			return fail(fmt.Errorf("seed defaults: %w", err))
 		}
+		boot, err := secureAccounts(ctx, rt.Store, opts.SeedDemo)
+		if err != nil {
+			return fail(fmt.Errorf("secure accounts: %w", err))
+		}
+		printBootstrap(os.Stderr, boot)
 	}
 	return rt, nil
 }
@@ -191,6 +196,22 @@ func (rt *appRuntime) newPipeline(hub *api.SSEHub) *ingest.Pipeline {
 		emit = hub.Publish
 	}
 	return ingest.NewPipeline(rt.Store, NewIntelligenceAnalyzer(), emit)
+}
+
+// printBootstrap shows a generated admin password exactly once (terminal only, not the log).
+func printBootstrap(w io.Writer, b bootstrapResult) {
+	if len(b.DemoDeactivated) > 0 {
+		fmt.Fprintf(w, "\n  Demo mode is off: deactivated demo accounts still using their public passwords: %s\n",
+			strings.Join(b.DemoDeactivated, ", "))
+	}
+	if b.AdminPassword != "" {
+		fmt.Fprintf(w, "\n  ============================================================\n")
+		fmt.Fprintf(w, "  Administrator account created:  admin / %s\n", b.AdminPassword)
+		fmt.Fprintf(w, "  This password is shown ONCE. Log in and change it in Admin > Users.\n")
+		fmt.Fprintf(w, "  ============================================================\n\n")
+	} else if b.AdminCreated {
+		fmt.Fprintf(w, "\n  Administrator account 'admin' created with the password from ASI_ADMIN_PASSWORD.\n\n")
+	}
 }
 
 func seedDemoDefault() bool {
