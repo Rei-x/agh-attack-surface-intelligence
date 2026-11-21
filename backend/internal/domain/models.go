@@ -246,6 +246,42 @@ type ScanRun struct {
 	StartedAt         time.Time   `json:"started_at"`
 	FinishedAt        *time.Time  `json:"finished_at,omitempty"`
 	Chunks            []ScanChunk `json:"chunks,omitempty"`
+	// Telemetry is the persisted rate-control history of the run (attached on read).
+	Telemetry *ScanTelemetry `json:"telemetry,omitempty"`
+}
+
+// ScanTelemetry records how a run was paced: configured vs effective rates, every backoff
+// of the noise governor (with its reason), timeouts/429/RST counts and window pauses.
+type ScanTelemetry struct {
+	ConfiguredPPS     int             `json:"configured_pps,omitempty"`
+	ConfiguredHTTPRPS int             `json:"configured_http_rps,omitempty"`
+	NmapPeakPPS       int             `json:"nmap_peak_pps,omitempty"` // highest nmap rate actually granted
+	HTTPRateRPS       float64         `json:"http_rate_rps,omitempty"` // governor rate at the end
+	HTTPInitialRPS    float64         `json:"http_initial_rps,omitempty"`
+	ThrottleCount     int             `json:"throttle_count"`
+	Timeouts          int             `json:"timeouts"`
+	HTTP429           int             `json:"http_429"`
+	RST               int             `json:"rst"`
+	Throttles         []ThrottleEntry `json:"throttles,omitempty"` // newest last, capped
+	WindowEvents      []WindowEntry   `json:"window_events,omitempty"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+}
+
+// ThrottleEntry is one automatic rate adjustment.
+type ThrottleEntry struct {
+	At      time.Time `json:"at"`
+	Host    string    `json:"host,omitempty"`
+	Reason  string    `json:"reason"` // timeout_burst, http_429, rst_burst (+ "_host" = one host only)
+	OldRate float64   `json:"old_rate"`
+	NewRate float64   `json:"new_rate"`
+	Errors  int       `json:"errors,omitempty"`
+}
+
+// WindowEntry is a time-window pause or resume.
+type WindowEntry struct {
+	At       time.Time `json:"at"`
+	Kind     string    `json:"kind"` // paused, resumed
+	NextOpen string    `json:"next_open,omitempty"`
 }
 
 // Fingerprinting & evidence structures.

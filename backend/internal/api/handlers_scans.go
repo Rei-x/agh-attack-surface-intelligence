@@ -228,6 +228,12 @@ func (s *Server) handleListScans(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
+	for i := range items {
+		if i >= 100 {
+			break
+		}
+		items[i].Telemetry = loadRunTelemetry(r.Context(), s.store, items[i].ID)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"scans": items})
 }
 
@@ -237,6 +243,7 @@ func (s *Server) handleGetScan(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
+	run.Telemetry = loadRunTelemetry(r.Context(), s.store, run.ID)
 	writeJSON(w, http.StatusOK, run)
 }
 

@@ -96,6 +96,9 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 		logins:   newLoginLimiter(),
 	}
 	s.authMW.IsNotFound = func(err error) bool { return errors.Is(err, db.ErrNotFound) }
+	hub.mu.Lock()
+	hub.observer = s.observeRunTelemetry
+	hub.mu.Unlock()
 	s.agents = cfg.Agents
 	if ar, ok := runner.(*AgentAwareRunner); ok && s.agents == nil {
 		s.agents = ar.Agents

@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/agenthub"
 	"net/http"
 	"strings"
 	"time"
@@ -96,6 +97,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Username:  req.Username,
 			Action:    "POST /api/v1/auth/login",
 			Resource:  "auth",
+			IPAddress: agenthub.RemoteIP(r),
 			Status:    "denied",
 			Details:   map[string]any{"reason": "invalid credentials"},
 			CreatedAt: time.Now().UTC(),
@@ -116,6 +118,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		RoleSlug:  user.RoleSlug,
 		Action:    "POST /api/v1/auth/login",
 		Resource:  "auth",
+		IPAddress: agenthub.RemoteIP(r),
 		Status:    "success",
 		CreatedAt: time.Now().UTC(),
 	})

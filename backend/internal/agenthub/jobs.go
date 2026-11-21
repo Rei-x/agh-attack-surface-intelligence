@@ -503,7 +503,7 @@ func (c *Coordinator) Start(ctx context.Context, agentID, instance, runID string
 // relayedEvents are the engine events an agent may forward to the SSE hub.
 var relayedEvents = map[string]bool{
 	"scan.workers": true, "scan.chunk": true, "scan.progress": true, "scan.rechunk": true,
-	"governor.throttle": true, "scan.host_discovered": true, "scan.paused_window": true, "scan.completed": true,
+	"governor.throttle": true, "scan.host_discovered": true, "scan.paused_window": true, "scan.completed": true, "scan.budget": true,
 }
 
 func (c *Coordinator) relay(runID string, events []domain.LiveEvent) {

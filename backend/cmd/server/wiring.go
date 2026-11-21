@@ -856,6 +856,7 @@ func (r *LiveScanRunner) checkPausedWindowScans(ctx context.Context) {
 		}
 		if wg.IsOpen(now) {
 			log.Printf("[INFO] Time window reopened for scan %s (%s); auto-resuming from checkpoint", run.ID, run.Name)
+			r.PublishEvent(domain.LiveEvent{Type: "scan.window_resumed", ScanRunID: run.ID, Timestamp: now.UTC(), Payload: map[string]any{"window_start": prof.WindowStart, "window_end": prof.WindowEnd}})
 			if err := r.ResumeScan(ctx, run.ID); err != nil {
 				log.Printf("[WARN] Auto-resume failed for scan %s: %v", run.ID, err)
 			}
