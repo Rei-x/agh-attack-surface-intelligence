@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -47,10 +48,23 @@ func cmdServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	listenSet := false
+	fs.Visit(func(f *flag.Flag) { listenSet = listenSet || f.Name == "listen" })
 	// Bind first so a busy port fails fast, before touching the store.
 	ln, err := net.Listen("tcp", *listen)
+	if err != nil && !listenSet && os.Getenv("DZIECIOL_LISTEN_ADDR") == "" && os.Getenv("PORT") == "" {
+		// The default :8080 is also the port of many web apps (WordPress in the jury lab):
+		// fall back to the next free port instead of refusing to start.
+		for _, alt := range []string{":9080", ":9180", ":9280", ":9380"} {
+			if l2, e2 := net.Listen("tcp", alt); e2 == nil {
+				fmt.Fprintf(os.Stderr, "port %s is busy (%v); using %s instead (choose one with --listen)\n", *listen, err, alt)
+				ln, err, *listen = l2, nil, alt
+				break
+			}
+		}
+	}
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w (port busy? try --listen :8081)", *listen, err)
+		return fmt.Errorf("listen on %s: %w (port busy? try --listen :9080)", *listen, err)
 	}
 	defer ln.Close()
 
