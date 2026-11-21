@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   RiAddLine,
   RiCheckboxCircleLine,
@@ -23,6 +24,7 @@ import type {
   CryptoStatusResponse,
   DefectDojoConfig,
   DefectDojoExport,
+  DefectDojoStatus,
   Role,
   ScanRun,
   Service,
@@ -57,6 +59,45 @@ type AdminTab = 'defectdojo' | 'users' | 'rbac' | 'crypto' | 'audit' | 'alerts';
 
 const SEVERITIES = ['Critical', 'High', 'Medium', 'Low', 'Info'];
 
+const EXPORT_TYPE_LABEL: Record<string, string> = {
+  nmap_xml: 'nmap XML',
+  change_findings: 'Change findings',
+  finding: 'Manual finding',
+};
+
+const AUDIT_RESOURCES: [RegExp, string][] = [
+  [/^\/api\/v1\/auth\/login$/, 'Login'],
+  [/^\/api\/v1\/profiles\/[^/]+\/run$/, 'Scan started from profile'],
+  [/^\/api\/v1\/profiles/, 'Scan profile'],
+  [/^\/api\/v1\/scans\/[^/]+\/stop$/, 'Scan stopped'],
+  [/^\/api\/v1\/scans\/[^/]+\/pause$/, 'Scan paused'],
+  [/^\/api\/v1\/scans\/[^/]+\/resume$/, 'Scan resumed'],
+  [/^\/api\/v1\/scans/, 'Scan'],
+  [/^\/api\/v1\/tag-rules/, 'Tag rules'],
+  [/^\/api\/v1\/admin\/users/, 'User'],
+  [/^\/api\/v1\/admin\/roles/, 'Role'],
+  [/^\/api\/v1\/admin\/crypto/, 'Encryption key'],
+  [/^\/api\/v1\/integrations\/defectdojo/, 'DefectDojo integration'],
+  [/^\/api\/v1\/integrations\/webhook/, 'Alert webhook'],
+  [/^\/api\/v1\/agents/, 'Scanning agent'],
+  [/^\/api\/v1\/(hosts|services)\/[^/]+\/overrides$/, 'Analyst override'],
+  [/^\/api\/v1\/signatures/, 'Signature'],
+  [/^\/api\/v1\/(targets|exclusions)/, 'Scope'],
+  [/^\/api\/v1\/ingest/, 'Import'],
+];
+
+/** "POST /api/v1/profiles/<id>/run" -> "Scan started from profile". */
+function auditActionLabel(log: AuditLog): string {
+  const [method, path = ''] = log.action.split(' ');
+  const hit = AUDIT_RESOURCES.find(([re]) => re.test(path));
+  if (!hit) return log.action;
+  const what = hit[1];
+  if (what === 'Login') return log.status === 'success' ? 'Login' : 'Failed login';
+  if (/started|stopped|paused|resumed/.test(what)) return what;
+  const verb = method === 'POST' ? 'created' : method === 'DELETE' ? 'deleted' : method === 'PUT' || method === 'PATCH' ? 'changed' : '';
+  return verb ? `${what} ${verb}` : what;
+}
+
 export function AdminPage() {
   const { can } = useAuth();
   const toast = useToast();
@@ -74,7 +115,11 @@ export function AdminPage() {
         ? 'crypto'
         : 'audit';
 
-  const [activeTab, setActiveTab] = useState<AdminTab>(defaultTab);
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as AdminTab | null;
+  const [activeTab, setActiveTab] = useState<AdminTab>(
+    tabParam && ['defectdojo', 'users', 'rbac', 'crypto', 'audit', 'alerts'].includes(tabParam) ? tabParam : defaultTab
+  );
 
   // DefectDojo state
   const [ddConfig, setDdConfig] = useState<DefectDojoConfig>({
@@ -84,7 +129,10 @@ export function AdminPage() {
     engagement_id: 1,
     verify_tls: false,
     auto_push_nmap: false,
+    auto_push_findings: true,
   });
+  const [ddStatus, setDdStatus] = useState<DefectDojoStatus | null>(null);
+  const [ddSyncing, setDdSyncing] = useState(false);
   const [ddHistory, setDdHistory] = useState<DefectDojoExport[]>([]);
   const [scans, setScans] = useState<ScanRun[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -120,12 +168,14 @@ export function AdminPage() {
 
   const loadDefectDojo = useCallback(async () => {
     try {
-      const [cfg, hist, sc, svcs] = await Promise.allSettled([
+      const [cfg, hist, sc, svcs, st] = await Promise.allSettled([
         api.getDefectDojoConfig(),
         api.listDefectDojoHistory(),
         api.listScans(),
         api.listServices({ min_score: 20 }),
+        api.defectDojoStatus(),
       ]);
+      if (st.status === 'fulfilled') setDdStatus(st.value);
       if (cfg.status === 'fulfilled' && cfg.value) {
         setDdConfig((prev) => ({ ...prev, ...cfg.value, api_token: '' }));
       }
@@ -156,7 +206,7 @@ export function AdminPage() {
       const status = await api.cryptoStatus();
       setCryptoStatus(status);
     } catch (err) {
-      toast.error('Błąd statusu szyfrowania', (err as Error).message);
+      toast.error('Could not load encryption status', (err as Error).message);
     }
   }, [toast]);
 
@@ -168,7 +218,7 @@ export function AdminPage() {
       });
       setAuditLogs(logs);
     } catch (err) {
-      toast.error('Błąd Audit Log', (err as Error).message);
+      toast.error('Could not load the audit log', (err as Error).message);
     }
   }, [auditStatusFilter, toast]);
 
@@ -190,13 +240,14 @@ export function AdminPage() {
         engagement_id: Number(ddConfig.engagement_id),
         verify_tls: ddConfig.verify_tls,
         auto_push_nmap: ddConfig.auto_push_nmap,
+        auto_push_findings: ddConfig.auto_push_findings ?? true,
       };
       if (ddConfig.api_token?.trim()) payload.api_token = ddConfig.api_token.trim();
       await api.updateDefectDojoConfig(payload);
-      toast.success('Zapisano', 'Token zaszyfrowany AES-256-GCM');
+      toast.success('Saved', 'API token stored encrypted (AES-256-GCM)');
       loadDefectDojo();
     } catch (err) {
-      toast.error('Błąd zapisu', (err as Error).message);
+      toast.error('Save failed', (err as Error).message);
     } finally {
       setDdBusy(false);
     }
@@ -206,11 +257,24 @@ export function AdminPage() {
     setDdBusy(true);
     try {
       const res = await api.testDefectDojo();
-      toast.success('DefectDojo: OK', JSON.stringify(res));
+      toast.success('DefectDojo connection OK', String((res as Record<string, unknown>).message || ''));
     } catch (err) {
-      toast.error('DefectDojo: błąd', (err as Error).message);
+      toast.error('DefectDojo connection failed', (err as Error).message);
     } finally {
       setDdBusy(false);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setDdSyncing(true);
+    try {
+      await api.syncDefectDojoNow();
+      toast.success('DefectDojo synced', 'Change findings and triage decisions pushed for every profile');
+      loadDefectDojo();
+    } catch (err) {
+      toast.error('DefectDojo sync failed', (err as Error).message);
+    } finally {
+      setDdSyncing(false);
     }
   };
 
@@ -222,10 +286,10 @@ export function AdminPage() {
         scan_run_id: selectedScanForNmap,
         engagement_id: Number(ddConfig.engagement_id) || 1,
       });
-      toast.success('Wysłano Nmap XML');
+      toast.success('nmap XML imported into DefectDojo');
       loadDefectDojo();
     } catch (err) {
-      toast.error('Błąd eksportu Nmap', (err as Error).message);
+      toast.error('nmap XML push failed', (err as Error).message);
     } finally {
       setDdBusy(false);
     }
@@ -233,7 +297,7 @@ export function AdminPage() {
 
   const handlePushFindings = async () => {
     if (selectedServiceIds.length === 0) {
-      toast.warning('Wybierz usługi');
+      toast.warning('Select at least one service');
       return;
     }
     setDdBusy(true);
@@ -243,11 +307,11 @@ export function AdminPage() {
         engagement_id: Number(ddConfig.engagement_id) || 1,
         severity: ddSeverity,
       });
-      toast.success('Wysłano findings', `${selectedServiceIds.length} szt.`);
+      toast.success('Findings sent', `${selectedServiceIds.length} service(s)`);
       setSelectedServiceIds([]);
       loadDefectDojo();
     } catch (err) {
-      toast.error('Błąd eksportu', (err as Error).message);
+      toast.error('Push failed', (err as Error).message);
     } finally {
       setDdBusy(false);
     }
@@ -272,16 +336,16 @@ export function AdminPage() {
           description: roleForm.description,
           permissions: roleForm.permissions,
         });
-        toast.success('Zapisano rolę', roleForm.name);
+        toast.success('Role saved', roleForm.name);
       } else {
         await api.createRole(roleForm);
-        toast.success('Utworzono rolę', roleForm.name);
+        toast.success('Role created', roleForm.name);
       }
       setSelectedRoleId(null);
       setRoleForm({ slug: '', name: '', description: '', permissions: [] });
       loadRBAC();
     } catch (err) {
-      toast.error('Błąd zapisu roli', (err as Error).message);
+      toast.error('Could not save the role', (err as Error).message);
     }
   };
 
@@ -295,24 +359,24 @@ export function AdminPage() {
         role_slug: newUserForm.role_slug,
         active: true,
       });
-      toast.success('Dodano użytkownika', newUserForm.username);
+      toast.success('User added', newUserForm.username);
       setNewUserForm({ username: '', email: '', password: '', role_slug: 'analyst' });
       loadRBAC();
     } catch (err) {
-      toast.error('Błąd tworzenia', (err as Error).message);
+      toast.error('Could not create the user', (err as Error).message);
     }
   };
 
   // Crypto Key Rotation
   const handleRotateKey = async () => {
-    if (!window.confirm('Przeprowadzić rotację klucza DEK (AES-256-GCM re-encryption)?')) return;
+    if (!window.confirm('Rotate the data encryption key? All encrypted fields are re-encrypted with the new key.')) return;
     setRotatingKey(true);
     try {
       await api.rotateCryptoKey();
-      toast.success('Rotacja DEK zakończona');
+      toast.success('Key rotated');
       await loadCrypto();
     } catch (err) {
-      toast.error('Błąd rotacji DEK', (err as Error).message);
+      toast.error('Key rotation failed', (err as Error).message);
     } finally {
       setRotatingKey(false);
     }
@@ -340,15 +404,15 @@ export function AdminPage() {
 
   return (
     <div>
-      <PageHeader title="Administracja" />
+      <PageHeader title="Admin" />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AdminTab)} className="gap-6">
         <TabsList variant="line" className="max-w-full flex-wrap">
           {canDD && <TabsTrigger value="defectdojo">DefectDojo</TabsTrigger>}
-          {canRBAC && <TabsTrigger value="users">Użytkownicy</TabsTrigger>}
+          {canRBAC && <TabsTrigger value="users">Users</TabsTrigger>}
           {canRBAC && <TabsTrigger value="rbac">Role (RBAC)</TabsTrigger>}
-          {canCrypto && <TabsTrigger value="crypto">Szyfrowanie</TabsTrigger>}
-          {canCrypto && <TabsTrigger value="alerts">Alerty</TabsTrigger>}
+          {canCrypto && <TabsTrigger value="crypto">Encryption</TabsTrigger>}
+          {canCrypto && <TabsTrigger value="alerts">Alerts</TabsTrigger>}
           {canAudit && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
         </TabsList>
 
@@ -359,7 +423,7 @@ export function AdminPage() {
               <Card size="sm" className="h-fit xl:col-span-5">
                 <form onSubmit={handleSaveDDConfig} className="flex flex-col gap-(--card-spacing)">
                   <CardHeader className="border-b">
-                    <CardTitle className="text-sm">Konfiguracja API v2</CardTitle>
+                    <CardTitle className="text-sm">Connection (API v2)</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <Field label="Base URL" htmlFor="dd-url">
@@ -377,7 +441,7 @@ export function AdminPage() {
                           API Token
                           {ddConfig.has_api_token && (
                             <Pill tone="success">
-                              <RiLockLine className="size-3" /> zaszyfrowany
+                              <RiLockLine className="size-3" /> stored encrypted
                             </Pill>
                           )}
                         </span>
@@ -389,7 +453,7 @@ export function AdminPage() {
                         type="password"
                         value={ddConfig.api_token || ''}
                         onChange={(e) => setDdConfig((c) => ({ ...c, api_token: e.target.value }))}
-                        placeholder={ddConfig.has_api_token ? '•••••••• (bez zmian)' : 'Token'}
+                        placeholder={ddConfig.has_api_token ? '•••••••• (unchanged)' : 'Token'}
                         className="font-mono"
                       />
                     </Field>
@@ -420,7 +484,7 @@ export function AdminPage() {
                     <div className="space-y-3 pt-1">
                       <Label className="justify-between">
                         <span className="text-xs font-normal tracking-normal normal-case">
-                          Weryfikuj TLS
+                          Verify TLS certificate
                         </span>
                         <Switch
                           checked={ddConfig.verify_tls}
@@ -431,7 +495,18 @@ export function AdminPage() {
                       </Label>
                       <Label className="justify-between">
                         <span className="text-xs font-normal tracking-normal normal-case">
-                          Auto-push Nmap XML po skanie
+                          Push change findings after every completed run (and sync triage)
+                        </span>
+                        <Switch
+                          checked={ddConfig.auto_push_findings ?? true}
+                          onCheckedChange={(checked) =>
+                            setDdConfig((c) => ({ ...c, auto_push_findings: checked }))
+                          }
+                        />
+                      </Label>
+                      <Label className="justify-between">
+                        <span className="text-xs font-normal tracking-normal normal-case">
+                          Push nmap XML after every completed run
                         </span>
                         <Switch
                           checked={ddConfig.auto_push_nmap}
@@ -454,7 +529,7 @@ export function AdminPage() {
                     </Button>
                     {can(PERMISSIONS.ADMIN_SETTINGS) && (
                       <Button type="submit" size="sm" disabled={ddBusy}>
-                        <RiSave3Line /> Zapisz
+                        <RiSave3Line /> Save
                       </Button>
                     )}
                   </CardFooter>
@@ -463,18 +538,83 @@ export function AdminPage() {
 
               <div className="space-y-6 xl:col-span-7">
                 <Card size="sm">
+                  <CardHeader className="border-b">
+                    <CardTitle className="text-sm">Automatic sync</CardTitle>
+                    <CardAction>
+                      {can(PERMISSIONS.DEFECTDOJO_PUSH) && (
+                        <Button type="button" variant="outline" size="sm" disabled={ddSyncing} onClick={handleSyncNow}>
+                          <RiRefreshLine className={cn(ddSyncing && 'animate-spin')} /> Push now
+                        </Button>
+                      )}
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-xs">
+                    <p className="text-muted-foreground">
+                      After every completed run (local or agent) Dzięcioł reimports the run&apos;s nmap XML into
+                      &quot;Dzięcioł Nmap: &lt;profile&gt;&quot; and the actionable change findings (risky exposures, admin
+                      panels, end-of-life versions, new services, gone hosts, with owner) into &quot;Dzięcioł changes:
+                      &lt;profile&gt;&quot;. Fixed items are closed in DefectDojo. Analyst decisions are mirrored: false
+                      positive becomes false_p, accepted risk becomes risk accepted with the reason and expiry as a note.
+                    </p>
+                    {ddStatus?.sync?.last_sync_at ? (
+                      <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
+                        <div>
+                          <dt className="text-[10px] tracking-wider text-muted-foreground uppercase">Last sync</dt>
+                          <dd className="font-mono">{formatDateTime(ddStatus.sync.last_sync_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[10px] tracking-wider text-muted-foreground uppercase">Result</dt>
+                          <dd>
+                            <Pill tone={ddStatus.sync.last_status === 'failed' ? 'danger' : 'success'}>
+                              {ddStatus.sync.last_status || 'n/a'}
+                            </Pill>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-[10px] tracking-wider text-muted-foreground uppercase">Change findings</dt>
+                          <dd className="font-mono">{ddStatus.sync.findings}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[10px] tracking-wider text-muted-foreground uppercase">Triage updates</dt>
+                          <dd className="font-mono">{ddStatus.sync.triage_synced}</dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <p>No automatic sync has run yet. It runs after the next completed scan, or use Push now.</p>
+                    )}
+                    {ddStatus?.sync?.last_error && <p className="text-rose-600 dark:text-rose-400">{ddStatus.sync.last_error}</p>}
+                    <div className="flex flex-wrap gap-3">
+                      {ddStatus?.sync?.test_url && (
+                        <a href={ddStatus.sync.test_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
+                          Changes test <RiExternalLinkLine className="size-3" />
+                        </a>
+                      )}
+                      {ddStatus?.sync?.nmap_test_url && (
+                        <a href={ddStatus.sync.nmap_test_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
+                          nmap test <RiExternalLinkLine className="size-3" />
+                        </a>
+                      )}
+                      {ddStatus?.sync?.product_url && (
+                        <a href={ddStatus.sync.product_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
+                          Product <RiExternalLinkLine className="size-3" />
+                        </a>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card size="sm">
                   <CardHeader>
-                    <CardTitle className="text-sm">Nmap XML</CardTitle>
+                    <CardTitle className="text-sm">Manual push: nmap XML of a run</CardTitle>
                     <CardAction>
                       <Code>/api/v2/import-scan/</Code>
                     </CardAction>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <Field label="Skan" className="flex-1">
+                    <Field label="Run" className="flex-1">
                       <SimpleSelect
                         value={selectedScanForNmap}
                         onValueChange={setSelectedScanForNmap}
-                        placeholder="Wybierz skan"
+                        placeholder="Select a run"
                         options={scans.map((s) => ({
                           value: s.id,
                           label: `${s.name} (${s.run_type})${s.has_raw_nmap_xml ? ' · XML ✓' : ''}`,
@@ -484,24 +624,25 @@ export function AdminPage() {
                     <Button
                       type="button"
                       size="sm"
+                      variant="outline"
                       disabled={ddBusy || !selectedScanForNmap || !can(PERMISSIONS.DEFECTDOJO_PUSH)}
                       onClick={handlePushNmap}
                     >
-                      <RiSendPlaneLine /> Wyślij
+                      <RiSendPlaneLine /> Push nmap XML
                     </Button>
                   </CardContent>
                 </Card>
 
                 <Card size="sm">
                   <CardHeader className="border-b">
-                    <CardTitle className="text-sm">Findings</CardTitle>
+                    <CardTitle className="text-sm">Manual push: selected services</CardTitle>
                     <CardAction>
                       <Code>/api/v2/findings/</Code>
                     </CardAction>
                   </CardHeader>
                   <CardContent>
                     {services.length === 0 ? (
-                      <Empty>Brak usług</Empty>
+                      <Empty>No services with score ≥ 20</Empty>
                     ) : (
                       <div className="max-h-64 divide-y divide-border overflow-y-auto border border-border">
                         {services.slice(0, 20).map((svc) => {
@@ -552,12 +693,13 @@ export function AdminPage() {
                     <Button
                       type="button"
                       size="sm"
+                      variant="outline"
                       disabled={
                         ddBusy || selectedServiceIds.length === 0 || !can(PERMISSIONS.DEFECTDOJO_PUSH)
                       }
                       onClick={handlePushFindings}
                     >
-                      <RiSendPlaneLine /> Wyślij ({selectedServiceIds.length})
+                      <RiSendPlaneLine /> Push selected ({selectedServiceIds.length})
                     </Button>
                   </CardFooter>
                 </Card>
@@ -566,13 +708,13 @@ export function AdminPage() {
 
             <Card size="sm" className="pb-0">
               <CardHeader>
-                <CardTitle className="text-sm">Historia ({ddHistory.length})</CardTitle>
+                <CardTitle className="text-sm">Push history ({ddHistory.length})</CardTitle>
                 <CardAction>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    aria-label="Odśwież"
+                    aria-label="Refresh"
                     onClick={loadDefectDojo}
                   >
                     <RiRefreshLine />
@@ -580,23 +722,23 @@ export function AdminPage() {
                 </CardAction>
               </CardHeader>
               {ddHistory.length === 0 ? (
-                <Empty>Brak eksportów</Empty>
+                <Empty>Nothing pushed yet</Empty>
               ) : (
                 <Table className="text-xs">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="pl-5">Typ</TableHead>
-                      <TableHead>Tytuł</TableHead>
+                      <TableHead className="pl-5">Type</TableHead>
+                      <TableHead>Title</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>External ID</TableHead>
-                      <TableHead>Użytkownik</TableHead>
-                      <TableHead className="pr-5">Data</TableHead>
+                      <TableHead>In DefectDojo</TableHead>
+                      <TableHead>By</TableHead>
+                      <TableHead className="pr-5">When</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {ddHistory.map((ex) => (
                       <TableRow key={ex.id}>
-                        <TableCell className="pl-5 font-mono">{ex.export_type}</TableCell>
+                        <TableCell className="pl-5">{EXPORT_TYPE_LABEL[ex.export_type] || ex.export_type}</TableCell>
                         <TableCell>{ex.title}</TableCell>
                         <TableCell>
                           <Pill tone={ex.status === 'success' ? 'success' : 'danger'}>{ex.status}</Pill>
@@ -609,11 +751,12 @@ export function AdminPage() {
                               rel="noreferrer"
                               className="inline-flex items-center gap-1 text-primary hover:underline"
                             >
-                              #{ex.external_id || 'link'} <RiExternalLinkLine className="size-3" />
+                              {ex.export_type === 'finding' ? `finding #${ex.external_id || '?'}` : `test #${ex.external_id || '?'}`}{' '}
+                              <RiExternalLinkLine className="size-3" />
                             </a>
                           ) : (
                             <span className="text-muted-foreground">
-                              {ex.external_id || ex.error_message || '—'}
+                              {ex.error_message || ex.external_id || 'n/a'}
                             </span>
                           )}
                         </TableCell>
@@ -635,7 +778,7 @@ export function AdminPage() {
           <TabsContent value="users" className="space-y-6">
             <Card size="sm">
               <CardHeader>
-                <CardTitle className="text-sm">Nowy użytkownik</CardTitle>
+                <CardTitle className="text-sm">New user</CardTitle>
               </CardHeader>
               <CardContent>
                 <form
@@ -659,7 +802,7 @@ export function AdminPage() {
                       placeholder="email@agh.edu.pl"
                     />
                   </Field>
-                  <Field label="Hasło" htmlFor="nu-password">
+                  <Field label="Password" htmlFor="nu-password">
                     <Input
                       id="nu-password"
                       type="password"
@@ -668,7 +811,7 @@ export function AdminPage() {
                       onChange={(e) => setNewUserForm((u) => ({ ...u, password: e.target.value }))}
                     />
                   </Field>
-                  <Field label="Rola">
+                  <Field label="Role">
                     <SimpleSelect
                       value={newUserForm.role_slug}
                       onValueChange={(v) => setNewUserForm((u) => ({ ...u, role_slug: v }))}
@@ -676,7 +819,7 @@ export function AdminPage() {
                     />
                   </Field>
                   <Button type="submit" size="sm">
-                    <RiUserAddLine /> Dodaj
+                    <RiUserAddLine /> Add user
                   </Button>
                 </form>
               </CardContent>
@@ -684,19 +827,19 @@ export function AdminPage() {
 
             <Card size="sm" className="pb-0">
               <CardHeader>
-                <CardTitle className="text-sm">Użytkownicy ({users.length})</CardTitle>
+                <CardTitle className="text-sm">Users ({users.length})</CardTitle>
               </CardHeader>
               {users.length === 0 ? (
-                <Empty>Brak użytkowników</Empty>
+                <Empty>No users</Empty>
               ) : (
                 <Table className="text-xs">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="pl-5">Użytkownik</TableHead>
+                      <TableHead className="pl-5">User</TableHead>
                       <TableHead>
                         Email <span className="normal-case opacity-70">(encrypted)</span>
                       </TableHead>
-                      <TableHead>Rola</TableHead>
+                      <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="pr-5 text-right" />
                     </TableRow>
@@ -705,7 +848,7 @@ export function AdminPage() {
                     {users.map((u) => (
                       <TableRow key={u.id}>
                         <TableCell className="pl-5 font-mono font-semibold">{u.username}</TableCell>
-                        <TableCell className="text-muted-foreground">{u.email || '—'}</TableCell>
+                        <TableCell className="text-muted-foreground">{u.email || ''}</TableCell>
                         <TableCell>
                           <Pill className={getRoleBadgeClasses(u.role_slug)}>
                             {u.role_name || u.role_slug}
@@ -717,7 +860,7 @@ export function AdminPage() {
                               Aktywny
                             </Pill>
                           ) : (
-                            <Pill dot>Wyłączony</Pill>
+                            <Pill dot>Disabled</Pill>
                           )}
                         </TableCell>
                         <TableCell className="pr-5 text-right">
@@ -725,12 +868,12 @@ export function AdminPage() {
                             type="button"
                             variant="ghost"
                             size="icon-xs"
-                            aria-label={`Usuń ${u.username}`}
+                            aria-label={`Delete ${u.username}`}
                             className="text-muted-foreground hover:text-destructive"
                             onClick={async () => {
-                              if (!window.confirm(`Usunąć użytkownika ${u.username}?`)) return;
+                              if (!window.confirm(`Delete user ${u.username}?`)) return;
                               await api.deleteUser(u.id);
-                              toast.success('Usunięto', u.username);
+                              toast.success('User deleted', u.username);
                               loadRBAC();
                             }}
                           >
@@ -773,7 +916,7 @@ export function AdminPage() {
                   </CardAction>
                 </CardHeader>
                 <div className="divide-y divide-border border-t border-border">
-                  {roles.length === 0 && <Empty>Brak ról</Empty>}
+                  {roles.length === 0 && <Empty>No roles</Empty>}
                   {roles.map((r) => (
                     <div
                       key={r.id}
@@ -804,12 +947,12 @@ export function AdminPage() {
                               type="button"
                               variant="ghost"
                               size="icon-xs"
-                              aria-label={`Usuń ${r.name}`}
+                              aria-label={`Delete ${r.name}`}
                               className="text-muted-foreground hover:text-destructive"
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 await api.deleteRole(r.id);
-                                toast.success('Usunięto rolę', r.name);
+                                toast.success('Role deleted', r.name);
                                 loadRBAC();
                               }}
                             >
@@ -832,7 +975,7 @@ export function AdminPage() {
                 <form onSubmit={handleSaveRole} className="flex flex-col gap-(--card-spacing)">
                   <CardHeader className="border-b">
                     <CardTitle className="text-sm">
-                      {selectedRoleId ? roleForm.name || 'Rola' : 'Nowa rola'}
+                      {selectedRoleId ? roleForm.name || 'Role' : 'New role'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -848,16 +991,16 @@ export function AdminPage() {
                           className="font-mono"
                         />
                       </Field>
-                      <Field label="Nazwa" htmlFor="role-name" className="sm:col-span-2">
+                      <Field label="Name" htmlFor="role-name" className="sm:col-span-2">
                         <Input
                           id="role-name"
                           required
                           value={roleForm.name}
                           onChange={(e) => setRoleForm((f) => ({ ...f, name: e.target.value }))}
-                          placeholder="Audytor SOC"
+                          placeholder="SOC auditor"
                         />
                       </Field>
-                      <Field label="Opis" htmlFor="role-desc" className="sm:col-span-3">
+                      <Field label="Description" htmlFor="role-desc" className="sm:col-span-3">
                         <Input
                           id="role-desc"
                           value={roleForm.description}
@@ -869,7 +1012,7 @@ export function AdminPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <SectionTitle>Uprawnienia</SectionTitle>
+                      <SectionTitle>Permissions</SectionTitle>
                       <div className="max-h-[28rem] divide-y divide-border overflow-y-auto border border-border">
                         {Object.entries(groupedPermissions).map(([group, list]) => (
                           <div key={group} className="px-4 py-3">
@@ -910,7 +1053,7 @@ export function AdminPage() {
                   </CardContent>
                   <CardFooter className="justify-end border-t">
                     <Button type="submit" size="sm">
-                      <RiSave3Line /> Zapisz rolę
+                      <RiSave3Line /> Save role
                     </Button>
                   </CardFooter>
                 </form>
@@ -941,7 +1084,7 @@ export function AdminPage() {
                         Encryption At Rest
                       </h2>
                       <Pill tone="success" dot>
-                        Aktywne
+                        Active
                       </Pill>
                     </div>
                     <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
@@ -952,14 +1095,14 @@ export function AdminPage() {
                         </dd>
                       </div>
                       <div className="flex gap-1.5">
-                        <dt className="text-muted-foreground">Algorytm</dt>
+                        <dt className="text-muted-foreground">Algorithm</dt>
                         <dd className="font-mono font-semibold">
                           {cryptoStatus?.algorithm || 'AES-256-GCM + AAD'}
                         </dd>
                       </div>
                       {cryptoStatus?.rotated_at && (
                         <div className="flex gap-1.5">
-                          <dt className="text-muted-foreground">Rotacja</dt>
+                          <dt className="text-muted-foreground">Rotated</dt>
                           <dd className="font-mono">{formatDateTime(cryptoStatus.rotated_at)}</dd>
                         </div>
                       )}
@@ -975,18 +1118,28 @@ export function AdminPage() {
                   onClick={handleRotateKey}
                 >
                   <RiLoopRightLine className={cn(rotatingKey && 'animate-spin')} />
-                  {rotatingKey ? 'Rotacja…' : 'Rotuj DEK'}
+                  {rotatingKey ? 'Rotating…' : 'Rotate key'}
                 </Button>
               </CardContent>
             </Card>
 
             <Card size="sm">
               <CardHeader>
-                <CardTitle className="text-sm">Ciphertext vs odszyfrowane</CardTitle>
+                <CardTitle className="text-sm">Stored ciphertext vs what the API returns</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {cryptoSamples.length === 0 ? (
-                  <Empty icon={RiLockLine}>Brak próbek</Empty>
+                  <div className="space-y-2 text-xs">
+                    <p className="text-muted-foreground">
+                      No record to sample yet (it appears after the first scan or import). These columns are encrypted
+                      with {cryptoStatus?.algorithm || 'AES-256-GCM'}, each bound to its row by AAD:
+                    </p>
+                    <ul className="list-inside list-disc font-mono text-[11px]">
+                      {(cryptoStatus?.encrypted_tables || []).map((t) => (
+                        <li key={t}>{t}</li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : (
                   cryptoSamples.map((s, idx) => (
                     <div
@@ -1015,14 +1168,14 @@ export function AdminPage() {
                         <SectionTitle
                           actions={
                             <Pill tone="success">
-                              <RiCheckboxCircleLine className="size-3" /> odszyfrowane
+                              <RiCheckboxCircleLine className="size-3" /> decrypted
                             </Pill>
                           }
                         >
                           API
                         </SectionTitle>
                         <div className="border border-border bg-muted/30 p-3 font-mono text-xs break-all">
-                          {s.decrypted_value || s.plaintext || '—'}
+                          {s.decrypted_value || s.plaintext || 'n/a'}
                         </div>
                       </div>
                     </div>
@@ -1045,7 +1198,7 @@ export function AdminPage() {
                     value={auditStatusFilter || 'all'}
                     onValueChange={(v) => setAuditStatusFilter(v === 'all' ? '' : v)}
                     options={[
-                      { value: 'all', label: 'Wszystkie' },
+                      { value: 'all', label: 'All' },
                       { value: 'success', label: 'success' },
                       { value: 'denied', label: 'denied (403)' },
                       { value: 'error', label: 'error' },
@@ -1056,7 +1209,7 @@ export function AdminPage() {
                     type="button"
                     variant="outline"
                     size="icon-sm"
-                    aria-label="Odśwież"
+                    aria-label="Refresh"
                     onClick={loadAudit}
                   >
                     <RiRefreshLine />
@@ -1064,15 +1217,15 @@ export function AdminPage() {
                 </CardAction>
               </CardHeader>
               {auditLogs.length === 0 ? (
-                <Empty icon={RiFileList3Line}>Brak wpisów</Empty>
+                <Empty icon={RiFileList3Line}>No entries</Empty>
               ) : (
                 <Table className="text-xs">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="pl-5">Czas</TableHead>
-                      <TableHead>Użytkownik</TableHead>
-                      <TableHead>Akcja</TableHead>
-                      <TableHead>Zasób</TableHead>
+                      <TableHead className="pl-5">Time</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Action</TableHead>
+                      <TableHead>Resource</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="pr-5">IP</TableHead>
                     </TableRow>
@@ -1089,7 +1242,10 @@ export function AdminPage() {
                             {log.role_slug}
                           </span>
                         </TableCell>
-                        <TableCell className="font-mono">{log.action}</TableCell>
+                        <TableCell>
+                          <div>{auditActionLabel(log)}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{log.action}</div>
+                        </TableCell>
                         <TableCell className="font-mono text-muted-foreground">
                           {log.resource}
                           {log.resource_id ? `/${log.resource_id.slice(0, 8)}` : ''}
@@ -1098,7 +1254,7 @@ export function AdminPage() {
                           <Pill tone={auditTone(log.status)}>{log.status}</Pill>
                         </TableCell>
                         <TableCell className="pr-5 font-mono text-[11px] text-muted-foreground">
-                          {log.ip_address || '—'}
+                          {log.ip_address || ''}
                         </TableCell>
                       </TableRow>
                     ))}
