@@ -13,6 +13,8 @@ import { ScansPage } from './pages/ScansPage';
 import { SignaturesPage } from './pages/SignaturesPage';
 import { AdminPage } from './pages/AdminPage';
 import { PoliciesPage } from './pages/PoliciesPage';
+import { RemediationPage } from './pages/RemediationPage';
+import { DigestPage } from './pages/DigestPage';
 import { PERMISSIONS } from './lib/permissions';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PeckLoader } from '@/components/Woodpecker';
@@ -108,6 +110,22 @@ function AppRoutes() {
           element={
             <ProtectedRoute anyPerms={[PERMISSIONS.SCANS_READ]}>
               <DiffPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="remediation"
+          element={
+            <ProtectedRoute anyPerms={[PERMISSIONS.ASSETS_READ]}>
+              <RemediationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="digest"
+          element={
+            <ProtectedRoute anyPerms={[PERMISSIONS.DASHBOARD_READ]}>
+              <DigestPage />
             </ProtectedRoute>
           }
         />
