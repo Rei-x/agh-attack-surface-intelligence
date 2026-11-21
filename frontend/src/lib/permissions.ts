@@ -26,24 +26,24 @@ export const ALL_PERMISSIONS_META: Array<{
   group: string;
   label: string;
 }> = [
-  { slug: 'dashboard:read', group: 'Dashboard', label: 'Podgląd Dashboardu i KPI' },
-  { slug: 'assets:read', group: 'Zasoby & Graf', label: 'Odczyt hostów, usług, klastrów i grafu' },
-  { slug: 'assets:write', group: 'Zasoby & Graf', label: 'Edycja nadpisań (Overrides) i potwierdzanie zmian' },
-  { slug: 'assets:delete', group: 'Zasoby & Graf', label: 'Usuwanie zasobów' },
-  { slug: 'scans:read', group: 'Skaner & Diff', label: 'Odczyt skanów, profili, diffów i Coverage Ledger' },
-  { slug: 'scans:write', group: 'Skaner & Diff', label: 'Tworzenie/edycja profili, celów i notatek skanów' },
-  { slug: 'scans:delete', group: 'Skaner & Diff', label: 'Usuwanie skanów, profili i zakresów' },
-  { slug: 'scans:run', group: 'Skaner & Diff', label: 'Uruchamianie, pauzowanie i zatrzymywanie skanów' },
-  { slug: 'signatures:read', group: 'Signature Studio', label: 'Odczyt sygnatur i test retroaktywny' },
-  { slug: 'signatures:write', group: 'Signature Studio', label: 'Tworzenie, edycja i import sygnatur' },
-  { slug: 'signatures:delete', group: 'Signature Studio', label: 'Usuwanie własnych sygnatur' },
-  { slug: 'import:write', group: 'Import / Eksport', label: 'Formularz ręczny i import plików CSV/JSON' },
-  { slug: 'export:read', group: 'Import / Eksport', label: 'Eksport danych do CSV/JSON' },
-  { slug: 'defectdojo:push', group: 'Integracje', label: 'Wysyłanie znalezisk i Nmap XML do DefectDojo v2' },
-  { slug: 'admin:users', group: 'Administracja', label: 'Zarządzanie użytkownikami' },
-  { slug: 'admin:roles', group: 'Administracja', label: 'Dynamiczny RBAC — zarządzanie rolami' },
-  { slug: 'admin:settings', group: 'Administracja', label: 'Konfiguracja DefectDojo i szyfrowanie (rotacja DEK)' },
-  { slug: 'admin:audit', group: 'Administracja', label: 'Dziennik audytowy (Audit Log)' },
+  { slug: 'dashboard:read', group: 'Dashboard', label: 'View the dashboard and KPIs' },
+  { slug: 'assets:read', group: 'Assets & graph', label: 'Read hosts, services, clusters and the graph' },
+  { slug: 'assets:write', group: 'Assets & graph', label: 'Edit analyst overrides and acknowledge changes' },
+  { slug: 'assets:delete', group: 'Assets & graph', label: 'Delete assets' },
+  { slug: 'scans:read', group: 'Scans & diff', label: 'Read scans, profiles, diffs and the coverage ledger' },
+  { slug: 'scans:write', group: 'Scans & diff', label: 'Create and edit profiles, targets and scan notes' },
+  { slug: 'scans:delete', group: 'Scans & diff', label: 'Delete scans, profiles and scope entries' },
+  { slug: 'scans:run', group: 'Scans & diff', label: 'Start, pause and stop scans' },
+  { slug: 'signatures:read', group: 'Signature Studio', label: 'Read signatures and run retroactive tests' },
+  { slug: 'signatures:write', group: 'Signature Studio', label: 'Create, edit and import signatures' },
+  { slug: 'signatures:delete', group: 'Signature Studio', label: 'Delete custom signatures' },
+  { slug: 'import:write', group: 'Import / export', label: 'Manual entry and CSV/JSON/nmap import' },
+  { slug: 'export:read', group: 'Import / export', label: 'Export data' },
+  { slug: 'defectdojo:push', group: 'Integrations', label: 'Push findings and nmap XML to DefectDojo' },
+  { slug: 'admin:users', group: 'Administration', label: 'Manage users' },
+  { slug: 'admin:roles', group: 'Administration', label: 'Manage roles (dynamic RBAC)' },
+  { slug: 'admin:settings', group: 'Administration', label: 'DefectDojo settings and encryption key rotation' },
+  { slug: 'admin:audit', group: 'Administration', label: 'Read the audit log' },
 ];
 
 export function hasPerm(user: User | null | undefined, perm: string): boolean {
@@ -66,15 +66,15 @@ export function getRoleDisplayName(user: User | null | undefined): string {
   const slug = user.role_slug || user.role || '';
   switch (slug) {
     case 'admin':
-      return 'Administracja';
+      return 'Administration';
     case 'operator':
-      return 'Dodawanie, usuwanie, modyfikacja';
+      return 'Add, delete, modify';
     case 'analyst':
-      return 'Modyfikacja i odczyt';
+      return 'Modify and read';
     case 'viewer':
-      return 'Odczyt';
+      return 'Read only';
     default:
-      return slug || 'Użytkownik';
+      return slug || 'User';
   }
 }
 

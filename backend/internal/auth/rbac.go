@@ -24,13 +24,13 @@ type DemoAccount struct {
 var DefaultRoles = []DefaultRoleSpec{
 	{
 		Slug:        "admin",
-		Name:        "Administracja",
+		Name:        "Administration",
 		Description: "Full administrative access (users, roles, encryption, audit, all modules)",
 		Permissions: []string{"*"},
 	},
 	{
 		Slug:        "operator",
-		Name:        "Dodawanie, usuwanie, modyfikacja",
+		Name:        "Add, delete, modify",
 		Description: "Manage scans, assets, signatures, import/export and the DefectDojo integration",
 		Permissions: []string{
 			domain.PermDashboardRead,
@@ -51,7 +51,7 @@ var DefaultRoles = []DefaultRoleSpec{
 	},
 	{
 		Slug:        "analyst",
-		Name:        "Modyfikacja i odczyt",
+		Name:        "Modify and read",
 		Description: "Browse assets and scans; edit analyst overrides, metadata and signatures",
 		Permissions: []string{
 			domain.PermDashboardRead,
@@ -66,7 +66,7 @@ var DefaultRoles = []DefaultRoleSpec{
 	},
 	{
 		Slug:        "viewer",
-		Name:        "Odczyt",
+		Name:        "Read only",
 		Description: "Read-only access to the dashboard, graph, assets, scans, signatures and exports",
 		Permissions: []string{
 			domain.PermDashboardRead,
@@ -85,7 +85,7 @@ var DemoAccounts = []DemoAccount{
 		Password:    "Admin123!",
 		Email:       "admin@cbi.agh.edu.pl",
 		RoleSlug:    "admin",
-		RoleName:    "Administracja",
+		RoleName:    "Administration",
 		Description: "Full administrative access",
 	},
 	{
@@ -93,7 +93,7 @@ var DemoAccounts = []DemoAccount{
 		Password:    "Operator123!",
 		Email:       "operator@cbi.agh.edu.pl",
 		RoleSlug:    "operator",
-		RoleName:    "Dodawanie, usuwanie, modyfikacja",
+		RoleName:    "Add, delete, modify",
 		Description: "Run scans, import, delete, DefectDojo",
 	},
 	{
@@ -101,7 +101,7 @@ var DemoAccounts = []DemoAccount{
 		Password:    "Analyst123!",
 		Email:       "analyst@cbi.agh.edu.pl",
 		RoleSlug:    "analyst",
-		RoleName:    "Modyfikacja i odczyt",
+		RoleName:    "Modify and read",
 		Description: "Read and edit assets, overrides and signatures",
 	},
 	{
@@ -109,7 +109,7 @@ var DemoAccounts = []DemoAccount{
 		Password:    "Viewer123!",
 		Email:       "viewer@cbi.agh.edu.pl",
 		RoleSlug:    "viewer",
-		RoleName:    "Odczyt",
+		RoleName:    "Read only",
 		Description: "Read-only and report export",
 	},
 }
