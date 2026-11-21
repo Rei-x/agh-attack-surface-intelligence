@@ -415,9 +415,6 @@ func (r *LiveScanRunner) launchAsync(
 			},
 		})
 
-		bgCtx, bgCancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer bgCancel()
-
 		// Check if user requested pause vs stop.
 		r.mu.Lock()
 		wasPause := handle.pauseReq
@@ -426,7 +423,24 @@ func (r *LiveScanRunner) launchAsync(
 		// Persist observations of the chunks finished in THIS segment through the unified
 		// ingestion pipeline - also when the segment ended by window/user pause or stop,
 		// because DONE chunks are skipped on resume and would otherwise never be ingested.
-		r.ingestSegment(bgCtx, &runCopy, profile, res)
+		// Ingest gets its own generous deadline: it scales with the number of live hosts, and a
+		// short shared deadline (60 s) silently cut large scans off mid-way while the run still
+		// reported COMPLETED (seen on the /18 lab: 42% of hosts persisted).
+		ingestCtx, ingestCancel := context.WithTimeout(context.Background(), 2*time.Hour)
+		ingestErr := r.ingestSegment(ingestCtx, &runCopy, profile, res)
+		ingestCancel()
+
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer bgCancel()
+		if ingestErr != nil && err == nil {
+			now := time.Now().UTC()
+			runCopy.Status = domain.ScanStatusFailed
+			runCopy.FinishedAt = &now
+			runCopy.Notes = strings.TrimSpace(runCopy.Notes + "\nzapis wyników nie powiódł się: " + ingestErr.Error())
+			_ = r.store.SaveScanChunks(bgCtx, runCopy.ID, runCopy.Chunks)
+			_ = r.store.UpdateScanRun(bgCtx, &runCopy)
+			return
+		}
 
 		if err != nil {
 			if wasPause {
@@ -476,7 +490,7 @@ func (r *LiveScanRunner) launchAsync(
 		_ = r.store.SaveScanChunks(bgCtx, runCopy.ID, runCopy.Chunks)
 		_ = r.store.UpdateScanRun(bgCtx, &runCopy)
 		if !res.PausedByWindow {
-			r.autoPushDefectDojo(bgCtx, runCopy.ID)
+			r.autoPushDefectDojo(context.Background(), runCopy.ID)
 		}
 	}()
 }
@@ -530,9 +544,9 @@ func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 // ingestSegment pushes one window segment's observations through the pipeline. Missing-host
 // detection is scoped to the IPs actually scanned in this segment (res.ScannedIPs): using the
 // whole scope here would flag every host scanned in an earlier window as missing.
-func (r *LiveScanRunner) ingestSegment(ctx context.Context, run *domain.ScanRun, profile domain.ScanProfile, res *scanner.RunResult) {
+func (r *LiveScanRunner) ingestSegment(ctx context.Context, run *domain.ScanRun, profile domain.ScanProfile, res *scanner.RunResult) error {
 	if res == nil || r.pipeline == nil || (len(res.ObservedHosts) == 0 && res.RawNmapXML == "") {
-		return
+		return nil
 	}
 	if _, perr := r.pipeline.ProcessObservations(ctx, ingest.IngestRequest{
 		ScanRunID:        run.ID,
@@ -549,13 +563,14 @@ func (r *LiveScanRunner) ingestSegment(ctx context.Context, run *domain.ScanRun,
 		GracePeriodHours: profile.GracePeriodHours,
 	}); perr != nil {
 		log.Printf("[ERROR] scan %s ingest failed: %v", run.ID, perr)
-		return
+		return perr
 	}
 	// The pipeline overwrites per-segment counters on the stored run; keep the engine's
 	// cumulative ActiveHosts/ServicesFound and adopt the pipeline's ChangesDetected.
 	if saved, err := r.store.GetScanRun(ctx, run.ID); err == nil {
 		run.ChangesDetected = saved.ChangesDetected
 	}
+	return nil
 }
 
 func (r *LiveScanRunner) PauseScan(ctx context.Context, scanRunID string) error {
