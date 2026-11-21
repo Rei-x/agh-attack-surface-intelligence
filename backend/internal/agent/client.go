@@ -101,10 +101,15 @@ func (c *client) do(ctx context.Context, timeout time.Duration, method, path str
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var body io.Reader
+	gzipped := false
 	if in != nil {
 		raw, err := json.Marshal(in)
 		if err != nil {
 			return 0, err
+		}
+		// Chunk results with screenshots run to megabytes: compress large bodies.
+		if z, ok := gzipBody(raw); ok {
+			raw, gzipped = z, true
 		}
 		body = bytes.NewReader(raw)
 	}
@@ -117,6 +122,9 @@ func (c *client) do(ctx context.Context, timeout time.Duration, method, path str
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if gzipped {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
 	req.Header.Set("User-Agent", c.userAgent)
 	if c.credential != "" {
 		req.Header.Set("Authorization", "Bearer "+c.credential)

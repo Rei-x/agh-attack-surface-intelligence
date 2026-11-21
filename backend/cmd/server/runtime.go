@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/api"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
@@ -16,6 +17,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
 )
 
 var errUsage = errors.New("usage")
@@ -73,6 +75,9 @@ type appRuntime struct {
 	Postgres   bool
 	FirstRun   bool // no users existed before seeding (fresh installation)
 	ServerBusy *localdata.LockInfo
+
+	shotsOnce sync.Once
+	shots     *screenshot.Store // see screenshots.go
 }
 
 func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) {
@@ -195,7 +200,9 @@ func (rt *appRuntime) newPipeline(hub *api.SSEHub) *ingest.Pipeline {
 	if hub != nil {
 		emit = hub.Publish
 	}
-	return ingest.NewPipeline(rt.Store, NewIntelligenceAnalyzer(), emit)
+	p := ingest.NewPipeline(rt.Store, NewIntelligenceAnalyzer(), emit)
+	rt.attachScreenshots(p, emit)
+	return p
 }
 
 // printBootstrap shows a generated admin password exactly once (terminal only, not the log).

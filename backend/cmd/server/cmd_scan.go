@@ -21,6 +21,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
 )
 
 const scanUsage = `Usage: dzieciol scan <targets...> [flags]
@@ -93,6 +94,7 @@ func cmdScan(args []string) error {
 		return err
 	}
 	defer rt.Close()
+	defer screenshot.Shutdown()
 	store := rt.Store
 	bg := context.Background()
 
@@ -118,7 +120,7 @@ func cmdScan(args []string) error {
 
 	runRunner := NewLiveScanRunner(store, nil, nil)
 	unstable := runRunner.collectTrackedHostIPs(bg)
-	engine := scanner.NewEngine(scanner.EngineConfig{UseNmap: si.HasNmap(), UnstableHosts: unstable})
+	engine := scanner.NewEngine(scanner.EngineConfig{UseNmap: si.HasNmap(), UnstableHosts: unstable, Screenshots: screenshotCapturer()})
 
 	runID := db.NewID()
 	runName := strings.TrimSpace(*name)

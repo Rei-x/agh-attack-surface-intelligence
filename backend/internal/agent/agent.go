@@ -38,6 +38,8 @@ type Config struct {
 	Insecure   bool
 	AllowCIDRs []string // local safety allowlist; empty = no restriction
 	Version    string
+	// Screenshots captures web pages locally (headless Chromium); nil = no screenshots.
+	Screenshots scanner.ScreenshotCapturer
 
 	// Tuning / test seams.
 	PollWait      time.Duration // long-poll wait for jobs (default 25s)
@@ -206,6 +208,7 @@ func (a *Agent) detectCapabilities() domain.AgentCapabilities {
 		Arch:       runtime.GOARCH,
 		Hostname:   host,
 	}
+	caps.Screenshots = a.cfg.Screenshots != nil
 	for _, p := range a.allow {
 		caps.AllowCIDRs = append(caps.AllowCIDRs, p.String())
 	}

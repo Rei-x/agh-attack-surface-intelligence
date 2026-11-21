@@ -113,7 +113,7 @@ func (a *Agent) outsideAllowlist(ips []string) string {
 }
 
 func (a *Agent) newEngine(unstable []string) *scanner.Engine {
-	cfg := scanner.EngineConfig{UseNmap: scanner.NmapAvailable(), UnstableHosts: unstable}
+	cfg := scanner.EngineConfig{UseNmap: scanner.NmapAvailable(), UnstableHosts: unstable, Screenshots: a.cfg.Screenshots}
 	if a.cfg.EngineConfig != nil {
 		cfg = a.cfg.EngineConfig(cfg)
 	}
@@ -269,6 +269,9 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 			obsMu.Unlock()
 			if obs == nil {
 				obs = []domain.ObservedHost{}
+			}
+			if n := trimScreenshots(obs, maxChunkScreenshotBytes); n > 0 {
+				a.logf("[WARN] chunk %d of run %s: %d screenshot(s) over the upload budget were dropped", ch.ChunkIndex, spec.RunID, n)
 			}
 			if err := a.box.put("chunk", spec.RunID, agenthub.ChunkUpload{Chunk: ch, Observations: obs}); err != nil {
 				a.logf("[ERROR] cannot buffer chunk %d of run %s: %v", ch.ChunkIndex, spec.RunID, err)

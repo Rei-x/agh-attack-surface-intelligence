@@ -47,6 +47,8 @@ type Pipeline struct {
 	analyzer Analyzer
 	emit     func(domain.LiveEvent)
 	notifier atomic.Value // notifierBox
+	// screenshots receives page screenshots from active scans (screenshots.go).
+	screenshots atomic.Value // screenshotSinkBox
 }
 
 // ChangeNotifier receives the change events produced by one pipeline run (e.g. the
@@ -80,6 +82,7 @@ func (p *Pipeline) Analyzer() Analyzer {
 
 // ProcessObservations runs the complete unified pipeline.
 func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (*IngestResult, error) {
+	p.takeScreenshots(ctx, &req)
 	now := time.Now().UTC()
 	runType := req.RunType
 	if runType == "" {

@@ -112,7 +112,12 @@ func identity(r *http.Request) agentIdentity {
 }
 
 func decode(r *http.Request, dst any) error {
-	return json.NewDecoder(r.Body).Decode(dst)
+	body, closeBody, err := requestBody(r)
+	if err != nil {
+		return err
+	}
+	defer closeBody()
+	return json.NewDecoder(body).Decode(dst)
 }
 
 func (c *Coordinator) writeOpErr(w http.ResponseWriter, err error) {

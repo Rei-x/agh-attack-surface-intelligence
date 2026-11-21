@@ -17,6 +17,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/agent"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
 )
 
 const agentUsage = `Usage: dzieciol agent [flags]
@@ -110,7 +111,10 @@ func cmdAgent(args []string) error {
 	a, err := agent.New(agent.Config{
 		ServerURL: f.server, Token: f.token, Name: f.name, DataDir: dir,
 		CAFile: f.caFile, Insecure: f.insecure, AllowCIDRs: f.allow, Version: appVersion(),
+		Screenshots: screenshotCapturer(),
 	})
+	defer screenshot.Shutdown()
+	log.Printf("[INFO] %s", screenshot.Status().Detail)
 	if err != nil {
 		var le *localdata.ErrLocked
 		if errors.As(err, &le) {

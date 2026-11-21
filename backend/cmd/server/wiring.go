@@ -227,6 +227,7 @@ func (r *LiveScanRunner) newEngine(unstableHosts []string) *scanner.Engine {
 	cfg := scanner.EngineConfig{
 		UseNmap:       scanner.NmapAvailable(),
 		UnstableHosts: unstableHosts,
+		Screenshots:   screenshotCapturer(),
 	}
 	if r.nowFn != nil {
 		cfg.Now = r.nowFn

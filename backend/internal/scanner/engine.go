@@ -64,6 +64,8 @@ type EngineConfig struct {
 	WindowPollInterval time.Duration
 	// DisableAdaptiveChunking turns off in-run chunk re-sizing from measured throughput.
 	DisableAdaptiveChunking bool
+	// Screenshots captures landing pages of HTTP services (nil = no screenshots).
+	Screenshots ScreenshotCapturer
 }
 
 // Engine runs, per ledger chunk, Stage 1 (host discovery: nmap sweep or TCP connect) with the
@@ -286,6 +288,7 @@ func (e *Engine) fingerprintStage(
 		}()
 	}
 	wg.Wait()
+	e.captureScreenshots(ctx, activeIPs, svcMap, profile, gov, st, &mu)
 }
 
 func isHTTPServiceCandidate(s domain.ObservedService) bool {

@@ -18,6 +18,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/auth"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/webui"
 )
 
@@ -64,6 +65,7 @@ func cmdServe(args []string) error {
 		return err
 	}
 	defer rt.Close()
+	defer screenshot.Shutdown()
 	vault, store := rt.Vault, rt.Store
 	log.Printf("[INFO] Encryption vault active (algo=%s, kid=%s, key=%s)", vault.Status().Algorithm, vault.ActiveKID(), rt.KeySource)
 	log.Printf("[INFO] Store backend: %s", rt.storeDescription())
@@ -105,6 +107,7 @@ func cmdServe(args []string) error {
 		}
 	}
 	srv := api.NewServer(cfg, store, vault, pipeline, dispatch, hub)
+	srv.SetScreenshots(rt.screenshotStore())
 
 	url := displayURL(ln.Addr(), *listen)
 	if rt.Lock != nil {
@@ -186,6 +189,7 @@ func printServeBanner(rt *appRuntime, url, uiSource string, seedDemo bool) {
 	}
 	si := detectScanner()
 	fmt.Fprintf(w, "  Scanner:  %s\n", si.Engine())
+	fmt.Fprintf(w, "  Shots:    %s\n", screenshot.Status().Detail)
 	if rt.FirstRun && seedDemo {
 		fmt.Fprintf(w, "\n  First run - demo accounts created:\n")
 		for _, a := range auth.DemoAccounts {
