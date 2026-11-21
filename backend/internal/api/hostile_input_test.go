@@ -126,9 +126,9 @@ func TestHostileImports(t *testing.T) {
 		"binary.json":     {0x00, 0xFF, 0x13, 0x37, 0x89, 'P', 'N', 'G'},
 		"binary.csv":      {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00},
 		"deep.json":       []byte(strings.Repeat("[", 50000) + strings.Repeat("]", 50000)),
-		"bomb.xml": []byte(`<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;"><!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">]><nmaprun><host><address addr="&lol3;" addrtype="ipv4"/></host></nmaprun>`),
-		"xxe.xml":   []byte(`<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><nmaprun><host><address addr="&x;" addrtype="ipv4"/></host></nmaprun>`),
-		"empty.xml": []byte(`<nmaprun></nmaprun>`),
+		"bomb.xml":        []byte(`<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;"><!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">]><nmaprun><host><address addr="&lol3;" addrtype="ipv4"/></host></nmaprun>`),
+		"xxe.xml":         []byte(`<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><nmaprun><host><address addr="&x;" addrtype="ipv4"/></host></nmaprun>`),
+		"empty.xml":       []byte(`<nmaprun></nmaprun>`),
 	}
 	for name, content := range bad {
 		rec := hostileUpload(t, h, tok, name, content)
