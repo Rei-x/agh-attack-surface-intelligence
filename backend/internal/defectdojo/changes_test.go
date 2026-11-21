@@ -48,7 +48,7 @@ func fixtureHosts() []domain.Host {
 		{IP: "10.66.0.78", LifecycleState: domain.HostStateInactive, FirstSeen: base, LastSeen: changesNow.Add(-90 * 24 * time.Hour)},
 		{
 			IP: "10.66.0.90", LifecycleState: domain.HostStateActive, FirstSeen: base, LastSeen: changesNow,
-			Triage: &domain.TriageInfo{Status: domain.TriageAcceptedRisk, Reason: "honeypot", ExpiresAt: &exp},
+			Triage:   &domain.TriageInfo{Status: domain.TriageAcceptedRisk, Reason: "honeypot", ExpiresAt: &exp},
 			Services: []domain.Service{{Port: 23, Protocol: "tcp", State: "open", ServiceName: "telnet", FirstSeen: base}},
 		},
 		{
