@@ -28,12 +28,15 @@ import { Field, Notice } from '@/components/common';
 import { PeckSpinner } from '@/components/Woodpecker';
 
 const PRESETS = [
+  { label: 'This machine', hint: '127.0.0.1', value: '127.0.0.1' },
   { label: 'Lab AGH', hint: '172.28.0.10-14', value: '172.28.0.10-14' },
   { label: 'Subnet /24', hint: '256 IP', value: '172.28.0.0/24' },
   { label: 'Scale 16,384 IP', hint: '10.0.0.0/18', value: '10.0.0.0/18' },
 ];
 
-const DEFAULT_PORTS = '21,22,23,25,53,80,110,143,443,445,554,631,3000,3306,3389,5000,5432,6379,8000,8080,8081,8443,8888,9000,9090,9100,9200,27017';
+// "auto" lets the server size the list to the scope: all 65535 ports for 1-4 IPs, the top
+// 1000 + common alternative web/admin/db/mq ports up to 1024 IPs, a compact list above.
+const DEFAULT_PORTS = 'auto';
 
 function parseTargets(text: string): string[] {
   return text
@@ -66,7 +69,8 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
   const [targetsText, setTargetsText] = useState('');
   const [ports, setPorts] = useState(DEFAULT_PORTS);
-  const [rate, setRate] = useState(1000);
+  // null = automatic (server default; raised for a full-range scan of 1-4 hosts)
+  const [rate, setRate] = useState<number | null>(null);
   const [windowEnabled, setWindowEnabled] = useState(false);
   const [windowStart, setWindowStart] = useState('22:00');
   const [windowEnd, setWindowEnd] = useState('06:00');
@@ -95,7 +99,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
           targets,
           ports,
           allowed_ports: ports,
-          max_rate_pps: rate,
+          max_rate_pps: rate ?? undefined,
           window_enabled: windowEnabled,
           window_start: windowStart,
           window_end: windowEnd,
@@ -129,7 +133,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
         name: `Quick scan: ${targets.slice(0, 2).join(', ')}${targets.length > 2 ? ` +${targets.length - 2}` : ''}`,
         targets,
         allowed_ports: ports,
-        max_rate_pps: rate,
+        max_rate_pps: rate ?? undefined,
         window_enabled: windowEnabled,
         window_start: windowStart,
         window_end: windowEnd,
@@ -214,10 +218,18 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
               <PeckSpinner className="absolute top-1.5 right-1.5 h-3" />
             )}
           </div>
-          {estimate && estimate.excluded_ips > 0 && (
+          {estimate?.ports_label && (
             <span className="-mt-2 text-[11px] text-muted-foreground tabular-nums">
-              {formatNumber(estimate.excluded_ips)} IPs excluded out of {formatNumber(estimate.total_ips)}
+              Ports: {estimate.ports_label}
+              {estimate.port_count ? ` (${formatNumber(estimate.port_count)})` : ''}
+              {estimate.max_rate_pps ? `, ${formatNumber(estimate.max_rate_pps)} pps` : ''}
             </span>
+          )}
+          {estimate && estimate.excluded_ips > 0 && (
+            <Notice tone={estimate.effective_ips === 0 ? 'danger' : 'warning'}>
+              {formatNumber(estimate.excluded_ips)} of {formatNumber(estimate.total_ips)} IPs are covered by target
+              exclusions (Settings) and will not be scanned.
+            </Notice>
           )}
           {estimateError && <Notice tone="danger">{estimateError}</Notice>}
 
@@ -239,6 +251,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
                     id="qs-ports"
                     value={ports}
                     onChange={(e) => setPorts(e.target.value)}
+                    placeholder="auto, or e.g. 22,80,443,8000-8100"
                     className="font-mono text-xs"
                   />
                 </Field>
@@ -248,8 +261,9 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
                     type="number"
                     min={10}
                     max={100000}
-                    value={rate}
-                    onChange={(e) => setRate(Math.max(1, Number(e.target.value) || 0))}
+                    value={rate ?? ''}
+                    placeholder="auto"
+                    onChange={(e) => setRate(e.target.value === '' ? null : Math.max(1, Number(e.target.value) || 0))}
                     className="font-mono tabular-nums"
                   />
                 </Field>

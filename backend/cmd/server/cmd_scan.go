@@ -29,14 +29,18 @@ const scanUsage = `Usage: dzieciol scan <targets...> [flags]
 
 Targets: IPs, CIDRs (10.0.0.0/24), ranges (10.0.0.1-10.0.0.50) or hostnames.
 Results are stored in the local encrypted store and visible in 'dzieciol serve'.
-Stored target exclusions (configured in the web UI) are honoured unless --ignore-exclusions.`
+Ports default to "auto": all 65535 TCP ports for 1-4 target IPs, nmap's top 1000 plus
+common alternative web/admin/database/queue ports up to 1024 IPs, a compact list above.
+Stored target exclusions (configured in the web UI) are honoured unless --ignore-exclusions.
 
-const defaultCLIPorts = "21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,6379,8000,8080,8443,9000,9200"
+Example (a docker lab on this machine):  dzieciol scan localhost`
+
+const defaultCLIPorts = "auto"
 
 func cmdScan(args []string) error {
 	fs := newFlagSet("scan", scanUsage)
 	var ports string
-	fs.StringVar(&ports, "ports", defaultCLIPorts, "ports to scan (e.g. 22,80,443,8000-8100)")
+	fs.StringVar(&ports, "ports", defaultCLIPorts, "ports to scan (e.g. 22,80,443,8000-8100, 1-65535 or auto)")
 	fs.StringVar(&ports, "p", defaultCLIPorts, "shorthand for --ports")
 	file := fs.String("f", "", "read targets from file (one per line, # comments)")
 	rate := fs.Int("rate", 500, "max probe rate (packets/connections per second)")
@@ -46,7 +50,7 @@ func cmdScan(args []string) error {
 	profileRef := fs.String("profile", "", "use a stored scan profile (name or ID) for defaults/targets")
 	name := fs.String("name", "", "scan run name (default: CLI <targets> <time>)")
 	noNmap := fs.Bool("no-nmap", false, "force the pure-Go scanner even if nmap is installed")
-	ignoreExcl := fs.Bool("ignore-exclusions", false, "do not apply stored target exclusions (e.g. the default 127.0.0.0/8)")
+	ignoreExcl := fs.Bool("ignore-exclusions", false, "do not apply stored target exclusions")
 	noHTTP := fs.Bool("no-http", false, "skip HTTP/TLS fingerprinting")
 	jsonOut := fs.Bool("json", false, "print the JSON report to stdout instead of tables")
 	outFile := fs.String("o", "", "also write the JSON report to this file")
@@ -145,6 +149,16 @@ func cmdScan(args []string) error {
 		return fmt.Errorf("prepare scan: %w", err)
 	}
 
+	// Auto ports on a tiny scope scan all 65535 ports; unless --rate was given, raise the rate
+	// so that takes seconds, not minutes. Re-plan the chunks with the new rate.
+	if scanner.IsAutoPorts(profile.AllowedPorts) && prepared.TotalIPs <= scanner.AutoFullRangeMaxIPs && !setFlags["rate"] &&
+		profile.MaxRatePPS < scanner.AutoFullRangeRatePPS {
+		profile.MaxRatePPS = scanner.AutoFullRangeRatePPS
+		if p2, r2, e2 := engine.PrepareRun(bg, runID, profile, exclusions); e2 == nil {
+			prepared, resolution = p2, r2
+		}
+	}
+
 	run := prepared
 	run.Name = runName
 	run.TriggeredBy = "cli"
@@ -159,9 +173,13 @@ func cmdScan(args []string) error {
 	if resolution != nil {
 		excluded = resolution.ExcludedCount
 	}
-	fmt.Fprintf(status, "scan:    %d target IPs, ports %s, rate %d pps, %d workers, %d chunks", run.TotalIPs, compactPorts(profile.AllowedPorts), profile.MaxRatePPS, profile.Concurrency, run.TotalChunks)
+	portsLabel := compactPorts(profile.AllowedPorts)
+	if scanner.IsAutoPorts(profile.AllowedPorts) {
+		portsLabel = scanner.AutoPortsLabel(run.TotalIPs)
+	}
+	fmt.Fprintf(status, "scan:    %d target IPs, ports %s, rate %d pps, %d workers, %d chunks", run.TotalIPs, portsLabel, profile.MaxRatePPS, profile.Concurrency, run.TotalChunks)
 	if excluded > 0 {
-		fmt.Fprintf(status, ", %d IPs excluded", excluded)
+		fmt.Fprintf(status, ", %d IPs excluded by stored exclusions (--ignore-exclusions to scan them)", excluded)
 	}
 	fmt.Fprintf(status, "\nstore:   %s\n\n", rt.storeDescription())
 

@@ -116,7 +116,7 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 
 	chunkSize := est.RecommendedChunkSize
 	if e.cfg.Calibrate && len(resolution.IPs) > 0 {
-		ports, _ := ParsePorts(profile.AllowedPorts)
+		ports, _ := ParsePorts(EffectivePorts(profile.AllowedPorts, len(resolution.IPs)))
 		cal := Calibrate(ctx, resolution.IPs, profile.ChunkTargetSec, profile.Concurrency, func(pctx context.Context, ip string) (bool, time.Duration) {
 			t0 := time.Now()
 			alive, _, _ := e.discoverStage(pctx, []string{ip}, ports, profile.MaxRatePPS, nil)

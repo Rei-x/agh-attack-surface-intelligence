@@ -47,12 +47,16 @@ func EstimateTargets(ctx context.Context, req EstimateRequest) (*domain.TargetEs
 		return nil, nil, err
 	}
 
-	ports, err := ParsePorts(req.Ports)
+	portSpec := EffectivePorts(req.Ports, len(resolution.IPs))
+	ports, err := ParsePorts(portSpec)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	maxRate := req.MaxRatePPS
+	if maxRate <= 0 && IsAutoPorts(req.Ports) && len(resolution.IPs) <= AutoFullRangeMaxIPs {
+		maxRate = AutoFullRangeRatePPS
+	}
 	if maxRate <= 0 {
 		maxRate = 300
 	}
@@ -103,6 +107,12 @@ func EstimateTargets(ctx context.Context, req EstimateRequest) (*domain.TargetEs
 		EstimatedSeconds:     estSec,
 		FitsInWindow:         fits,
 		EstimatedWindows:     estWindows,
+		PortCount:            len(ports),
+		PortsLabel:           portSpec,
+		MaxRatePPS:           maxRate,
+	}
+	if IsAutoPorts(req.Ports) {
+		est.PortsLabel = AutoPortsLabel(effectiveIPs)
 	}
 	return est, resolution, nil
 }

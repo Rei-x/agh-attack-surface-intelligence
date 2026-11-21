@@ -86,7 +86,11 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	if err != nil {
 		return nil, err
 	}
-	ports, err := ParsePorts(profile.AllowedPorts)
+	scopeIPs := run.TotalIPs
+	if resolution != nil {
+		scopeIPs = len(resolution.IPs)
+	}
+	ports, err := ParsePorts(EffectivePorts(profile.AllowedPorts, scopeIPs))
 	if err != nil {
 		return nil, err
 	}

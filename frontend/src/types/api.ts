@@ -96,6 +96,9 @@ export interface TargetEstimate {
   estimated_seconds: number;
   fits_in_window: boolean;
   estimated_windows?: number;
+  port_count?: number;
+  ports_label?: string;
+  max_rate_pps?: number;
 }
 
 export interface ScanProfile {

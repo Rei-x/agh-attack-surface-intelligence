@@ -663,6 +663,11 @@ type TargetEstimate struct {
 	EstimatedSeconds     int64 `json:"estimated_seconds"`
 	FitsInWindow         bool  `json:"fits_in_window"`
 	EstimatedWindows     int   `json:"estimated_windows"`
+	// PortCount and PortsLabel describe the effective port list ("auto" resolved for this scope).
+	PortCount  int    `json:"port_count"`
+	PortsLabel string `json:"ports_label,omitempty"`
+	// MaxRatePPS is the probe rate the estimate assumed.
+	MaxRatePPS int `json:"max_rate_pps"`
 }
 
 // ServiceCluster for grouping similar services.
