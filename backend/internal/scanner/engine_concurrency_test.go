@@ -239,7 +239,8 @@ func TestConcurrentChunkWorkersHonorTotalRateCapWithRealExec(t *testing.T) {
 		}
 		if strings.Contains(joined, "-sV") {
 			services++
-			if r, _ := strconv.Atoi(argValue(c.args, "--max-rate")); r < 1 || r > 12 || !strings.Contains(joined, "--host-timeout") {
+			// 12 pps reserved share, up to 400/8 = 50 once every chunk is dispatched (tail).
+			if r, _ := strconv.Atoi(argValue(c.args, "--max-rate")); r < 1 || r > 50 || !strings.Contains(joined, "--host-timeout") {
 				t.Fatalf("service scan argv: %s", joined)
 			}
 		} else {

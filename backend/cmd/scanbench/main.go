@@ -116,6 +116,14 @@ func main() {
 				if ev.Payload["status"] == domain.ChunkStatusDone {
 					sm, _ := json.Marshal(ev.Payload["stage_ms"])
 					log.Printf("chunk %v done in %vms active=%v svcs=%v stages=%s", ev.Payload["chunk_index"], ev.Payload["duration_ms"], ev.Payload["active_hosts"], ev.Payload["services"], sm)
+					if cmds, ok := ev.Payload["nmap_commands"].([]string); ok {
+						for _, c := range cmds {
+							if len(c) > 260 {
+								c = c[:260] + "..."
+							}
+							log.Printf("   cmd: %s", c)
+						}
+					}
 				}
 			case "scan.workers", "scan.rechunk", "governor.throttle", "scan.completed", "scan.stage":
 				b, _ := json.Marshal(ev.Payload)

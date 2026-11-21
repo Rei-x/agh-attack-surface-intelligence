@@ -120,7 +120,7 @@ func (e *Engine) discoverChunk(ctx context.Context, w *chunkWork, ports []int, r
 // serviceChunk is Stage 2: -sV on live hosts. Hosts whose open ports are known from the
 // sweep are scanned on the union of those ports (hosts with none are skipped: nothing to
 // identify); hosts with unknown ports are scanned on every profile port.
-func (e *Engine) serviceChunk(ctx context.Context, w *chunkWork, ports []int, budget *rateBudget, want int, gov *Governor, st *stageStats) error {
+func (e *Engine) serviceChunk(ctx context.Context, w *chunkWork, ports []int, budget *rateBudget, want func() (int, int), gov *Governor, st *stageStats) error {
 	t0 := time.Now()
 	defer func() {
 		d := time.Since(t0)
@@ -166,7 +166,8 @@ func (e *Engine) serviceChunk(ctx context.Context, w *chunkWork, ports []int, bu
 	w.svcMap = make(map[string][]domain.ObservedService)
 	var docs []string
 	for _, g := range groups {
-		rate, err := budget.acquire(ctx, want, min(want, MinWorkerRatePPS))
+		ws, wmin := want()
+		rate, err := budget.acquire(ctx, ws, wmin)
 		if err != nil {
 			return err
 		}

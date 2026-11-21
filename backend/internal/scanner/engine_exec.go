@@ -461,6 +461,32 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		}
 		return n
 	}
+	// svcShare sizes a -sV process's share. While chunks are still being dispatched it takes
+	// its small reserved share. Once every chunk is dispatched no new sweep will ask for
+	// budget, so -sV (whose port phase is rate-bound) may wait for a large share: the final
+	// chunks' -sV is the tail of the whole scan (100-150 s at 21 pps on the /20 bench).
+	allDispatched := func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return nextIdx >= len(run.Chunks)
+	}
+	svcShare := func() (int, int) {
+		want := svcWant
+		if allDispatched() {
+			if tail := nmapPool / svcWorkers; tail > want {
+				want = tail
+			}
+		}
+		want = throttled(want)
+		minGrant := want / 2
+		if minGrant > MinWorkerRatePPS && !allDispatched() {
+			minGrant = MinWorkerRatePPS
+		}
+		if minGrant < 1 {
+			minGrant = 1
+		}
+		return want, minGrant
+	}
 
 	var discWG sync.WaitGroup
 	for wk := 1; wk <= workers; wk++ {
@@ -510,7 +536,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 					complete(w, scanCtx.Err())
 					continue
 				}
-				if err := e.serviceChunk(scanCtx, w, ports, budget, throttled(svcWant), gov, stats); err != nil {
+				if err := e.serviceChunk(scanCtx, w, ports, budget, svcShare, gov, stats); err != nil {
 					complete(w, err)
 					continue
 				}
