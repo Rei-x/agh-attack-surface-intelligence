@@ -44,6 +44,7 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	eol.AnnotateHosts(hosts, time.Now().UTC())
+	s.annotatePolicyHosts(hosts)
 	totalPages := (total + limit - 1) / limit
 	if totalPages < 1 {
 		totalPages = 1
@@ -74,6 +75,7 @@ func (s *Server) handleGetHost(w http.ResponseWriter, r *http.Request) {
 		host.Liveness = &l
 	}
 	eol.AnnotateServices(host.Services, time.Now().UTC())
+	s.annotatePolicyServices(host.Services)
 	allChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{HostID: host.ID, Limit: 20})
 	hostChanges := make([]domain.ChangeEvent, 0)
 	for _, ev := range allChanges {
@@ -176,6 +178,7 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 		svcs = filtered
 	}
 	eol.AnnotateServices(svcs, time.Now().UTC())
+	s.annotatePolicyServices(svcs)
 	writeJSON(w, http.StatusOK, map[string]any{"services": svcs, "total": len(svcs)})
 }
 
