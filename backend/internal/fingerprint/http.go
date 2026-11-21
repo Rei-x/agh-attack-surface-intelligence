@@ -333,7 +333,7 @@ func (f *Fingerprinter) probeWithScheme(ctx context.Context, scheme, ip string, 
 
 	// Probe safe read-only paths if enabled.
 	if opts.ProbeSafePaths && len(opts.SafePaths) > 0 {
-		fp.SafePathHits = f.probeSafePaths(ctx, client, rootURL, ip, opts)
+		fp.SafePathHits, fp.CatchAll = f.probeSafePaths(ctx, client, rootURL, ip, opts)
 	}
 
 	return fp, nil
@@ -404,11 +404,105 @@ func looksLikeIcon(data []byte) bool {
 	return strings.Contains(trimmed, "<svg")
 }
 
-func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client, rootURL, ip string, opts Options) []domain.SafePathHit {
+// pathResponse is the comparable shape of one safe-path response.
+type pathResponse struct {
+	status   int
+	location string // redirect target with the probed path removed
+	bodyKey  string // normalized body (probed path removed, whitespace collapsed)
+	title    string
+}
+
+// softNotFound reports whether r looks like the server's answer to a path that doesn't exist.
+func softNotFound(r, baseline pathResponse) bool {
+	if baseline.status == 0 || !isInterestingPathStatus(baseline.status) || r.status != baseline.status {
+		return false
+	}
+	if r.location != "" || baseline.location != "" {
+		return r.location == baseline.location
+	}
+	if r.bodyKey == baseline.bodyKey {
+		return true
+	}
+	// Templated error pages / SPAs that echo something request-specific: same title and a
+	// body length within 10% of the baseline.
+	if r.title == baseline.title {
+		a, b := len(r.bodyKey), len(baseline.bodyKey)
+		if a == 0 && b == 0 {
+			return true
+		}
+		diff := a - b
+		if diff < 0 {
+			diff = -diff
+		}
+		max := a
+		if b > max {
+			max = b
+		}
+		return max > 0 && float64(diff)/float64(max) <= 0.10
+	}
+	return false
+}
+
+var wsRe = regexp.MustCompile(`\s+`)
+
+func normalizePathResponse(status int, location, body, probedPath string) pathResponse {
+	strip := func(s string) string {
+		if probedPath != "" && probedPath != "/" {
+			s = strings.ReplaceAll(s, probedPath, "")
+			s = strings.ReplaceAll(s, url.PathEscape(strings.TrimPrefix(probedPath, "/")), "")
+		}
+		return s
+	}
+	return pathResponse{
+		status:   status,
+		location: strip(location),
+		bodyKey:  strings.TrimSpace(wsRe.ReplaceAllString(strip(body), " ")),
+		title:    extractTitle(body),
+	}
+}
+
+func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client, rootURL, ip string, opts Options) ([]domain.SafePathHit, bool) {
 	// Do not follow redirects automatically for safe path checks so we observe 301/302/401/403/200 cleanly.
 	noRedirectClient := *client
 	noRedirectClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		return http.ErrUseLastResponse
+	}
+
+	fetch := func(p string) (pathResponse, string, http.Header, bool) {
+		if opts.RateLimiter != nil {
+			if err := opts.RateLimiter(ctx, ip); err != nil {
+				return pathResponse{}, "", nil, false
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, resolveRelativeURL(rootURL, p), nil)
+		if err != nil {
+			return pathResponse{}, "", nil, false
+		}
+		req.Header.Set("User-Agent", opts.UserAgent)
+		resp, err := noRedirectClient.Do(req)
+		if err != nil || resp == nil {
+			if opts.OnThrottle != nil && isNetworkThrottleErr(err) {
+				opts.OnThrottle(ip, 0, err)
+			}
+			return pathResponse{}, "", nil, false
+		}
+		if opts.OnThrottle != nil && resp.StatusCode == http.StatusTooManyRequests {
+			opts.OnThrottle(ip, resp.StatusCode, nil)
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
+		resp.Body.Close()
+		bodyStr := string(body)
+		return normalizePathResponse(resp.StatusCode, resp.Header.Get("Location"), bodyStr, p), bodyStr, resp.Header, true
+	}
+
+	// Soft-404 baseline: one random path that certainly doesn't exist.
+	var baseline pathResponse
+	catchAll := false
+	if len(opts.SafePaths) > 0 && ctx.Err() == nil {
+		if b, _, _, ok := fetch(fmt.Sprintf("/aegis-%x-notfound", time.Now().UnixNano())); ok {
+			baseline = b
+			catchAll = isInterestingPathStatus(b.status)
+		}
 	}
 
 	var hits []domain.SafePathHit
@@ -420,49 +514,30 @@ func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client,
 		if p == "" || !strings.HasPrefix(p, "/") || strings.Contains(p, "..") {
 			continue
 		}
-		if opts.RateLimiter != nil {
-			if err := opts.RateLimiter(ctx, ip); err != nil {
+		r, bodyStr, hdr, ok := fetch(p)
+		if !ok {
+			if opts.RateLimiter != nil && ctx.Err() != nil {
 				break
 			}
-		}
-
-		targetURL := resolveRelativeURL(rootURL, p)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
-		if err != nil {
 			continue
 		}
-		req.Header.Set("User-Agent", opts.UserAgent)
-
-		resp, err := noRedirectClient.Do(req)
-		if err != nil || resp == nil {
-			if opts.OnThrottle != nil && isNetworkThrottleErr(err) {
-				opts.OnThrottle(ip, 0, err)
-			}
+		// Record meaningful non-404 responses (200, 301, 302, 307, 401, 403) that differ from
+		// what the server returns for a non-existent path.
+		if !isInterestingPathStatus(r.status) || softNotFound(r, baseline) {
 			continue
 		}
-		if opts.OnThrottle != nil && resp.StatusCode == http.StatusTooManyRequests {
-			opts.OnThrottle(ip, resp.StatusCode, nil)
+		snippet := cleanSnippetLen(bodyStr, 300)
+		if loc := hdr.Get("Location"); loc != "" && snippet == "" {
+			snippet = "Location: " + loc
 		}
-
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
-		resp.Body.Close()
-
-		// Record meaningful non-404 responses (200, 301, 302, 307, 401, 403).
-		if isInterestingPathStatus(resp.StatusCode) {
-			bodyStr := string(body)
-			snippet := cleanSnippetLen(bodyStr, 300)
-			if loc := resp.Header.Get("Location"); loc != "" && snippet == "" {
-				snippet = "Location: " + loc
-			}
-			hits = append(hits, domain.SafePathHit{
-				Path:       p,
-				StatusCode: resp.StatusCode,
-				Title:      extractTitle(bodyStr),
-				Snippet:    snippet,
-			})
-		}
+		hits = append(hits, domain.SafePathHit{
+			Path:       p,
+			StatusCode: r.status,
+			Title:      r.title,
+			Snippet:    snippet,
+		})
 	}
-	return hits
+	return hits, catchAll
 }
 
 func isInterestingPathStatus(code int) bool {

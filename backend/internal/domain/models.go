@@ -66,24 +66,24 @@ func TimeSlotFor(t time.Time) string {
 
 // RBAC Permission slugs.
 const (
-	PermDashboardRead  = "dashboard:read"
-	PermAssetsRead     = "assets:read"
-	PermAssetsWrite    = "assets:write"
-	PermAssetsDelete   = "assets:delete"
-	PermScansRead      = "scans:read"
-	PermScansWrite     = "scans:write"
-	PermScansDelete    = "scans:delete"
-	PermScansRun       = "scans:run"
-	PermSignaturesRead = "signatures:read"
-	PermSignaturesWrite = "signatures:write"
+	PermDashboardRead    = "dashboard:read"
+	PermAssetsRead       = "assets:read"
+	PermAssetsWrite      = "assets:write"
+	PermAssetsDelete     = "assets:delete"
+	PermScansRead        = "scans:read"
+	PermScansWrite       = "scans:write"
+	PermScansDelete      = "scans:delete"
+	PermScansRun         = "scans:run"
+	PermSignaturesRead   = "signatures:read"
+	PermSignaturesWrite  = "signatures:write"
 	PermSignaturesDelete = "signatures:delete"
-	PermImportWrite    = "import:write"
-	PermExportRead     = "export:read"
-	PermDefectDojoPush = "defectdojo:push"
-	PermAdminUsers     = "admin:users"
-	PermAdminRoles     = "admin:roles"
-	PermAdminSettings  = "admin:settings"
-	PermAdminAudit     = "admin:audit"
+	PermImportWrite      = "import:write"
+	PermExportRead       = "export:read"
+	PermDefectDojoPush   = "defectdojo:push"
+	PermAdminUsers       = "admin:users"
+	PermAdminRoles       = "admin:roles"
+	PermAdminSettings    = "admin:settings"
+	PermAdminAudit       = "admin:audit"
 )
 
 var AllPermissions = []string{
@@ -150,28 +150,28 @@ type TargetExclusion struct {
 }
 
 type ScanProfile struct {
-	ID                   string    `json:"id"`
-	Name                 string    `json:"name"`
-	Description          string    `json:"description"`
-	Targets              []string  `json:"targets"`
-	AllowedPorts         string    `json:"allowed_ports"` // e.g. "22,80,443,8080,8443"
-	MaxRatePPS           int       `json:"max_rate_pps"`
-	HTTPRPS              int       `json:"http_rps"`
-	Concurrency          int       `json:"concurrency"`
-	ChunkTargetSec       int       `json:"chunk_target_sec"`
-	ScheduleCron         string    `json:"schedule_cron"` // optional cron expression
-	WindowEnabled        bool      `json:"window_enabled"`
-	WindowStart          string    `json:"window_start"` // HH:MM e.g. "22:00"
-	WindowEnd            string    `json:"window_end"`   // HH:MM e.g. "06:00"
-	Timezone             string    `json:"timezone"`     // e.g. "Europe/Warsaw"
-	MissingThreshold     int       `json:"missing_threshold"`
-	GracePeriodHours     int       `json:"grace_period_hours"`
-	RetryUnstableCount   int       `json:"retry_unstable_count"`
-	EnableHTTPFingerprint bool     `json:"enable_http_fingerprint"`
-	UserAgent            string    `json:"user_agent"`
-	Enabled              bool      `json:"enabled"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	ID                    string    `json:"id"`
+	Name                  string    `json:"name"`
+	Description           string    `json:"description"`
+	Targets               []string  `json:"targets"`
+	AllowedPorts          string    `json:"allowed_ports"` // e.g. "22,80,443,8080,8443"
+	MaxRatePPS            int       `json:"max_rate_pps"`
+	HTTPRPS               int       `json:"http_rps"`
+	Concurrency           int       `json:"concurrency"`
+	ChunkTargetSec        int       `json:"chunk_target_sec"`
+	ScheduleCron          string    `json:"schedule_cron"` // optional cron expression
+	WindowEnabled         bool      `json:"window_enabled"`
+	WindowStart           string    `json:"window_start"` // HH:MM e.g. "22:00"
+	WindowEnd             string    `json:"window_end"`   // HH:MM e.g. "06:00"
+	Timezone              string    `json:"timezone"`     // e.g. "Europe/Warsaw"
+	MissingThreshold      int       `json:"missing_threshold"`
+	GracePeriodHours      int       `json:"grace_period_hours"`
+	RetryUnstableCount    int       `json:"retry_unstable_count"`
+	EnableHTTPFingerprint bool      `json:"enable_http_fingerprint"`
+	UserAgent             string    `json:"user_agent"`
+	Enabled               bool      `json:"enabled"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type ScanChunk struct {
@@ -211,29 +211,29 @@ type ScheduleState struct {
 }
 
 type ScanRun struct {
-	ID               string     `json:"id"`
-	ProfileID        string     `json:"profile_id,omitempty"`
-	Name             string     `json:"name"`
-	RunType          string     `json:"run_type"`
-	Status           string     `json:"status"`
-	Notes            string     `json:"notes"`
-	TotalIPs         int        `json:"total_ips"`
-	ScannedIPs       int        `json:"scanned_ips"`
-	TotalChunks      int        `json:"total_chunks"`
-	CompletedChunks  int        `json:"completed_chunks"`
-	ActiveHosts      int        `json:"active_hosts"`
-	ServicesFound    int        `json:"services_found"`
-	ChangesDetected  int        `json:"changes_detected"`
-	HostsPerSec      float64    `json:"hosts_per_sec"`
-	ETASeconds       int64      `json:"eta_seconds"`
-	DurationMs       int64      `json:"duration_ms"`
-	WindowPausedCount int       `json:"window_paused_count"`
-	RawNmapXML       string     `json:"-"` // stored encrypted at rest
-	HasRawNmapXML    bool       `json:"has_raw_nmap_xml"`
-	TriggeredBy      string     `json:"triggered_by"`
-	StartedAt        time.Time  `json:"started_at"`
-	FinishedAt       *time.Time `json:"finished_at,omitempty"`
-	Chunks           []ScanChunk `json:"chunks,omitempty"`
+	ID                string      `json:"id"`
+	ProfileID         string      `json:"profile_id,omitempty"`
+	Name              string      `json:"name"`
+	RunType           string      `json:"run_type"`
+	Status            string      `json:"status"`
+	Notes             string      `json:"notes"`
+	TotalIPs          int         `json:"total_ips"`
+	ScannedIPs        int         `json:"scanned_ips"`
+	TotalChunks       int         `json:"total_chunks"`
+	CompletedChunks   int         `json:"completed_chunks"`
+	ActiveHosts       int         `json:"active_hosts"`
+	ServicesFound     int         `json:"services_found"`
+	ChangesDetected   int         `json:"changes_detected"`
+	HostsPerSec       float64     `json:"hosts_per_sec"`
+	ETASeconds        int64       `json:"eta_seconds"`
+	DurationMs        int64       `json:"duration_ms"`
+	WindowPausedCount int         `json:"window_paused_count"`
+	RawNmapXML        string      `json:"-"` // stored encrypted at rest
+	HasRawNmapXML     bool        `json:"has_raw_nmap_xml"`
+	TriggeredBy       string      `json:"triggered_by"`
+	StartedAt         time.Time   `json:"started_at"`
+	FinishedAt        *time.Time  `json:"finished_at,omitempty"`
+	Chunks            []ScanChunk `json:"chunks,omitempty"`
 }
 
 // Fingerprinting & Evidence structures.
@@ -243,13 +243,13 @@ type RedirectHop struct {
 }
 
 type CookieInfo struct {
-	Name     string `json:"name"`
-	Value    string `json:"value,omitempty"` // encrypted at rest
-	Path     string `json:"path,omitempty"`
-	Domain   string `json:"domain,omitempty"`
-	HttpOnly bool   `json:"http_only"`
-	Secure   bool   `json:"secure"`
-	SameSite string `json:"same_site,omitempty"`
+	Name     string   `json:"name"`
+	Value    string   `json:"value,omitempty"` // encrypted at rest
+	Path     string   `json:"path,omitempty"`
+	Domain   string   `json:"domain,omitempty"`
+	HttpOnly bool     `json:"http_only"`
+	Secure   bool     `json:"secure"`
+	SameSite string   `json:"same_site,omitempty"`
 	Flags    []string `json:"flags,omitempty"` // e.g. "missing_httponly", "missing_secure"
 }
 
@@ -292,7 +292,11 @@ type HTTPFingerprint struct {
 	FooterVersion      string            `json:"footer_version,omitempty"`
 	BodySnippet        string            `json:"body_snippet,omitempty"`
 	SafePathHits       []SafePathHit     `json:"safe_path_hits,omitempty"`
-	ResponseTimeMs     int64             `json:"response_time_ms"`
+	// CatchAll is set when a random, non-existent path answers like a real page (SPA fallback,
+	// custom 200/403 error page, redirect-everything-to-login). Path hits that look the same as
+	// that soft-404 baseline are dropped, so they can't fake WordPress/phpMyAdmin/... detections.
+	CatchAll       bool  `json:"catch_all,omitempty"`
+	ResponseTimeMs int64 `json:"response_time_ms"`
 }
 
 type TechEvidence struct {
@@ -315,37 +319,37 @@ type InterestingnessFactor struct {
 }
 
 type TimeSlotStat struct {
-	Slot     string  `json:"slot"` // 00-06, 06-12, 12-18, 18-24
-	Seen     int     `json:"seen"`
-	Total    int     `json:"total"`
-	Ratio    float64 `json:"ratio"`
+	Slot  string  `json:"slot"` // 00-06, 06-12, 12-18, 18-24
+	Seen  int     `json:"seen"`
+	Total int     `json:"total"`
+	Ratio float64 `json:"ratio"`
 }
 
 type Host struct {
-	ID                  string                  `json:"id"`
-	IP                  string                  `json:"ip"`
-	Hostname            string                  `json:"hostname,omitempty"`
-	Domains             []string                `json:"domains,omitempty"`
-	OSGuess             string                  `json:"os_guess,omitempty"`
-	LifecycleState      string                  `json:"lifecycle_state"`
-	Environment         string                  `json:"environment,omitempty"` // prod, staging, dev, test, unknown
-	Owner               string                  `json:"owner,omitempty"`
-	Notes               string                  `json:"notes,omitempty"`
-	Tags                []string                `json:"tags"`
-	FirstSeen           time.Time               `json:"first_seen"`
-	LastSeen            time.Time               `json:"last_seen"`
-	TotalScansSeen      int                     `json:"total_scans_seen"`
-	TotalScansChecked   int                     `json:"total_scans_checked"`
-	ConsecutiveMisses   int                     `json:"consecutive_misses"`
-	StateTransitions    int                     `json:"state_transitions"`
-	StabilityScore      int                     `json:"stability_score"`      // 0..100
-	Interestingness     int                     `json:"interestingness"`      // 0..100
-	InterestingFactors  []InterestingnessFactor `json:"interesting_factors,omitempty"`
-	TimeOfDayStats      []TimeSlotStat          `json:"time_of_day_stats,omitempty"`
-	LockedFields        []string                `json:"locked_fields,omitempty"`
-	ScannerObserved     map[string]any          `json:"scanner_observed,omitempty"` // shown when analyst overrode a field
-	Services            []Service               `json:"services,omitempty"`
-	ServiceCount        int                     `json:"service_count"`
+	ID                 string                  `json:"id"`
+	IP                 string                  `json:"ip"`
+	Hostname           string                  `json:"hostname,omitempty"`
+	Domains            []string                `json:"domains,omitempty"`
+	OSGuess            string                  `json:"os_guess,omitempty"`
+	LifecycleState     string                  `json:"lifecycle_state"`
+	Environment        string                  `json:"environment,omitempty"` // prod, staging, dev, test, unknown
+	Owner              string                  `json:"owner,omitempty"`
+	Notes              string                  `json:"notes,omitempty"`
+	Tags               []string                `json:"tags"`
+	FirstSeen          time.Time               `json:"first_seen"`
+	LastSeen           time.Time               `json:"last_seen"`
+	TotalScansSeen     int                     `json:"total_scans_seen"`
+	TotalScansChecked  int                     `json:"total_scans_checked"`
+	ConsecutiveMisses  int                     `json:"consecutive_misses"`
+	StateTransitions   int                     `json:"state_transitions"`
+	StabilityScore     int                     `json:"stability_score"` // 0..100
+	Interestingness    int                     `json:"interestingness"` // 0..100
+	InterestingFactors []InterestingnessFactor `json:"interesting_factors,omitempty"`
+	TimeOfDayStats     []TimeSlotStat          `json:"time_of_day_stats,omitempty"`
+	LockedFields       []string                `json:"locked_fields,omitempty"`
+	ScannerObserved    map[string]any          `json:"scanner_observed,omitempty"` // shown when analyst overrode a field
+	Services           []Service               `json:"services,omitempty"`
+	ServiceCount       int                     `json:"service_count"`
 }
 
 type Service struct {
@@ -438,20 +442,20 @@ type SignatureMatcher struct {
 }
 
 type Signature struct {
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Description     string             `json:"description"`
-	Category        string             `json:"category"` // cms, framework, server, iot, admin_panel, staging, interesting_header, interesting_cookie, custom
-	MatchMode       string             `json:"match_mode"` // any, all
-	Matchers        []SignatureMatcher `json:"matchers"`
-	ConfidenceWeight float64           `json:"confidence_weight"` // 0.1 .. 0.98
-	InterestingPts  int                `json:"interesting_points"`
-	Tags            []string           `json:"tags"`
-	IsBuiltin       bool               `json:"is_builtin"`
-	Enabled         bool               `json:"enabled"`
-	CreatedBy       string             `json:"created_by"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at"`
+	ID               string             `json:"id"`
+	Name             string             `json:"name"`
+	Description      string             `json:"description"`
+	Category         string             `json:"category"`   // cms, framework, server, iot, admin_panel, staging, interesting_header, interesting_cookie, custom
+	MatchMode        string             `json:"match_mode"` // any, all
+	Matchers         []SignatureMatcher `json:"matchers"`
+	ConfidenceWeight float64            `json:"confidence_weight"` // 0.1 .. 0.98
+	InterestingPts   int                `json:"interesting_points"`
+	Tags             []string           `json:"tags"`
+	IsBuiltin        bool               `json:"is_builtin"`
+	Enabled          bool               `json:"enabled"`
+	CreatedBy        string             `json:"created_by"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
 }
 
 type AuditLog struct {
@@ -469,26 +473,26 @@ type AuditLog struct {
 }
 
 type DefectDojoConfig struct {
-	URL            string `json:"url"`
-	APIToken       string `json:"api_token,omitempty"`
-	HasAPIToken    bool   `json:"has_api_token"`
-	ProductID      int    `json:"product_id"`
-	EngagementID   int    `json:"engagement_id"`
-	VerifyTLS      bool   `json:"verify_tls"`
-	AutoPushNmap   bool   `json:"auto_push_nmap"`
+	URL          string `json:"url"`
+	APIToken     string `json:"api_token,omitempty"`
+	HasAPIToken  bool   `json:"has_api_token"`
+	ProductID    int    `json:"product_id"`
+	EngagementID int    `json:"engagement_id"`
+	VerifyTLS    bool   `json:"verify_tls"`
+	AutoPushNmap bool   `json:"auto_push_nmap"`
 }
 
 type DefectDojoExport struct {
-	ID             string    `json:"id"`
-	ExportType     string    `json:"export_type"` // nmap_xml, finding
-	SourceID       string    `json:"source_id"`
-	Title          string    `json:"title"`
-	ExternalID     string    `json:"external_id,omitempty"`
-	ExternalURL    string    `json:"external_url,omitempty"`
-	Status         string    `json:"status"` // success, failed
-	ErrorMessage   string    `json:"error_message,omitempty"`
-	ExportedBy     string    `json:"exported_by"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	ExportType   string    `json:"export_type"` // nmap_xml, finding
+	SourceID     string    `json:"source_id"`
+	Title        string    `json:"title"`
+	ExternalID   string    `json:"external_id,omitempty"`
+	ExternalURL  string    `json:"external_url,omitempty"`
+	Status       string    `json:"status"` // success, failed
+	ErrorMessage string    `json:"error_message,omitempty"`
+	ExportedBy   string    `json:"exported_by"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // Live event pushed over SSE.
