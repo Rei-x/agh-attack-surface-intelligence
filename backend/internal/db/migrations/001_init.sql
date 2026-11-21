@@ -301,3 +301,14 @@ CREATE TABLE IF NOT EXISTS scan_schedule_state (
     last_skip_reason TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Host timeline lookups (GET /api/v1/hosts/{id}/timeline).
+CREATE INDEX IF NOT EXISTS idx_change_events_host ON change_events(host_id, created_at DESC);
+
+-- Small encrypted key/value settings (CIDR tag rules, alert webhook incl. its secret URL).
+-- value_enc is an AES-256-GCM envelope bound to AAD "app_settings:<key>:value".
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value_enc TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

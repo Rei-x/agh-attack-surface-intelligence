@@ -40,10 +40,8 @@ func matchesHostFilter(h *domain.Host, f HostFilter) bool {
 			return false
 		}
 	}
-	if q := strings.ToLower(strings.TrimSpace(f.Query)); q != "" {
-		if !hostMatchesQuery(h, q) {
-			return false
-		}
+	if aq := cachedAssetQuery(f.Query); aq != nil && !aq.MatchHost(h) {
+		return false
 	}
 	return true
 }
@@ -94,10 +92,8 @@ func matchesServiceFilter(s *domain.Service, f ServiceFilter) bool {
 	if f.Tag != "" && !hasTag(s.Tags, f.Tag) {
 		return false
 	}
-	if q := strings.ToLower(strings.TrimSpace(f.Query)); q != "" {
-		if !serviceMatchesQuery(s, q) {
-			return false
-		}
+	if aq := cachedAssetQuery(f.Query); aq != nil && !aq.MatchService(s) {
+		return false
 	}
 	return true
 }

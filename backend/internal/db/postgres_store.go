@@ -188,6 +188,7 @@ func (s *PostgresStore) ReEncryptAll(ctx context.Context) (int, error) {
 		{"change_events", "after_enc", "id"},
 		{"scan_snapshots", "payload_enc", "scan_run_id"},
 		{"defectdojo_config", "api_token_enc", "id"},
+		{"app_settings", "value_enc", "key"},
 	}
 	for _, c := range cols {
 		if err := reencCol(c[0], c[1], c[2]); err != nil {
@@ -1477,7 +1478,7 @@ func (s *PostgresStore) ListChangeEvents(ctx context.Context, filter ChangeFilte
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, scan_run_id, prev_scan_run_id, host_id, host_ip_enc, service_id, port, event_type, severity,
 		       summary, time_slot, is_expected_schedule, is_time_anomaly, before_enc, after_enc, acknowledged_by, acknowledged_at, created_at
-		FROM change_events ORDER BY created_at DESC LIMIT $1`, limit*2)
+		FROM change_events WHERE ($2 = '' OR host_id = $2) ORDER BY created_at DESC LIMIT $1`, limit*2, filter.HostID)
 	if err != nil {
 		return nil, err
 	}

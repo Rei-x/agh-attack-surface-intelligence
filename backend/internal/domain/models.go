@@ -350,6 +350,10 @@ type Host struct {
 	ScannerObserved    map[string]any          `json:"scanner_observed,omitempty"` // shown when analyst overrode a field
 	Services           []Service               `json:"services,omitempty"`
 	ServiceCount       int                     `json:"service_count"`
+	// Analyst risk decision on the whole host (accepted_risk / false_positive). Only set
+	// from the "triage" override, so it is preserved across scans.
+	TriageStatus string      `json:"triage_status,omitempty"`
+	Triage       *TriageInfo `json:"triage,omitempty"`
 }
 
 type Service struct {
@@ -374,6 +378,7 @@ type Service struct {
 	Interestingness    int                     `json:"interestingness"`
 	InterestingFactors []InterestingnessFactor `json:"interesting_factors,omitempty"`
 	TriageStatus       string                  `json:"triage_status"` // new, triaged, accepted_risk, false_positive
+	Triage             *TriageInfo             `json:"triage,omitempty"`
 	Notes              string                  `json:"notes,omitempty"`
 	Tags               []string                `json:"tags"`
 	LockedFields       []string                `json:"locked_fields,omitempty"`
@@ -542,4 +547,82 @@ type GraphEdge struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Label  string `json:"label"`
+}
+
+// Triage statuses shared by services and hosts.
+const (
+	TriageNew           = "new"
+	TriageTriaged       = "triaged"
+	TriageAcceptedRisk  = "accepted_risk"
+	TriageFalsePositive = "false_positive"
+)
+
+// TriageInfo is an analyst risk decision (accepted risk / false positive) with a mandatory
+// reason, author and optional expiry. It is stored as the encrypted "triage" override, so
+// it survives every later scan. Once ExpiresAt passes the decision stops applying (Expired
+// is set on read) and the finding counts as active again.
+type TriageInfo struct {
+	Status    string     `json:"status"`
+	Reason    string     `json:"reason"`
+	By        string     `json:"by"`
+	At        time.Time  `json:"at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	Expired   bool       `json:"expired"`
+}
+
+// IsSuppressing reports whether the decision currently hides the finding (accepted risk or
+// false positive that has not expired).
+func (t *TriageInfo) IsSuppressing(now time.Time) bool {
+	if t == nil {
+		return false
+	}
+	if t.Status != TriageAcceptedRisk && t.Status != TriageFalsePositive {
+		return false
+	}
+	return t.ExpiresAt == nil || now.Before(*t.ExpiresAt)
+}
+
+// TagRule maps a CIDR to tags / owner / environment applied automatically on ingest
+// (ownership by network range, e.g. 10.66.0.0/22 -> wydzial-wi, owner admin@wi.agh.edu.pl).
+type TagRule struct {
+	ID          string    `json:"id"`
+	CIDR        string    `json:"cidr"`
+	Tags        []string  `json:"tags"`
+	Owner       string    `json:"owner,omitempty"`
+	Environment string    `json:"environment,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Enabled     bool      `json:"enabled"`
+	CreatedBy   string    `json:"created_by,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// WebhookConfig is the single outbound alert webhook (Slack / Discord / Teams compatible).
+// The URL is a secret (it embeds the channel token) and is stored encrypted at rest; API
+// responses only expose URLMasked.
+type WebhookConfig struct {
+	URL                string     `json:"url,omitempty"`
+	HasURL             bool       `json:"has_url"`
+	URLMasked          string     `json:"url_masked,omitempty"`
+	Enabled            bool       `json:"enabled"`
+	MinSeverity        string     `json:"min_severity"` // info, low, medium, high
+	NotifyStateChanges bool       `json:"notify_state_changes"`
+	LastStatus         string     `json:"last_status,omitempty"`
+	LastError          string     `json:"last_error,omitempty"`
+	LastSentAt         *time.Time `json:"last_sent_at,omitempty"`
+}
+
+// HostTimelineEntry is one row of the host incident-response timeline.
+type HostTimelineEntry struct {
+	Kind      string         `json:"kind"` // change, observation, first_seen
+	At        time.Time      `json:"at"`
+	Until     *time.Time     `json:"until,omitempty"`
+	Count     int            `json:"count,omitempty"`
+	EventType string         `json:"event_type,omitempty"`
+	Severity  string         `json:"severity,omitempty"`
+	Summary   string         `json:"summary"`
+	ServiceID string         `json:"service_id,omitempty"`
+	Port      int            `json:"port,omitempty"`
+	Protocol  string         `json:"protocol,omitempty"`
+	ScanRunID string         `json:"scan_run_id,omitempty"`
+	Details   map[string]any `json:"details,omitempty"`
 }
