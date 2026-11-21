@@ -517,16 +517,17 @@ func (r *LiveScanRunner) launchAsync(
 	}()
 }
 
-// autoPushDefectDojo reimports a completed run's merged Nmap XML into DefectDojo when the
-// operator enabled auto_push_nmap. One DefectDojo test per profile, so DefectDojo closes
-// services that disappeared since the profile's previous run. Failures are recorded in the
-// export log and never affect the scan itself.
+// autoPushDefectDojo runs after every completed run (local engine and remote agents): it
+// reimports the merged Nmap XML (auto_push_nmap) and the actionable "Dzięcioł changes"
+// findings with analyst triage mirrored (auto_push_findings, on by default). One DefectDojo
+// test per profile, so DefectDojo closes what disappeared since the profile's previous run.
+// Failures are recorded in the export log and never affect the scan itself.
 func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 	if r.dojo == nil {
 		return
 	}
-	cfg, err := r.store.GetDefectDojoConfig(ctx)
-	if err != nil || cfg == nil || !cfg.AutoPushNmap || strings.TrimSpace(cfg.URL) == "" {
+	cfg, err := db.LoadDefectDojoConfig(ctx, r.store)
+	if err != nil || cfg == nil || strings.TrimSpace(cfg.URL) == "" || (!cfg.AutoPushNmap && !cfg.AutoPushFindings) {
 		return
 	}
 	run, err := r.store.GetScanRun(ctx, runID)
@@ -543,8 +544,10 @@ func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 	pushCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	// Actionable change findings (risky exposures, admin/staging, EOL, new, gone) with owners.
-	defer r.pushChangeFindings(pushCtx, cfg, run, profile, profileName)
-	if strings.TrimSpace(run.RawNmapXML) == "" {
+	if cfg.AutoPushFindings {
+		defer r.pushChangeFindings(pushCtx, cfg, run, profile, profileName)
+	}
+	if !cfg.AutoPushNmap || strings.TrimSpace(run.RawNmapXML) == "" {
 		return
 	}
 	imp, err := r.dojo.ImportNmapXML(pushCtx, cfg, 0, defectdojo.NmapTestTitle(profileName), run.Name, run.RawNmapXML)
@@ -563,6 +566,7 @@ func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 	} else {
 		exp.Status, exp.ExternalID, exp.ExternalURL = "success", imp.ExternalID, imp.ExternalURL
 		payload["external_url"] = imp.ExternalURL
+		defectdojo.RecordNmapPush(ctx, r.store, imp.ExternalURL)
 		log.Printf("[INFO] DefectDojo auto-push for scan %s: %s", run.ID, imp.ExternalURL)
 	}
 	_ = r.store.AddDefectDojoExport(ctx, exp)

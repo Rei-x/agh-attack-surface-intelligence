@@ -25,13 +25,15 @@ import (
 //   - a condition that still holds produces the same finding again (same title, description
 //     and unique_id_from_tool), so DefectDojo leaves it untouched: no duplicates, and an
 //     analyst's notes, JIRA links or risk acceptance on it stay;
-//   - a condition that is gone (port closed, nginx upgraded, host back, item triaged as
-//     accepted risk / false positive in Dzięcioł) is absent from the next reimport, so
-//     DefectDojo mitigates it with the date — the audit trail of "it was fixed on ...".
+//   - a condition that is gone (port closed, nginx upgraded, host back) is absent from the
+//     next reimport, so DefectDojo mitigates it with the date — the audit trail of "it was
+//     fixed on ...".
 //
-// Without close_old_findings fixed items would stay active forever and the test would only
-// grow. The trade-off: an item suppressed in Dzięcioł shows as "mitigated" in DefectDojo
-// rather than "risk accepted"; Dzięcioł stays the source of truth for that decision.
+// Items an analyst triaged in Dzięcioł (accepted risk / false positive) stay in the payload
+// with their Triage attached; after the reimport SyncTriage sets the matching DefectDojo
+// state (risk_accepted / false_p, with the reason and expiry as a note) and reverts it when
+// the decision is withdrawn or expires. Without close_old_findings fixed items would stay
+// active forever and the test would only grow.
 //
 // DefectDojo matches reimported Generic Findings by hash_code (title + description) on a
 // default install, not by unique_id_from_tool, so titles and descriptions here contain only
@@ -69,14 +71,20 @@ func ChangesTestTitle(profileName string) string {
 
 // ChangeFinding is one actionable finding of the change test.
 type ChangeFinding struct {
-	Kind  string `json:"-"`
-	Owner string `json:"-"`
+	Kind      string `json:"-"`
+	Owner     string `json:"-"`
+	HostID    string `json:"-"`
+	ServiceID string `json:"-"`
+	// Triage is the analyst decision in force (accepted risk / false positive), nil when the
+	// finding is active. SyncTriage mirrors it into DefectDojo.
+	Triage *domain.TriageInfo `json:"-"`
 	genericFinding
 }
 
 // BuildChangeFindings derives the actionable findings for hosts (already limited to the
 // profile scope, services loaded) at now. Hosts or services with an active accepted-risk /
-// false-positive decision are skipped. The result is sorted by unique id (stable payload).
+// false-positive decision keep their findings with Triage set (a host decision covers its
+// services). The result is sorted by unique id (stable payload).
 func BuildChangeFindings(hosts []domain.Host, now time.Time) []ChangeFinding {
 	baseline := time.Time{}
 	for _, h := range hosts {
@@ -87,12 +95,15 @@ func BuildChangeFindings(hosts []domain.Host, now time.Time) []ChangeFinding {
 	var out []ChangeFinding
 	for i := range hosts {
 		h := &hosts[i]
+		var hostTriage *domain.TriageInfo
 		if h.Triage.IsSuppressing(now) {
-			continue
+			hostTriage = h.Triage
 		}
 		if h.LifecycleState == domain.HostStateMissing || h.LifecycleState == domain.HostStateInactive {
 			if !h.LastSeen.IsZero() && now.Sub(h.LastSeen) <= goneHostWindow {
-				out = append(out, hostGoneFinding(h))
+				f := hostGoneFinding(h)
+				f.Triage = hostTriage
+				out = append(out, f)
 			}
 			continue // its services are stale; their findings close with the host
 		}
@@ -101,14 +112,18 @@ func BuildChangeFindings(hosts []domain.Host, now time.Time) []ChangeFinding {
 			if s.State != "" && s.State != "open" {
 				continue
 			}
+			triage := hostTriage
 			if s.Triage.IsSuppressing(now) {
-				continue
+				triage = s.Triage
 			}
 			if s.HostIP == "" {
 				s.HostIP = h.IP
 			}
 			eol.Annotate(&s, now)
-			out = append(out, serviceFindings(h, &s, baseline, now)...)
+			for _, f := range serviceFindings(h, &s, baseline, now) {
+				f.ServiceID, f.Triage = s.ID, triage
+				out = append(out, f)
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UniqueIDFromTool < out[j].UniqueIDFromTool })
@@ -136,7 +151,7 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 	}
 
 	if label, risky := ingest.RiskyExposure(s.Port, s.ServiceName); risky {
-		add(KindExposure, "", fmt.Sprintf("Risky service exposed: %s (%s) on %s", label, s.ServiceName, where), "Medium",
+		add(KindExposure, "", fmt.Sprintf("Risky service exposed: %s (%s) on %s", label, s.ServiceName, where), exposureSeverity(label),
 			fmt.Sprintf("Port %d/%s (%s) is reachable from the scanning network. Remote access, file sharing and database services should not be exposed without a reason.", s.Port, proto, label),
 			func(g *genericFinding) {
 				g.Mitigation = "Check with the owner whether the service is needed; if not, turn it off or restrict access with a firewall/VPN."
@@ -222,7 +237,7 @@ func newFinding(h *domain.Host, kind, title, severity, description string) Chang
 			tags = append(tags, s)
 		}
 	}
-	return ChangeFinding{Kind: kind, Owner: h.Owner, genericFinding: genericFinding{
+	return ChangeFinding{Kind: kind, Owner: h.Owner, HostID: h.ID, genericFinding: genericFinding{
 		Title:       title,
 		Description: description,
 		Severity:    severity,
@@ -396,6 +411,7 @@ func (c *Client) ImportChangeFindings(ctx context.Context, cfg *domain.DefectDoj
 	out := &ImportResult{
 		TestID:       res.Test,
 		EngagementID: res.EngagementID,
+		ProductID:    res.ProductID,
 		ScanType:     "Generic Findings Import",
 		Message:      fmt.Sprintf("%d change findings sent to DefectDojo test %q", len(findings), testTitle),
 	}

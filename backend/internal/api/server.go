@@ -63,6 +63,9 @@ type Server struct {
 
 	routes []string      // registered mux patterns (see handle)
 	logins *loginLimiter // failed-login throttling
+
+	dojoSyncMu    sync.Mutex
+	dojoSyncTimer *time.Timer // debounced triage -> DefectDojo sync (queueDojoSync)
 }
 
 // NewServer constructs a fully wired Dzięcioł HTTP Server.
@@ -202,6 +205,9 @@ func (s *Server) registerRoutes() {
 	s.handle("POST /api/v1/integrations/defectdojo/push-findings", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoFindings))
 	s.handle("POST /api/v1/integrations/defectdojo/push-nmap", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoNmap))
 	s.handle("GET /api/v1/integrations/defectdojo/history", mw.RequirePerm(domain.PermDefectDojoPush, s.handleDefectDojoHistory))
+	s.handle("GET /api/v1/integrations/defectdojo/status", mw.RequirePerm(domain.PermAssetsRead, s.handleDefectDojoStatus))
+	s.handle("GET /api/v1/integrations/defectdojo/services", mw.RequirePerm(domain.PermAssetsRead, s.handleDefectDojoServiceStatus))
+	s.handle("POST /api/v1/integrations/defectdojo/sync", mw.RequirePerm(domain.PermDefectDojoPush, s.handleDefectDojoSyncNow))
 
 	// Admin: Users, Dynamic Roles, Permissions, Crypto Proof & Rotation, Audit
 	s.handle("GET /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleListUsers))

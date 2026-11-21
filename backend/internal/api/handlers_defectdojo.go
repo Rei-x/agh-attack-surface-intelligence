@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,7 +15,7 @@ import (
 )
 
 func (s *Server) handleGetDefectDojoConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, err := s.store.GetDefectDojoConfig(r.Context())
+	cfg, err := db.LoadDefectDojoConfig(r.Context(), s.store)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -33,10 +34,22 @@ func isHTTPURL(raw string) bool {
 }
 
 func (s *Server) handleSaveDefectDojoConfig(w http.ResponseWriter, r *http.Request) {
+	var raw json.RawMessage
 	var cfg domain.DefectDojoConfig
-	if err := decodeJSON(r, &cfg); err != nil {
+	var opt struct {
+		AutoPushFindings *bool `json:"auto_push_findings"`
+	}
+	if err := decodeJSON(r, &raw); err != nil || json.Unmarshal(raw, &cfg) != nil || json.Unmarshal(raw, &opt) != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
+	}
+	// auto_push_findings lives in the settings store; omitted = keep the current value.
+	if opt.AutoPushFindings == nil {
+		if cur, err := db.LoadDefectDojoConfig(r.Context(), s.store); err == nil && cur != nil {
+			cfg.AutoPushFindings = cur.AutoPushFindings
+		}
+	} else {
+		cfg.AutoPushFindings = *opt.AutoPushFindings
 	}
 	cfg.URL = strings.TrimRight(strings.TrimSpace(cfg.URL), "/")
 	if cfg.URL != "" && !isHTTPURL(cfg.URL) {
@@ -51,7 +64,11 @@ func (s *Server) handleSaveDefectDojoConfig(w http.ResponseWriter, r *http.Reque
 		writeStoreErr(w, err)
 		return
 	}
-	saved, err := s.store.GetDefectDojoConfig(r.Context())
+	if err := db.SaveDefectDojoOptions(r.Context(), s.store, &cfg); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	saved, err := db.LoadDefectDojoConfig(r.Context(), s.store)
 	if err != nil {
 		writeStoreErr(w, err)
 		return

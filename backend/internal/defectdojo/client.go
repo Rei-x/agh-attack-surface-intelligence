@@ -53,6 +53,7 @@ type ImportResult struct {
 	ExternalID   string `json:"external_id"`
 	ExternalURL  string `json:"external_url"`
 	Message      string `json:"message,omitempty"`
+	ProductID    int    `json:"product_id,omitempty"`
 }
 
 // FindingInput describes a single finding to push to DefectDojo /api/v2/findings/.
@@ -361,6 +362,7 @@ func (c *Client) ImportNmapXML(ctx context.Context, cfg *domain.DefectDojoConfig
 	out := &ImportResult{
 		TestID:       res.Test,
 		EngagementID: res.EngagementID,
+		ProductID:    res.ProductID,
 		ScanType:     "Nmap Scan",
 		Message:      fmt.Sprintf("%d findings in DefectDojo test %q", res.Statistics.After.Total.Total, testTitle),
 	}

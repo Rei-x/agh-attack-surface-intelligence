@@ -125,6 +125,8 @@ func (s *Server) handlePatchHostOverrides(w http.ResponseWriter, r *http.Request
 		writeStoreErr(w, err)
 		return
 	}
+	// Triage decisions are mirrored to DefectDojo shortly after (debounced).
+	s.queueDojoSync()
 	updated, err := s.store.GetHost(ctx, id)
 	if err != nil {
 		writeStoreErr(w, err)
@@ -210,6 +212,8 @@ func (s *Server) handlePatchServiceOverrides(w http.ResponseWriter, r *http.Requ
 		writeStoreErr(w, err)
 		return
 	}
+	// Triage decisions are mirrored to DefectDojo shortly after (debounced).
+	s.queueDojoSync()
 	updated, err := s.store.GetService(ctx, id)
 	if err != nil {
 		writeStoreErr(w, err)

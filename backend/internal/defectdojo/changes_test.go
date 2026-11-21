@@ -65,17 +65,29 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 	for _, f := range fs {
 		byKind[f.Kind] = append(byKind[f.Kind], f)
 	}
-	want := map[string]int{KindEOL: 1, KindExposure: 1, KindAdmin: 1, KindNew: 1, KindHostGone: 1}
+	want := map[string]int{KindEOL: 1, KindExposure: 3, KindAdmin: 1, KindNew: 1, KindHostGone: 1}
 	for k, n := range want {
 		if len(byKind[k]) != n {
 			t.Errorf("%s: got %d findings, want %d", k, len(byKind[k]), n)
 		}
 	}
-	if len(fs) != 5 {
+	if len(fs) != 7 {
 		for _, f := range fs {
 			t.Logf("%s | %s", f.Kind, f.Title)
 		}
-		t.Fatalf("want 5 findings (suppressed, closed, baseline and long-gone items excluded), got %d", len(fs))
+		t.Fatalf("want 7 findings (closed, baseline and long-gone items excluded; triaged ones kept with Triage), got %d", len(fs))
+	}
+	triaged := map[string]string{}
+	for _, f := range byKind[KindExposure] {
+		if f.Triage != nil {
+			triaged[f.ComponentName] = f.Triage.Status
+		}
+		if strings.Contains(f.Title, "Telnet") && f.Severity != "High" {
+			t.Errorf("telnet exposure severity %q, want High", f.Severity)
+		}
+	}
+	if triaged["10.66.0.90"] != domain.TriageAcceptedRisk || triaged["10.66.0.91"] != domain.TriageFalsePositive || len(triaged) != 2 {
+		t.Errorf("triage not carried on findings: %v", triaged)
 	}
 
 	e := byKind[KindEOL][0]
@@ -100,7 +112,13 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 		t.Errorf("endpoint: %+v", e.Endpoints)
 	}
 
-	if x := byKind[KindExposure][0]; !strings.HasPrefix(x.Title, "Risky service exposed: RDP (ms-wbt-server) on 10.66.0.12:3389/tcp") || x.Severity != "Medium" {
+	var rdp ChangeFinding
+	for _, f := range byKind[KindExposure] {
+		if strings.Contains(f.Title, "RDP") {
+			rdp = f
+		}
+	}
+	if x := rdp; !strings.HasPrefix(x.Title, "Risky service exposed: RDP (ms-wbt-server) on 10.66.0.12:3389/tcp") || x.Severity != "Medium" {
 		t.Errorf("exposure: %q %s", x.Title, x.Severity)
 	}
 	if a := byKind[KindAdmin][0]; a.Title != "Admin panel exposed: Jenkins on 10.66.0.40:8080/tcp" || !strings.Contains(a.Description, "none — add a CIDR rule") {
@@ -113,8 +131,9 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 		t.Errorf("host gone: %q %s", g.Title, g.Severity)
 	}
 	for _, f := range fs {
-		if strings.Contains(f.Title, "10.66.0.90") || strings.Contains(f.Title, "10.66.0.91") {
-			t.Errorf("suppressed item pushed: %s", f.Title)
+		suppressedHost := strings.Contains(f.Title, "10.66.0.90") || strings.Contains(f.Title, "10.66.0.91")
+		if suppressedHost != (f.Triage != nil) {
+			t.Errorf("triage mismatch on %s: %+v", f.Title, f.Triage)
 		}
 	}
 }
