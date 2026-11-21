@@ -16,7 +16,7 @@ import (
 // letter suffix sorts AFTER it ("8.9" < "8.9p1", "1.0.2" < "1.0.2k"). Missing numeric
 // components count as zero ("4.7" == "4.7.0").
 
-var reRelease = regexp.MustCompile(`^\d+(?:\.\d+)*(?:[a-z]+\d*)?(?:[-_.~]?(?:rc|beta|alpha|pre|dev|m)[-_.]?\d*)?`)
+var reRelease = regexp.MustCompile(`^\d+(?:\.\d+)*(?:[a-z]+\d*)?(?:[-_.~]?(?:rc|beta|alpha|pre|dev)[-_.]?\d*|[-_.~]?m\d+)?`)
 
 // normalizeVersion returns the leading release token of an observed or NVD version, or ""
 // when it does not start with a number. "8.9p1 Ubuntu-3ubuntu0.6" -> "8.9p1",

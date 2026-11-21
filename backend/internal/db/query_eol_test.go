@@ -4,9 +4,14 @@ import (
 	"testing"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/vulndb"
 )
 
 func TestQueryEOLAndVuln(t *testing.T) {
+	// Only the curated eol hints here; the NVD snapshot terms are in query_vuln_test.go.
+	empty, _ := vulndb.Parse([]byte(`{"schema":1,"products":{}}`))
+	vulndb.SetCurrent(vulndb.New(empty, "test"))
+	defer vulndb.SetCurrent(nil)
 	host := &domain.Host{IP: "10.66.0.5", Services: []domain.Service{
 		{Port: 80, Product: "nginx", Version: "1.14.2"},
 		{Port: 22, Product: "OpenSSH", Version: "9.9p1"},

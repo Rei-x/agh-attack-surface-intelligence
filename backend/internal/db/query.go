@@ -16,7 +16,9 @@ import (
 // hosts and services list endpoints (the `q` parameter):
 //
 //	port:3389 tech:wordpress tag:wi state:new cidr:10.66.0.0/24 env:staging title:"admin" cert:expired
-//	eol:true (end-of-life version, offline table in internal/eol) vuln:true (passive known-CVE hint)
+//	eol:true (end-of-life version, offline table in internal/eol) vuln:true (known CVE, version-only)
+//	cve:CVE-2021-41773 kev:true (CISA KEV) epss>0.5 cvss>=9 (offline NVD/KEV/EPSS snapshot, internal/vulndb)
+//	verified:true (confirmed by a safe verification check, internal/verify)
 //	db:true (exposed database) iot:true staging:true cleartext:true (telnet/ftp/r-services)
 //	violation:true (open zone policy violation) policy:<zone name, rule or category>
 //
@@ -38,6 +40,9 @@ type QueryTerm struct {
 	nets    []*net.IPNet
 	ports   []int
 	minimum int
+	// epss / cvss comparisons (query_vuln.go)
+	op        string
+	threshold float64
 }
 
 // AssetQuery is a parsed search expression.
@@ -73,7 +78,11 @@ var queryKeyAliases = map[string]string{
 	"eol":      "eol",
 	"outdated": "eol",
 	"vuln":     "vuln",
-	"cve":      "vuln",
+	"cve":      "cve",
+	"kev":      "kev",
+	"epss":     "epss",
+	"cvss":     "cvss",
+	"verified": "verified",
 	// Quick-filter flags (one-click chips in the asset list).
 	"db":        "db",
 	"database":  "db",
@@ -93,10 +102,11 @@ var serviceLevelKeys = map[string]bool{
 	"port": true, "tech": true, "title": true, "cert": true, "service": true,
 	"product": true, "version": true, "admin": true, "eol": true, "vuln": true,
 	"db": true, "iot": true, "staging": true, "cleartext": true,
+	"cve": true, "kev": true, "epss": true, "cvss": true, "verified": true,
 }
 
 // QueryKeys lists the canonical keys (used by the UI help and error messages).
-var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score", "eol", "vuln", "db", "iot", "staging", "cleartext", "violation", "policy"}
+var QueryKeys = []string{"port", "tech", "tag", "state", "cidr", "env", "title", "cert", "service", "product", "version", "owner", "hostname", "os", "triage", "admin", "score", "eol", "vuln", "cve", "kev", "epss", "cvss", "verified", "db", "iot", "staging", "cleartext", "violation", "policy"}
 
 // ParseAssetQuery parses a search expression. It returns an error for malformed values of
 // known keys (bad port, bad CIDR, unknown cert condition, unterminated quote) so the API can
@@ -109,6 +119,9 @@ func ParseAssetQuery(input string) (*AssetQuery, error) {
 	q := &AssetQuery{}
 	for _, tok := range tokens {
 		raw := tok.text
+		if !tok.quoted {
+			raw = normalizeComparison(raw) // epss>0.5 -> epss:>0.5
+		}
 		neg := false
 		if !tok.quoted && strings.HasPrefix(raw, "-") && len(raw) > 1 && strings.Contains(raw, ":") {
 			neg = true
@@ -257,6 +270,8 @@ func compileTerm(t *QueryTerm) error {
 			return fmt.Errorf("score: expected a number, e.g. score:>=70")
 		}
 		t.minimum = n
+	case "cve", "kev", "epss", "cvss", "verified":
+		return compileVulnTerm(t)
 	case "admin", "eol", "vuln", "db", "iot", "staging", "cleartext", "violation":
 		switch t.Values[0] {
 		case "true", "yes", "1", "tak":
@@ -476,7 +491,11 @@ func (t *QueryTerm) matchService(s *domain.Service, now time.Time) bool {
 		return false
 	case "admin":
 		return s.IsAdminPanel == (t.Values[0] == "true")
-	case "eol", "vuln":
+	case "cve", "kev", "epss", "cvss", "verified":
+		return t.matchVulnTerm(s, now)
+	case "vuln":
+		return hasKnownCVE(s, now) == (t.Values[0] == "true")
+	case "eol":
 		outdated, hints := eol.Assess(s, now)
 		if t.Key == "eol" {
 			return (len(outdated) > 0) == (t.Values[0] == "true")

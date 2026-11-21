@@ -22,6 +22,28 @@ const (
 // by older versions are replaced rather than counted twice.
 var derivedFactorPrefixes = []string{factorPrefixEOL, factorPrefixCVE, "Wersja EOL: ", "Pasywna wskazówka CVE: "}
 
+// Annotator derives extra read-time fields of a service (internal/vulndb, internal/verify)
+// and returns the interestingness factors they contribute (used by ApplyScore only).
+type Annotator func(svc *domain.Service, now time.Time) []domain.InterestingnessFactor
+
+var annotators []Annotator
+
+// RegisterAnnotator adds an annotator run by every Annotate / ApplyScore call. Factors it
+// returns must start with one of factorPrefixes so a re-score replaces them instead of
+// counting them twice. Call during startup (not concurrently with Annotate).
+func RegisterAnnotator(fn Annotator, factorPrefixes ...string) {
+	annotators = append(annotators, fn)
+	derivedFactorPrefixes = append(derivedFactorPrefixes, factorPrefixes...)
+}
+
+func runAnnotators(svc *domain.Service, now time.Time) []domain.InterestingnessFactor {
+	var out []domain.InterestingnessFactor
+	for _, fn := range annotators {
+		out = append(out, fn(svc, now)...)
+	}
+	return out
+}
+
 func isDerivedFactor(reason string) bool {
 	for _, p := range derivedFactorPrefixes {
 		if strings.HasPrefix(reason, p) {
@@ -37,6 +59,7 @@ func Annotate(svc *domain.Service, now time.Time) {
 		return
 	}
 	svc.Outdated, svc.KnownVulns = Assess(svc, now)
+	runAnnotators(svc, now)
 }
 
 // AnnotateHosts annotates every service of every host in place.
@@ -59,7 +82,8 @@ func ApplyScore(svc *domain.Service, now time.Time) {
 	if svc == nil {
 		return
 	}
-	Annotate(svc, now)
+	svc.Outdated, svc.KnownVulns = Assess(svc, now)
+	extra := runAnnotators(svc, now)
 	kept := svc.InterestingFactors[:0:0]
 	for _, f := range svc.InterestingFactors {
 		if !isDerivedFactor(f.Reason) {
@@ -82,6 +106,7 @@ func ApplyScore(svc *domain.Service, now time.Time) {
 		kept = append(kept, domain.InterestingnessFactor{Reason: factorPrefixCVE + strings.Join(ids, ", "), Points: PointsKnownVuln})
 		svc.Tags = addTag(svc.Tags, TagKnownVuln)
 	}
+	kept = append(kept, extra...)
 	sort.SliceStable(kept, func(i, j int) bool { return kept[i].Points > kept[j].Points })
 	total := 0
 	for _, f := range kept {
