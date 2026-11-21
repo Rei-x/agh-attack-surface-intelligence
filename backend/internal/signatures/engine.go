@@ -220,7 +220,7 @@ func normalizeSignalType(matcherType string) string {
 		return "html"
 	case "safe_path":
 		return "path"
-	case "tls_cert":
+	case "tls_cert", "jarm":
 		return "tls"
 	case "banner", "port", "service_name":
 		return "banner"
@@ -392,6 +392,24 @@ func matchSingle(cm compiledMatcher, svc domain.ObservedService) (bool, string, 
 			}
 			return false, "", ""
 		}
+
+	case "jarm":
+		// JARM equality: exact (case-insensitive) match of the 62-char fingerprint,
+		// or a regex (e.g. prefix "^2ad2ad16d" to match a cipher/version pattern).
+		if httpFP == nil || httpFP.TLS == nil || httpFP.TLS.JARM == "" {
+			return false, "", ""
+		}
+		j := httpFP.TLS.JARM
+		if m.Regex && cm.re != nil {
+			if ok, ver := matchString(cm, j); ok {
+				return true, ver, "jarm=" + j
+			}
+			return false, "", ""
+		}
+		if strings.EqualFold(strings.TrimSpace(m.Pattern), j) {
+			return true, "", "jarm=" + j
+		}
+		return false, "", ""
 
 	case "banner":
 		combined := strings.TrimSpace(svc.Banner + " " + svc.Product + " " + svc.Version)

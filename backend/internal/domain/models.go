@@ -434,7 +434,7 @@ type ChangeEvent struct {
 
 // Custom detection signature.
 type SignatureMatcher struct {
-	Type         string `json:"type"` // header, cookie, favicon_mmh3, favicon_sha256, html_body, footer_version, safe_path, tls_cert, banner, port
+	Type         string `json:"type"` // header, cookie, favicon_mmh3, favicon_sha256, html_body, footer_version, safe_path, tls_cert, jarm, banner, port
 	Key          string `json:"key,omitempty"`
 	Pattern      string `json:"pattern"`
 	Regex        bool   `json:"regex"`

@@ -292,6 +292,10 @@ func ComputeServiceClusterKey(svc domain.Service) string {
 	return fmt.Sprintf("svc:%s:%d", strings.ToLower(svc.ServiceName), svc.Port)
 }
 
+func isMeaningfulJARM(h string) bool {
+	return len(h) == 62 && strings.Trim(h, "0") != ""
+}
+
 // ComputeClusters groups similar services across 4 primary dimensions:
 // favicon MMH3, tech stack, HTTP title, and TLS issuer (plus service product fallback).
 // Returns clusters with at least 2 services.
@@ -355,6 +359,10 @@ func ComputeClustersWithMinSize(services []domain.Service, minSize int) []domain
 			}
 			if svc.HTTP.TLS != nil && strings.TrimSpace(svc.HTTP.TLS.Issuer) != "" {
 				add("tls_issuer", svc.HTTP.TLS.Issuer, "TLS Issuer: "+svc.HTTP.TLS.Issuer, svc)
+			}
+			// Same JARM = same TLS stack + configuration (library, version, cipher order).
+			if svc.HTTP.TLS != nil && isMeaningfulJARM(svc.HTTP.TLS.JARM) {
+				add("tls_jarm", svc.HTTP.TLS.JARM, "JARM "+svc.HTTP.TLS.JARM, svc)
 			}
 		}
 		if ts := techSignature(svc.Technologies); ts != "" {

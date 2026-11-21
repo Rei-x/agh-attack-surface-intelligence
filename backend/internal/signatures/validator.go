@@ -36,6 +36,7 @@ var allowedMatcherTypes = map[string]bool{
 	"footer_version": true,
 	"safe_path":      true,
 	"tls_cert":       true,
+	"jarm":           true,
 	"banner":         true,
 	"port":           true,
 	"title":          true,
@@ -50,6 +51,7 @@ var (
 	rePathTraversal  = regexp.MustCompile(`(?i)(\.\.|%2e%2e|%252e|%00|\x00|\\|\r|\n)`)
 	reNestedQuant    = regexp.MustCompile(`\([^)]*[+*][^)]*\)[+*]`)
 	reHugeRepeat     = regexp.MustCompile(`\{(\d{3,}),?`)
+	reJARM           = regexp.MustCompile(`^(?i)[0-9a-f]{62}$`)
 	reExternalScheme = regexp.MustCompile(`(?i)^(https?|ftp|file|gopher|ldap|dict)://`)
 )
 
@@ -141,6 +143,11 @@ func ValidateSignature(sig domain.Signature) ValidationResult {
 			if !m.Regex && checkPath != "" && !strings.HasPrefix(checkPath, "/") {
 				addErr(fmt.Sprintf("%s: safe_path must start with '/'", prefix))
 			}
+		}
+
+		// JARM equality matchers must be a 62-char lowercase-hex fingerprint.
+		if mt == "jarm" && !m.Regex && !reJARM.MatchString(strings.TrimSpace(m.Pattern)) {
+			addErr(fmt.Sprintf("%s: jarm pattern must be a 62-character hex JARM fingerprint (or set regex=true)", prefix))
 		}
 
 		// Validate regex safety and capture groups.
