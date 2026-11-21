@@ -1,8 +1,10 @@
 package ingest
 
 import (
+	"bufio"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -11,13 +13,51 @@ import (
 )
 
 // ExportJSON writes filtered hosts (with services and merged overrides) as pretty JSON.
+// Hosts are encoded one at a time, so a large inventory is streamed instead of being
+// marshalled into one buffer first.
 func ExportJSON(w io.Writer, hosts []domain.Host) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]any{
-		"count": len(hosts),
-		"hosts": hosts,
-	})
+	bw := bufio.NewWriterSize(w, 64<<10)
+	if _, err := fmt.Fprintf(bw, "{\n  \"count\": %d,\n  \"hosts\": [", len(hosts)); err != nil {
+		return err
+	}
+	for i := range hosts {
+		b, err := json.MarshalIndent(&hosts[i], "    ", "  ")
+		if err != nil {
+			return err
+		}
+		sep := ",\n    "
+		if i == 0 {
+			sep = "\n    "
+		}
+		if _, err := bw.WriteString(sep); err != nil {
+			return err
+		}
+		if _, err := bw.Write(b); err != nil {
+			return err
+		}
+	}
+	if _, err := bw.WriteString("\n  ]\n}\n"); err != nil {
+		return err
+	}
+	return bw.Flush()
+}
+
+// csvSafe neutralizes spreadsheet formula injection: banners, titles and server headers come
+// from scanned (potentially hostile) hosts, and a cell starting with = + - @ would be executed
+// by Excel/LibreOffice when an analyst opens the export.
+func csvSafe(row []string) []string {
+	for i, v := range row {
+		if v == "" {
+			continue
+		}
+		switch v[0] {
+		case '=', '+', '-', '@', '\t', '\r':
+			if _, err := strconv.ParseFloat(v, 64); err != nil {
+				row[i] = "'" + v
+			}
+		}
+	}
+	return row
 }
 
 // ExportCSV writes flattened host/service inventory rows as RFC 4180 CSV.
@@ -43,7 +83,7 @@ func ExportCSV(w io.Writer, hosts []domain.Host) error {
 				"", "false", "false", "false",
 				"0", "", strings.Join(h.Tags, ";"), h.Notes,
 			}
-			if err := cw.Write(row); err != nil {
+			if err := cw.Write(csvSafe(row)); err != nil {
 				return err
 			}
 			continue
@@ -82,7 +122,7 @@ func ExportCSV(w io.Writer, hosts []domain.Host) error {
 				strconv.Itoa(s.Interestingness), s.TriageStatus,
 				strings.Join(tags, ";"), notes,
 			}
-			if err := cw.Write(row); err != nil {
+			if err := cw.Write(csvSafe(row)); err != nil {
 				return err
 			}
 		}

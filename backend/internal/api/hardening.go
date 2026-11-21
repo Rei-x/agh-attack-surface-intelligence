@@ -14,7 +14,7 @@ import (
 // Request body limits. Uploads (scan imports, signature packs) get a larger budget; every other
 // endpoint takes small JSON documents.
 const (
-	maxJSONBodyBytes   int64 = 1 << 20  // 1 MiB
+	maxJSONBodyBytes   int64 = 8 << 20  // 8 MiB: a profile may list ~100k individual IPs
 	maxImportFileBytes int64 = 64 << 20 // 64 MiB of CSV / JSON / nmap XML
 	maxUploadBodyBytes       = maxImportFileBytes + 1<<20
 )
