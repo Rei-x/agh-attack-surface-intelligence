@@ -190,26 +190,33 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	// Discovery is planned on the pool minus one service share, so a -sV process can always
 	// start even while every discovery worker holds its share (otherwise chunks waiting for
 	// Stage 2 could never finish and the pipeline would stall).
+	//
+	// -sV is wait-bound (silent services, probe chains), so it needs many concurrent
+	// processes on small shares rather than one big share: with a single 84 pps service share
+	// left beside 4x316 pps of sweeps, -sV queued behind discovery (120-140 s per chunk on
+	// the /20 bench). Reserve svcWorkers small shares (at most a quarter of the pool).
 	planWorkers, _ := ChunkWorkerPlan(e.cfg.MaxChunkWorkers, profile.Concurrency, nmapPool, pendingCount)
-	svcWant := nmapPool / (4 * planWorkers)
+	svcWorkers := 2 * planWorkers
+	if svcWorkers > 16 {
+		svcWorkers = 16
+	}
+	svcWant := nmapPool / 64
 	if svcWant < MinWorkerRatePPS {
 		svcWant = MinWorkerRatePPS
 	}
-	if svcWant > nmapPool/2 {
-		svcWant = nmapPool / 2
+	svcReserve := svcWorkers * svcWant
+	if svcReserve > nmapPool/4 {
+		svcReserve = nmapPool / 4
+		svcWant = svcReserve / svcWorkers
 	}
 	if svcWant < 1 {
-		svcWant = 1
+		svcWant, svcReserve = 1, svcWorkers
 	}
-	discPool := nmapPool - svcWant
+	discPool := nmapPool - svcReserve
 	if discPool < 1 {
 		discPool = 1
 	}
 	workers, perWorkerRate := ChunkWorkerPlan(e.cfg.MaxChunkWorkers, profile.Concurrency, discPool, pendingCount)
-	svcWorkers := 2 * workers
-	if svcWorkers > 16 {
-		svcWorkers = 16
-	}
 	budget := newRateBudget(nmapPool)
 	fpSem := make(chan struct{}, concurrency)
 	emit("scan.workers", map[string]any{
@@ -440,6 +447,20 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	if minShare < MinWorkerRatePPS {
 		minShare = MinWorkerRatePPS
 	}
+	// throttled scales an nmap share by the Governor's current/initial rate, so a backoff
+	// triggered by target distress (HTTP 429/503, resets, timeouts on live hosts) also slows
+	// every nmap process launched afterwards, not only the Go-side probes.
+	throttled := func(n int) int {
+		if initial := float64(govRate); initial > 0 {
+			if f := gov.CurrentRate() / initial; f < 1 {
+				n = int(float64(n) * f)
+			}
+		}
+		if n < 1 {
+			n = 1
+		}
+		return n
+	}
 
 	var discWG sync.WaitGroup
 	for wk := 1; wk <= workers; wk++ {
@@ -452,7 +473,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 				case <-scanCtx.Done():
 					return
 				}
-				rate, err := budget.acquire(scanCtx, perWorkerRate, minShare)
+				rate, err := budget.acquire(scanCtx, throttled(perWorkerRate), min(minShare, throttled(perWorkerRate)))
 				if err != nil {
 					<-inflight
 					return
@@ -489,7 +510,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 					complete(w, scanCtx.Err())
 					continue
 				}
-				if err := e.serviceChunk(scanCtx, w, ports, budget, svcWant, gov, stats); err != nil {
+				if err := e.serviceChunk(scanCtx, w, ports, budget, throttled(svcWant), gov, stats); err != nil {
 					complete(w, err)
 					continue
 				}
@@ -501,7 +522,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 				go func(w *chunkWork) {
 					defer fpWG.Done()
 					t0 := time.Now()
-					e.fingerprintStage(scanCtx, w.alive, w.svcMap, profile, fpSem, gov, ipToDomains, stats)
+					e.fingerprintStage(scanCtx, w.alive, w.svcMap, w.guessed, profile, fpSem, gov, ipToDomains, stats)
 					d := time.Since(t0)
 					stats.fingerprintNs.Add(int64(d))
 					w.sm.Fingerprint += d.Milliseconds()

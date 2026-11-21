@@ -178,13 +178,20 @@ func (o NmapOptions) BuildSweepArgs(targets []string, ports []int, ratePPS int, 
 		retries = 0
 	}
 	args = append(args, "--max-retries", strconv.Itoa(retries), "-T"+strconv.Itoa(o.timingFor(ratePPS)), "--max-rate", strconv.Itoa(ratePPS))
+	args = o.appendPacing(args, ratePPS)
+	args = append(args, "-oX", "-")
+	return append(args, CompactIPv4Targets(targets)...)
+}
+
+// appendPacing adds --min-rate (SweepMinRatePct of the share) so nmap sends evenly instead of
+// catching up on its long-run --max-rate average with bursts.
+func (o NmapOptions) appendPacing(args []string, ratePPS int) []string {
 	if o.SweepMinRatePct > 0 {
 		if minRate := ratePPS * o.SweepMinRatePct / 100; minRate >= 1 {
 			args = append(args, "--min-rate", strconv.Itoa(minRate))
 		}
 	}
-	args = append(args, "-oX", "-")
-	return append(args, CompactIPv4Targets(targets)...)
+	return args
 }
 
 // BuildICMPArgs returns the nmap argv for the ICMP echo liveness pass that complements the
@@ -197,7 +204,11 @@ func (o NmapOptions) BuildICMPArgs(targets []string, ratePPS int) []string {
 	if o.DiscoveryHostTimeout > 0 {
 		args = append(args, "--host-timeout", nmapDuration(o.DiscoveryHostTimeout))
 	}
-	args = append(args, "-T"+strconv.Itoa(o.timingFor(ratePPS)), "--max-rate", strconv.Itoa(ratePPS), "-oX", "-")
+	args = append(args, "-T"+strconv.Itoa(o.timingFor(ratePPS)), "--max-rate", strconv.Itoa(ratePPS))
+	// Paced like the sweep: unpaced, 4 ICMP passes starting together peaked at 1436/s
+	// against a 1264 pps summed share.
+	args = o.appendPacing(args, ratePPS)
+	args = append(args, "-oX", "-")
 	return append(args, CompactIPv4Targets(targets)...)
 }
 

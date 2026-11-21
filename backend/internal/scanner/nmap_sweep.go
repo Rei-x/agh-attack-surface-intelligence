@@ -155,6 +155,35 @@ func (r *NmapRunner) runNmap(ctx context.Context, args []string) ([]byte, string
 	return stdout.Bytes(), cmdLine, stderr.String(), err
 }
 
+// guessedServices returns "ip:port" for open ports whose service name nmap only guessed from
+// the port number (method="table"): no -sV probe, including its HTTP GET, got a matching
+// answer. HTTP fingerprinting treats those as speculative.
+func guessedServices(xmlStr string) map[string]bool {
+	out := map[string]bool{}
+	if strings.TrimSpace(xmlStr) == "" {
+		return out
+	}
+	var doc nmapRunXML
+	if err := xml.Unmarshal([]byte(xmlStr), &doc); err != nil {
+		return out
+	}
+	for _, h := range doc.Hosts {
+		ip := ""
+		for _, a := range h.Addresses {
+			if a.AddrType == "ipv4" || a.AddrType == "ipv6" {
+				ip = a.Addr
+				break
+			}
+		}
+		for _, p := range h.Ports.Ports {
+			if p.State.State == "open" && (p.Service == nil || p.Service.Method == "table") {
+				out[fmt.Sprintf("%s:%d", ip, p.PortID)] = true
+			}
+		}
+	}
+	return out
+}
+
 // parseSweepXML marks a host alive when any port answered (open, closed, unfiltered) and
 // records open ports. With -Pn nmap reports every target as "up", so <status> is ignored.
 func parseSweepXML(xmlBytes []byte, alive map[string]bool, open map[string][]int) error {

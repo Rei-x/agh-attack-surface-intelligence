@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"hash/fnv"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -150,10 +151,14 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 	return run, resolution, nil
 }
 
+// speculativeHTTPTimeout bounds HTTP probes of services nmap did not identify.
+const speculativeHTTPTimeout = 3 * time.Second
+
 func (e *Engine) fingerprintStage(
 	ctx context.Context,
 	activeIPs []string,
 	svcMap map[string][]domain.ObservedService,
+	guessed map[string]bool,
 	profile domain.ScanProfile,
 	fpSem chan struct{},
 	gov *Governor,
@@ -235,10 +240,18 @@ func (e *Engine) fingerprintStage(
 					st.httpRequests.Add(1)
 					return gov.Wait(rctx, host)
 				}
+				// A service nmap could only name from the port table did not answer -sV's
+				// HTTP probes: try it briefly, and don't read its silence as target distress
+				// (on the /20 bench, winbox:8291 and Hikvision:8000 timeouts halved the global
+				// HTTP rate four times, 150 -> 21 rps).
+				speculative := guessed[job.ip+":"+strconv.Itoa(job.port)]
+				if speculative {
+					opts.Timeout = speculativeHTTPTimeout
+				}
 				opts.OnThrottle = func(host string, statusCode int, err error) {
 					if statusCode > 0 {
 						gov.RecordHTTPStatus(host, statusCode)
-					} else if err != nil {
+					} else if err != nil && !speculative {
 						classifyDialErr(gov, host, err)
 					}
 				}

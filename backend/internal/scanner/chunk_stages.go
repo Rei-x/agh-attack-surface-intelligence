@@ -24,6 +24,8 @@ type chunkWork struct {
 	openKnown map[string]bool
 
 	svcMap map[string][]domain.ObservedService
+	// guessed holds "ip:port" of services nmap named only from the port table.
+	guessed map[string]bool
 	xml    string
 }
 
@@ -180,6 +182,12 @@ func (e *Engine) serviceChunk(ctx context.Context, w *chunkWork, ports []int, bu
 		}
 		if x != "" {
 			docs = append(docs, x)
+		}
+	}
+	w.guessed = map[string]bool{}
+	for _, d := range docs {
+		for k := range guessedServices(d) {
+			w.guessed[k] = true
 		}
 	}
 	switch len(docs) {

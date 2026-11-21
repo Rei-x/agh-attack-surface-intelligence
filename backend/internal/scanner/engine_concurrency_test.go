@@ -212,10 +212,10 @@ func TestConcurrentChunkWorkersHonorTotalRateCapWithRealExec(t *testing.T) {
 	if run.Status != domain.ScanStatusCompleted || run.CompletedChunks != 8 || doneUpdates != 8 {
 		t.Fatalf("status=%s completed=%d doneUpdates=%d", run.Status, run.CompletedChunks, doneUpdates)
 	}
-	// Pool 400 (no HTTP share): one service share of 400/16=25 is reserved, discovery
-	// workers split the remaining 375 -> 4 x 93.
-	if out.ChunkWorkers != 4 || out.PerWorkerRatePPS != 93 {
-		t.Fatalf("expected 4 workers x 93 pps, got %d x %d", out.ChunkWorkers, out.PerWorkerRatePPS)
+	// Pool 400 (no HTTP share): 8 service shares are reserved (capped at a quarter of the pool:
+	// 8 x 12), discovery workers split the remaining 300 -> 4 x 75.
+	if out.ChunkWorkers != 4 || out.PerWorkerRatePPS != 75 {
+		t.Fatalf("expected 4 workers x 75 pps, got %d x %d", out.ChunkWorkers, out.PerWorkerRatePPS)
 	}
 
 	calls := readFakeLog(t, logPath)
@@ -239,15 +239,15 @@ func TestConcurrentChunkWorkersHonorTotalRateCapWithRealExec(t *testing.T) {
 		}
 		if strings.Contains(joined, "-sV") {
 			services++
-			if r, _ := strconv.Atoi(argValue(c.args, "--max-rate")); r < 1 || r > 25 || !strings.Contains(joined, "--host-timeout") {
+			if r, _ := strconv.Atoi(argValue(c.args, "--max-rate")); r < 1 || r > 12 || !strings.Contains(joined, "--host-timeout") {
 				t.Fatalf("service scan argv: %s", joined)
 			}
 		} else {
 			sweeps++
-			// A sweep gets its planned 93 pps, or less (>= half) while -sV processes hold shares.
+			// A sweep gets its planned 75 pps (the service reserve keeps it from shrinking).
 			r, _ := strconv.Atoi(argValue(c.args, "--max-rate"))
 			mr, _ := strconv.Atoi(argValue(c.args, "--min-rate"))
-			if r < 46 || r > 93 || mr != r*90/100 || !strings.Contains(joined, "-sT -Pn -n -p 80,8081 --max-retries 0") {
+			if r < 37 || r > 75 || mr != r*90/100 || !strings.Contains(joined, "-sT -Pn -n -p 80,8081 --max-retries 0") {
 				t.Fatalf("sweep argv (every profile port, one probe each, paced): %s", joined)
 			}
 		}
@@ -259,7 +259,7 @@ func TestConcurrentChunkWorkersHonorTotalRateCapWithRealExec(t *testing.T) {
 		t.Fatalf("expected 8 sweeps + 8 service scans, got %d + %d", sweeps, services)
 	}
 	for _, ch := range run.Chunks {
-		if len(ch.NmapCommands) != 2 || !strings.HasPrefix(ch.NmapCommands[0], self) || ch.MaxRatePPS < 46 || ch.MaxRatePPS > 93 || ch.Worker < 1 || ch.Worker > 4 {
+		if len(ch.NmapCommands) != 2 || !strings.HasPrefix(ch.NmapCommands[0], self) || ch.MaxRatePPS < 37 || ch.MaxRatePPS > 75 || ch.Worker < 1 || ch.Worker > 4 {
 			t.Fatalf("chunk %d missing transparency data: %+v", ch.ChunkIndex, ch)
 		}
 	}

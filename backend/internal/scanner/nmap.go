@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
@@ -36,6 +37,16 @@ type NmapRunner struct {
 	Options *NmapOptions
 	// priv caches whether raw-socket scans work (see Privileged).
 	priv int32
+	// dial overrides TCP dialing in the pure-Go fallback (tests).
+	dial func(ctx context.Context, network, addr string) (net.Conn, error)
+}
+
+func (r *NmapRunner) dialFunc(timeout time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	if r.dial != nil {
+		return r.dial
+	}
+	d := &net.Dialer{Timeout: timeout}
+	return d.DialContext
 }
 
 // NewNmapRunner returns a runner configured with safe timeouts and ASI_NMAP_* option overrides.
@@ -171,7 +182,7 @@ func (r *NmapRunner) discoverPureGo(ctx context.Context, ips []string, probePort
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			dialer := &net.Dialer{Timeout: timeout}
+			dial := r.dialFunc(timeout)
 			for ip := range jobs {
 				if ctx.Err() != nil {
 					return
@@ -185,9 +196,12 @@ func (r *NmapRunner) discoverPureGo(ctx context.Context, ips []string, probePort
 							return
 						}
 					}
-					conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
-					if err == nil {
-						conn.Close()
+					conn, err := dial(ctx, "tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
+					// A closed port's RST proves the host is up just like an open port.
+					if err == nil || errors.Is(err, syscall.ECONNREFUSED) {
+						if conn != nil {
+							conn.Close()
+						}
 						if gov != nil {
 							gov.RecordSuccess(ip)
 						}
@@ -196,9 +210,10 @@ func (r *NmapRunner) discoverPureGo(ctx context.Context, ips []string, probePort
 						mu.Unlock()
 						break
 					}
-					if gov != nil {
-						classifyDialErr(gov, ip, err)
-					}
+					// Deliberately no classifyDialErr here: discovery probes mostly hit dead
+					// IPs, which always time out. Counting that as target noise halved the
+					// global rate again and again on an empty range (down to MinRate). Noise
+					// is only recorded for hosts already known alive (service stage, HTTP).
 				}
 			}
 		}()
@@ -305,7 +320,7 @@ func (r *NmapRunner) ScanServicesPureGo(ctx context.Context, activeIPs []string,
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			dialer := &net.Dialer{Timeout: connectTimeout}
+			dial := r.dialFunc(connectTimeout)
 			for job := range jobs {
 				if ctx.Err() != nil {
 					return
@@ -316,10 +331,12 @@ func (r *NmapRunner) ScanServicesPureGo(ctx context.Context, activeIPs []string,
 					}
 				}
 				addr := net.JoinHostPort(job.ip, strconv.Itoa(job.port))
-				conn, err := dialer.DialContext(ctx, "tcp", addr)
+				conn, err := dial(ctx, "tcp", addr)
 				if err != nil {
-					if gov != nil {
-						classifyDialErr(gov, job.ip, err)
+					// Timeouts here are filtered ports (firewalls DROP closed ports), not
+					// distress; only mid-handshake resets count as noise.
+					if gov != nil && strings.Contains(strings.ToLower(err.Error()), "connection reset") {
+						gov.RecordRST(job.ip)
 					}
 					continue
 				}
@@ -526,6 +543,8 @@ type nmapServiceXML struct {
 	Version   string   `xml:"version,attr,omitempty"`
 	ExtraInfo string   `xml:"extrainfo,attr,omitempty"`
 	Tunnel    string   `xml:"tunnel,attr,omitempty"`
+	Method    string   `xml:"method,attr,omitempty"` // "probed" or "table" (name guessed from the port number)
+	Conf      string   `xml:"conf,attr,omitempty"`
 	CPEs      []string `xml:"cpe,omitempty"`
 }
 
