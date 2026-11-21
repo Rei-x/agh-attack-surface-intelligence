@@ -121,6 +121,34 @@ export interface ScanProfile {
   enabled: boolean;
   created_at?: string;
   updated_at?: string;
+  schedule?: ProfileSchedule;
+}
+
+export interface ScheduleRunRef {
+  id: string;
+  name: string;
+  status: ScanStatus | string;
+  triggered_by: string;
+  started_at: string;
+  finished_at?: string;
+}
+
+/** Recurring-scan status computed by the backend scheduler (GET /profiles). */
+export interface ProfileSchedule {
+  scheduled: boolean;
+  cron?: string;
+  timezone?: string;
+  cron_error?: string;
+  next_slot_at?: string;
+  next_run_at?: string;
+  deferred_by_window: boolean;
+  pending_catch_up: boolean;
+  will_skip: boolean;
+  last_fire_at?: string;
+  last_skip_at?: string;
+  last_skip_reason?: string;
+  last_run?: ScheduleRunRef;
+  active_run?: ScheduleRunRef;
 }
 
 export interface ScanChunk {
@@ -136,6 +164,11 @@ export interface ScanChunk {
   error?: string;
   started_at?: string;
   finished_at?: string;
+  /** Exact nmap command lines executed for this chunk (or pure-Go fallback description). */
+  nmap_commands?: string[];
+  /** This chunk's share of the global --max-rate budget. */
+  max_rate_pps?: number;
+  worker?: number;
 }
 
 export interface ScanRun {

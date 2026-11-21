@@ -180,6 +180,8 @@ type MemoryStore struct {
 	ddConfig     *encDDConfigRow
 	ddExports    []domain.DefectDojoExport
 	auditLogs    []domain.AuditLog
+
+	scheduleStates map[string]domain.ScheduleState // lazily initialized (schedule_state.go)
 }
 
 func NewMemoryStore(vault *crypto.Vault) *MemoryStore {

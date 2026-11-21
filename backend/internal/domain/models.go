@@ -187,6 +187,27 @@ type ScanChunk struct {
 	Error       string     `json:"error,omitempty"`
 	StartedAt   *time.Time `json:"started_at,omitempty"`
 	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	// NmapCommands lists the exact command lines executed for this chunk (discovery,
+	// unstable re-probes, service detection) or a description of the pure-Go fallback.
+	NmapCommands []string `json:"nmap_commands,omitempty"`
+	// MaxRatePPS is this chunk's share of the profile's global --max-rate budget.
+	MaxRatePPS int `json:"max_rate_pps,omitempty"`
+	// Worker is the 1-based chunk worker slot that executed the chunk.
+	Worker int `json:"worker,omitempty"`
+}
+
+// ScheduleState is the persisted bookkeeping of the recurring-scan scheduler for one profile.
+// AnchorAt marks the last consumed cron slot boundary: every slot <= AnchorAt has either fired,
+// been skipped, or been collapsed into a single catch-up run.
+type ScheduleState struct {
+	ProfileID      string     `json:"profile_id"`
+	Cron           string     `json:"cron"`
+	AnchorAt       *time.Time `json:"anchor_at,omitempty"`
+	LastFireAt     *time.Time `json:"last_fire_at,omitempty"`
+	LastRunID      string     `json:"last_run_id,omitempty"`
+	LastSkipAt     *time.Time `json:"last_skip_at,omitempty"`
+	LastSkipReason string     `json:"last_skip_reason,omitempty"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type ScanRun struct {

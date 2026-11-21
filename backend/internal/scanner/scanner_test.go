@@ -211,6 +211,10 @@ func TestExactOvernightWindowPauseAndResume(t *testing.T) {
 	eng := NewEngine(EngineConfig{
 		UseNmap: false,
 		Now:     nowFn,
+		// Sequential worker: this test pins the chunk-boundary semantics (see
+		// engine_concurrency_test.go for the concurrent pause/resume variant).
+		MaxChunkWorkers:         1,
+		DisableAdaptiveChunking: true,
 		CustomDiscoveryFn: func(ctx context.Context, ips []string) ([]string, error) {
 			// Simulate chunk taking 3 minutes -> after chunk 0 finishes, clock is 06:01 (window CLOSED!).
 			advanceTime(3 * time.Minute)

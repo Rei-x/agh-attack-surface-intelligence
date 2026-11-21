@@ -125,7 +125,7 @@ func (s *Server) handleListProfiles(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"profiles": items})
+	writeJSON(w, http.StatusOK, map[string]any{"profiles": s.withSchedules(r, items)})
 }
 
 func (s *Server) handleCreateProfile(w http.ResponseWriter, r *http.Request) {
@@ -139,11 +139,15 @@ func (s *Server) handleCreateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	applyProfileDefaults(&p)
+	if err := validateProfileSchedule(&p); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := s.store.CreateProfile(r.Context(), &p); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, p)
+	writeJSON(w, http.StatusCreated, s.withSchedules(r, []domain.ScanProfile{p})[0])
 }
 
 func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
@@ -154,11 +158,15 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	p.ID = r.PathValue("id")
 	applyProfileDefaults(&p)
+	if err := validateProfileSchedule(&p); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := s.store.UpdateProfile(r.Context(), &p); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, p)
+	writeJSON(w, http.StatusOK, s.withSchedules(r, []domain.ScanProfile{p})[0])
 }
 
 func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {

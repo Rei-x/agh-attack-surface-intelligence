@@ -28,16 +28,23 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 - `GET /api/v1/dashboard/summary` → KPIs, active scan status, timeline points, top interesting findings, lifecycle breakdown, recent changes
 - `GET /api/v1/graph` → `{nodes: GraphNode[], edges: GraphEdge[]}` (topologia Scope → Host → Service → Technology/Signature)
 - `GET /api/v1/clusters` → lista grup podobnych usług (po `favicon_mmh3`, `tech_stack`, `http_title`, `tls_issuer`)
-- `GET /api/v1/events/stream` → SSE (`scan.progress`, `scan.chunk`, `scan.paused_window`, `scan.completed`, `change.detected`, `governor.throttle`)
+- `GET /api/v1/events/stream` → SSE (`scan.progress`, `scan.chunk`, `scan.paused_window`, `scan.completed`, `change.detected`, `governor.throttle`, `scan.workers`, `scan.rechunk`, `schedule.fired`, `schedule.skipped`)
 
 ### Targets & Scan Profiles & Scan Runs
 - `GET /api/v1/targets` | `POST /api/v1/targets` | `DELETE /api/v1/targets/:id`
 - `POST /api/v1/targets/estimate` → `{targets[], exclusions[], ports, max_rate_pps, concurrency}` → `{total_ips, excluded_ips, effective_ips, recommended_chunk_size, chunk_count, estimated_seconds, fits_in_window}`
 - `GET /api/v1/exclusions` | `POST /api/v1/exclusions` | `DELETE /api/v1/exclusions/:id`
 - `GET /api/v1/profiles` | `POST /api/v1/profiles` | `PUT /api/v1/profiles/:id` | `DELETE /api/v1/profiles/:id`
+- `GET /api/v1/profiles/:id` (`scans:read`) → profil + `schedule`
+- `POST /api/v1/profiles/:id/run` (`scans:run`) → „Uruchom teraz”: `202` + `ScanRun` (`triggered_by` = użytkownik); `409 {error, active_run}` gdy profil ma aktywny przebieg (QUEUED/CALIBRATING/RUNNING/PAUSED_WINDOW/PAUSED_USER); `404` dla nieznanego profilu. Jeśli okno czasowe jest zamknięte, przebieg od razu przechodzi w `PAUSED_WINDOW` i startuje po otwarciu okna.
+- **Harmonogram (cykliczne skany):** `schedule_cron` = 5-polowy cron (`min godz dzień-mies mies dzień-tyg`, także `@daily`/`@hourly`/…), liczony w strefie `timezone` profilu (DST-aware). Puste = tylko ręcznie. `POST`/`PUT /profiles` walidują cron, okno i strefę → `400 {"error": "invalid schedule_cron \"…\": …"}`.
+  - Każdy profil w odpowiedziach `GET/POST/PUT /profiles*` ma dodatkowe pole (wsteczna kompatybilność: pola profilu bez zmian, `schedule` jest addytywne):
+    `schedule: {scheduled, cron, timezone, cron_error?, next_slot_at?, next_run_at?, deferred_by_window, pending_catch_up, will_skip, last_fire_at?, last_skip_at?, last_skip_reason?, last_run?: RunRef, active_run?: RunRef}`, gdzie `RunRef = {id, name, status, triggered_by, started_at, finished_at?}`.
+  - `next_slot_at` = najbliższy slot cron; `next_run_at` = faktyczny start (slot poza oknem → przesunięty na otwarcie okna, `deferred_by_window=true`). `pending_catch_up=true` gdy slot już minął (np. przestój serwera) i czeka na okno.
+  - Reguły: nigdy dwa równoległe przebiegi jednego profilu — slot przy aktywnym przebiegu jest pomijany, a powód trafia do `last_skip_reason`; przekroczenie okna → `PAUSED_WINDOW` z checkpointem chunków i wznowienie w kolejnym oknie; po restarcie wszystkie przegapione sloty zwijają się do maks. jednego uruchomienia „catch-up” (z poszanowaniem okna). Przerwane restartem przebiegi `RUNNING` są parkowane jako `PAUSED_WINDOW` i wznawiane z checkpointu. Przebiegi z harmonogramu mają `triggered_by="scheduler"`.
 - `GET /api/v1/scans` → lista przebiegów skanów (z metrykami i progress)
 - `POST /api/v1/scans` → uruchomienie nowego skanu dla `profile_id` (lub konfiguracji ad-hoc)
-- `GET /api/v1/scans/:id` → szczegóły skanu + lista `chunks[]` (Coverage Ledger)
+- `GET /api/v1/scans/:id` → szczegóły skanu + lista `chunks[]` (Coverage Ledger). Każdy chunk ma dodatkowo `nmap_commands[]` (dokładne linie poleceń nmap: discovery, ewentualne re-probe, service scan — lub opis fallbacku pure-Go), `max_rate_pps` (udział chunka w globalnym `--max-rate`) i `worker` (slot równoległego workera). Chunk przerwany zamknięciem okna wraca do `PENDING` z `error="interrupted: scan window closed; …"`.
 - `PUT /api/v1/scans/:id` → edycja metadanych/notatek skanu (działa niezależnie od statusu!)
 - `POST /api/v1/scans/:id/pause` | `POST /api/v1/scans/:id/resume` | `POST /api/v1/scans/:id/stop`
 - `DELETE /api/v1/scans/:id`
@@ -81,3 +88,21 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 - `GET /api/v1/admin/crypto/status` → status szyfrowania, wersja DEK, próbka dowodowa surowego ciphertextu z DB vs zdekryptowanego widoku (bez ujawniania klucza!)
 - `POST /api/v1/admin/crypto/rotate` → rotacja DEK (re-wrapping + re-szyfrowanie)
 - `GET /api/v1/admin/audit` → dziennik audytowy
+
+## 3. Konfiguracja silnika skanowania (zmienne środowiskowe)
+
+Równoległość: chunki Coverage Ledger przetwarza N workerów (każdy = osobny proces nmap). N = min(`ASI_CHUNK_WORKERS` (domyślnie 4), `concurrency` profilu, `max_rate_pps`/20, liczba oczekujących chunków). Każdy proces dostaje `--max-rate = max_rate_pps / N`, więc suma nigdy nie przekracza limitu profilu. Rozmiar chunków jest korygowany w trakcie skanu na podstawie zmierzonej przepustowości (cel: `chunk_target_sec` na chunk).
+
+Flagi nmap (bez możliwości dodania `--script`/`-sC`/`-A`/`-O` — polityka bezpieczeństwa skanera):
+
+| Zmienna | Domyślnie | Znaczenie |
+|---|---|---|
+| `ASI_NMAP_PING_ICMP` | `true` | `-PE` w discovery |
+| `ASI_NMAP_PING_SYN_PORTS` | `21,22,23,25,80,443,445,3389,8080,8443` | `-PS…` (+ porty z profilu); pusty = wyłączone |
+| `ASI_NMAP_PING_ACK_PORTS` | `80,443` | `-PA…`; pusty = wyłączone |
+| `ASI_NMAP_DISCOVERY_MAX_RETRIES` / `ASI_NMAP_DISCOVERY_HOST_TIMEOUT` | `1` / `20s` | `--max-retries` / `--host-timeout` dla `-sn` |
+| `ASI_NMAP_MAX_RETRIES` / `ASI_NMAP_HOST_TIMEOUT` | `2` / `3m` | `--max-retries` / `--host-timeout` dla `-sT -sV` |
+| `ASI_NMAP_VERSION_INTENSITY` | `5` | `--version-intensity` (0–9) |
+| `ASI_NMAP_TIMING` | auto | `-T0…5`; auto = `-T4` gdy udział workera ≥ 200 pps, inaczej `-T3` |
+
+Bez roota nmap automatycznie zamienia sondy `-PS/-PA` na `connect()`; gdy nmap jest niedostępny lub zawiedzie, używany jest fallback pure-Go (TCP connect + pasywny banner), opisany w `nmap_commands` chunka.

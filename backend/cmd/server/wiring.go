@@ -191,6 +191,31 @@ type LiveScanRunner struct {
 
 	mu     sync.Mutex
 	active map[string]*activeScanHandle
+
+	// Test seams (nil in production): clock for window checks and engine config override.
+	nowFn        func() time.Time
+	engineConfig func(scanner.EngineConfig) scanner.EngineConfig
+}
+
+func (r *LiveScanRunner) now() time.Time {
+	if r.nowFn != nil {
+		return r.nowFn()
+	}
+	return time.Now().UTC()
+}
+
+func (r *LiveScanRunner) newEngine(unstableHosts []string) *scanner.Engine {
+	cfg := scanner.EngineConfig{
+		UseNmap:       scanner.NmapAvailable(),
+		UnstableHosts: unstableHosts,
+	}
+	if r.nowFn != nil {
+		cfg.Now = r.nowFn
+	}
+	if r.engineConfig != nil {
+		cfg = r.engineConfig(cfg)
+	}
+	return scanner.NewEngine(cfg)
 }
 
 type activeScanHandle struct {
@@ -248,10 +273,7 @@ func (r *LiveScanRunner) StartScan(ctx context.Context, run *domain.ScanRun, pro
 	// Collect previously active hosts for Stage 4 unstable re-probing.
 	unstableHosts := r.collectTrackedHostIPs(ctx)
 
-	engine := scanner.NewEngine(scanner.EngineConfig{
-		UseNmap:       scanner.NmapAvailable(),
-		UnstableHosts: unstableHosts,
-	})
+	engine := r.newEngine(unstableHosts)
 
 	prepared, resolution, err := engine.PrepareRun(ctx, run.ID, *profile, exclusions)
 	if err != nil {
@@ -321,10 +343,7 @@ func (r *LiveScanRunner) launchAsync(
 			r.mu.Unlock()
 		}()
 
-		engine := scanner.NewEngine(scanner.EngineConfig{
-			UseNmap:       scanner.NmapAvailable(),
-			UnstableHosts: unstableHosts,
-		})
+		engine := r.newEngine(unstableHosts)
 
 		res, err := engine.Execute(runCtx, &runCopy, profile, resolution, scanner.RunCallbacks{
 			OnEvent: func(ev domain.LiveEvent) {
@@ -376,13 +395,18 @@ func (r *LiveScanRunner) launchAsync(
 			},
 		})
 
-		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer bgCancel()
 
 		// Check if user requested pause vs stop.
 		r.mu.Lock()
 		wasPause := handle.pauseReq
 		r.mu.Unlock()
+
+		// Persist observations of the chunks finished in THIS segment through the unified
+		// ingestion pipeline - also when the segment ended by window/user pause or stop,
+		// because DONE chunks are skipped on resume and would otherwise never be ingested.
+		r.ingestSegment(bgCtx, &runCopy, profile, res)
 
 		if err != nil {
 			if wasPause {
@@ -423,41 +447,46 @@ func (r *LiveScanRunner) launchAsync(
 			return
 		}
 
-		// Persist observations through the unified ingestion pipeline (diff, lifecycle, overrides, encryption!).
-		var scopeIPs []string
-		if resolution != nil {
-			scopeIPs = resolution.IPs
-		}
-		if len(res.ObservedHosts) > 0 || res.RawNmapXML != "" {
-			if _, perr := r.pipeline.ProcessObservations(bgCtx, ingest.IngestRequest{
-				ScanRunID:        runCopy.ID,
-				ProfileID:        profile.ID,
-				RunType:          domain.ScanTypeActive,
-				ScanName:         runCopy.Name,
-				Notes:            runCopy.Notes,
-				TriggeredBy:      runCopy.TriggeredBy,
-				RawNmapXML:       res.RawNmapXML,
-				Observations:     res.ObservedHosts,
-				ScopeIPs:         scopeIPs,
-				MarkMissingHosts: !res.PausedByWindow,
-				MissingThreshold: profile.MissingThreshold,
-				GracePeriodHours: profile.GracePeriodHours,
-			}); perr != nil {
-				log.Printf("[ERROR] scan %s ingest failed: %v", runCopy.ID, perr)
-			}
-		}
-
-		// Preserve PAUSED_WINDOW status if halted by time window.
+		// Final status write: COMPLETED, or PAUSED_WINDOW (resumed by the window watcher
+		// from the chunk checkpoint when the next window opens).
 		if res.PausedByWindow {
-			saved, gerr := r.store.GetScanRun(bgCtx, runCopy.ID)
-			if gerr == nil {
-				saved.Status = domain.ScanStatusPausedWindow
-				saved.FinishedAt = nil
-				saved.WindowPausedCount = runCopy.WindowPausedCount
-				_ = r.store.UpdateScanRun(bgCtx, saved)
-			}
+			runCopy.Status = domain.ScanStatusPausedWindow
+			runCopy.FinishedAt = nil
 		}
+		_ = r.store.SaveScanChunks(bgCtx, runCopy.ID, runCopy.Chunks)
+		_ = r.store.UpdateScanRun(bgCtx, &runCopy)
 	}()
+}
+
+// ingestSegment pushes one window segment's observations through the pipeline. Missing-host
+// detection is scoped to the IPs actually scanned in this segment (res.ScannedIPs): using the
+// whole scope here would flag every host scanned in an earlier window as missing.
+func (r *LiveScanRunner) ingestSegment(ctx context.Context, run *domain.ScanRun, profile domain.ScanProfile, res *scanner.RunResult) {
+	if res == nil || r.pipeline == nil || (len(res.ObservedHosts) == 0 && res.RawNmapXML == "") {
+		return
+	}
+	if _, perr := r.pipeline.ProcessObservations(ctx, ingest.IngestRequest{
+		ScanRunID:        run.ID,
+		ProfileID:        profile.ID,
+		RunType:          domain.ScanTypeActive,
+		ScanName:         run.Name,
+		Notes:            run.Notes,
+		TriggeredBy:      run.TriggeredBy,
+		RawNmapXML:       res.RawNmapXML,
+		Observations:     res.ObservedHosts,
+		ScopeIPs:         res.ScannedIPs,
+		MarkMissingHosts: len(res.ScannedIPs) > 0,
+		MissingThreshold: profile.MissingThreshold,
+		GracePeriodHours: profile.GracePeriodHours,
+	}); perr != nil {
+		log.Printf("[ERROR] scan %s ingest failed: %v", run.ID, perr)
+		return
+	}
+	// The pipeline overwrites per-segment counters on the stored run; keep the engine's
+	// cumulative ActiveHosts/ServicesFound and adopt the pipeline's ChangesDetected.
+	if saved, err := r.store.GetScanRun(ctx, run.ID); err == nil {
+		run.ChangesDetected = saved.ChangesDetected
+	}
 }
 
 func (r *LiveScanRunner) PauseScan(ctx context.Context, scanRunID string) error {
@@ -550,6 +579,72 @@ func (r *LiveScanRunner) collectTrackedHostIPs(ctx context.Context) []string {
 	return out
 }
 
+// PublishEvent forwards scheduler events (schedule.fired / schedule.skipped) to the SSE hub.
+func (r *LiveScanRunner) PublishEvent(ev domain.LiveEvent) {
+	if r.hub != nil {
+		r.hub.Publish(ev)
+	}
+}
+
+// IsScanActive reports whether a scan run is executing in this process right now.
+func (r *LiveScanRunner) IsScanActive(scanRunID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.active[scanRunID]
+	return ok
+}
+
+// RecoverInterrupted runs once at boot: scan runs left QUEUED/CALIBRATING/RUNNING by a
+// previous process (crash, deploy, restart) have no live goroutine any more. Runs that already
+// have a chunk ledger are parked as PAUSED_WINDOW (chunks RUNNING/PAUSED -> PENDING) so the
+// window watcher resumes them from the checkpoint as soon as their window is open; runs that
+// never got a ledger are marked FAILED. Without this, the scheduler would treat the orphan as
+// "still running" forever and skip every future slot of that profile.
+func (r *LiveScanRunner) RecoverInterrupted(ctx context.Context) (int, error) {
+	runs, err := r.store.ListScanRuns(ctx, 500)
+	if err != nil {
+		return 0, err
+	}
+	recovered := 0
+	for i := range runs {
+		run := runs[i]
+		switch run.Status {
+		case domain.ScanStatusQueued, domain.ScanStatusCalibrating, domain.ScanStatusRunning:
+		default:
+			continue
+		}
+		if run.RunType != "" && run.RunType != domain.ScanTypeActive {
+			continue
+		}
+		if r.IsScanActive(run.ID) {
+			continue
+		}
+		chunks, _ := r.store.GetScanChunks(ctx, run.ID)
+		if len(chunks) == 0 || run.ProfileID == "" {
+			now := time.Now().UTC()
+			run.Status = domain.ScanStatusFailed
+			run.FinishedAt = &now
+			_ = r.store.UpdateScanRun(ctx, &run)
+			log.Printf("[WARN] scan %s (%s) was interrupted before its chunk ledger existed; marked FAILED", run.ID, run.Name)
+			recovered++
+			continue
+		}
+		for c := range chunks {
+			if chunks[c].Status == domain.ChunkStatusRunning || chunks[c].Status == domain.ChunkStatusPaused {
+				chunks[c].Status = domain.ChunkStatusPending
+				chunks[c].StartedAt = nil
+			}
+		}
+		_ = r.store.SaveScanChunks(ctx, run.ID, chunks)
+		run.Status = domain.ScanStatusPausedWindow
+		run.FinishedAt = nil
+		_ = r.store.UpdateScanRun(ctx, &run)
+		log.Printf("[INFO] scan %s (%s) was interrupted by a restart; parked as PAUSED_WINDOW for checkpoint resume", run.ID, run.Name)
+		recovered++
+	}
+	return recovered, nil
+}
+
 // StartWindowWatcher periodically checks for PAUSED_WINDOW scans and auto-resumes them
 // the moment their configured time window reopens.
 func (r *LiveScanRunner) StartWindowWatcher(ctx context.Context) {
@@ -572,7 +667,7 @@ func (r *LiveScanRunner) checkPausedWindowScans(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	now := time.Now().UTC()
+	now := r.now()
 	for _, run := range runs {
 		if run.Status != domain.ScanStatusPausedWindow || run.ProfileID == "" {
 			continue

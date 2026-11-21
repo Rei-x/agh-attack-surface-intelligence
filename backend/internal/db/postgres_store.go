@@ -890,9 +890,10 @@ func (s *PostgresStore) SaveScanChunks(ctx context.Context, scanRunID string, ch
 		}
 		targetsJSON, _ := json.Marshal(nonNilSlice(c.Targets))
 		_, err := tx.Exec(ctx, `
-			INSERT INTO scan_chunks (id, scan_run_id, chunk_index, targets, ip_count, status, active_hosts, services_found, duration_ms, error, started_at, finished_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			c.ID, scanRunID, c.ChunkIndex, targetsJSON, c.IPCount, c.Status, c.ActiveHosts, c.Services, c.DurationMs, c.Error, c.StartedAt, c.FinishedAt)
+			INSERT INTO scan_chunks (id, scan_run_id, chunk_index, targets, ip_count, status, active_hosts, services_found, duration_ms, error, started_at, finished_at, nmap_commands, max_rate_pps, worker)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+			c.ID, scanRunID, c.ChunkIndex, targetsJSON, c.IPCount, c.Status, c.ActiveHosts, c.Services, c.DurationMs, c.Error, c.StartedAt, c.FinishedAt,
+			mustJSON(nonNilSlice(c.NmapCommands)), c.MaxRatePPS, c.Worker)
 		if err != nil {
 			return err
 		}
@@ -906,18 +907,20 @@ func (s *PostgresStore) UpdateScanChunk(ctx context.Context, chunk *domain.ScanC
 	}
 	targetsJSON, _ := json.Marshal(nonNilSlice(chunk.Targets))
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO scan_chunks (id, scan_run_id, chunk_index, targets, ip_count, status, active_hosts, services_found, duration_ms, error, started_at, finished_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		INSERT INTO scan_chunks (id, scan_run_id, chunk_index, targets, ip_count, status, active_hosts, services_found, duration_ms, error, started_at, finished_at, nmap_commands, max_rate_pps, worker)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status, active_hosts=EXCLUDED.active_hosts, services_found=EXCLUDED.services_found,
-		       duration_ms=EXCLUDED.duration_ms, error=EXCLUDED.error, started_at=EXCLUDED.started_at, finished_at=EXCLUDED.finished_at`,
+		       duration_ms=EXCLUDED.duration_ms, error=EXCLUDED.error, started_at=EXCLUDED.started_at, finished_at=EXCLUDED.finished_at,
+		       nmap_commands=EXCLUDED.nmap_commands, max_rate_pps=EXCLUDED.max_rate_pps, worker=EXCLUDED.worker`,
 		chunk.ID, chunk.ScanRunID, chunk.ChunkIndex, targetsJSON, chunk.IPCount, chunk.Status, chunk.ActiveHosts, chunk.Services,
-		chunk.DurationMs, chunk.Error, chunk.StartedAt, chunk.FinishedAt)
+		chunk.DurationMs, chunk.Error, chunk.StartedAt, chunk.FinishedAt, mustJSON(nonNilSlice(chunk.NmapCommands)), chunk.MaxRatePPS, chunk.Worker)
 	return err
 }
 
 func (s *PostgresStore) GetScanChunks(ctx context.Context, scanRunID string) ([]domain.ScanChunk, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, scan_run_id, chunk_index, targets, ip_count, status, active_hosts, services_found, duration_ms, error, started_at, finished_at
+		SELECT id, scan_run_id, chunk_index, targets, ip_count, status, active_hosts, services_found, duration_ms, error, started_at, finished_at,
+		       nmap_commands, max_rate_pps, worker
 		FROM scan_chunks WHERE scan_run_id=$1 ORDER BY chunk_index ASC`, scanRunID)
 	if err != nil {
 		return nil, err
@@ -926,11 +929,13 @@ func (s *PostgresStore) GetScanChunks(ctx context.Context, scanRunID string) ([]
 	out := []domain.ScanChunk{}
 	for rows.Next() {
 		var c domain.ScanChunk
-		var targetsRaw []byte
-		if err := rows.Scan(&c.ID, &c.ScanRunID, &c.ChunkIndex, &targetsRaw, &c.IPCount, &c.Status, &c.ActiveHosts, &c.Services, &c.DurationMs, &c.Error, &c.StartedAt, &c.FinishedAt); err != nil {
+		var targetsRaw, cmdsRaw []byte
+		if err := rows.Scan(&c.ID, &c.ScanRunID, &c.ChunkIndex, &targetsRaw, &c.IPCount, &c.Status, &c.ActiveHosts, &c.Services, &c.DurationMs, &c.Error, &c.StartedAt, &c.FinishedAt,
+			&cmdsRaw, &c.MaxRatePPS, &c.Worker); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(targetsRaw, &c.Targets)
+		_ = json.Unmarshal(cmdsRaw, &c.NmapCommands)
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -1767,6 +1772,14 @@ func (s *PostgresStore) ListAuditLogs(ctx context.Context, limit int) ([]domain.
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("null")
+	}
+	return b
 }
 
 func nonNilSlice(in []string) []string {
