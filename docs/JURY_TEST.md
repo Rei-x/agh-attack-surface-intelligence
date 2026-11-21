@@ -90,6 +90,7 @@ The SSH server of the Docker host itself (port 22) also appears; it is not part 
 ### Quickstart (8787 disappears and comes back)
 
 ```bash
+chmod +x quickstart.sh                            # the template ships it without the x bit
 ./quickstart.sh up;     dzieciol scan localhost   # baseline: 2223 3001 5673 8787 15673
 ./quickstart.sh change; dzieciol scan localhost   # - SERVICE_CLOSED 8787, nothing else
 ./quickstart.sh up;     dzieciol scan localhost   # + SERVICE_REOPENED 8787, nothing else
