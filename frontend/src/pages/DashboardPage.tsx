@@ -385,7 +385,19 @@ export function DashboardPage() {
         <Card size="sm" className="xl:col-span-7">
           <CardHeader>
             <CardTitle className={cardTitleCls}>Priorytety</CardTitle>
-            <CardAction>
+            <CardAction className="flex items-center gap-3">
+              {(summary?.accepted_risk_count || 0) > 0 && (
+                <Button
+                  variant="link"
+                  size="xs"
+                  className="px-0 text-muted-foreground"
+                  nativeButton={false}
+                  render={<Link to={`/assets?q=${encodeURIComponent('triage:accepted_risk,false_positive')}`} />}
+                  title="Zaakceptowane ryzyka i false positive są pominięte w priorytetach"
+                >
+                  {summary!.accepted_risk_count} zaakceptowanych
+                </Button>
+              )}
               <Button
                 variant="link"
                 size="xs"
@@ -472,6 +484,27 @@ export function DashboardPage() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+            {(summary?.expired_acceptances?.length || 0) > 0 && (
+              <div className="mx-5 mt-3 border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
+                <div className="mb-1.5 font-semibold text-amber-700 dark:text-amber-300">
+                  Wygasłe akceptacje ryzyka ({summary!.expired_acceptances!.length}) · do ponownej oceny
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {summary!.expired_acceptances!.slice(0, 12).map((ea) => (
+                    <button
+                      key={`${ea.host_id}-${ea.service_id || 'host'}`}
+                      type="button"
+                      onClick={() => setInspectHostId(ea.host_id)}
+                      title={ea.triage?.reason}
+                      className="border border-border bg-card px-1.5 py-0.5 font-mono text-[11px] text-foreground transition-colors hover:border-primary hover:text-primary"
+                    >
+                      {ea.host_ip}
+                      {ea.port ? `:${ea.port}` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

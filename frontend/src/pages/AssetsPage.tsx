@@ -6,10 +6,12 @@ import {
   RiDeleteBinLine,
   RiDownload2Line,
   RiLockLine,
+  RiQuestionLine,
   RiRefreshLine,
   RiSearchLine,
 } from '@remixicon/react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
+import { AssetQueryHelp, TriageBadge } from '@/components/AssetQueryHelp';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
@@ -93,6 +95,8 @@ export function AssetsPage() {
   const [tagFilter, setTagFilter] = useState(searchParams.get('tag') || '');
   const [minScore, setMinScore] = useState(Number(searchParams.get('min_score') || 0));
   const [adminOnly, setAdminOnly] = useState(false);
+  const [queryError, setQueryError] = useState('');
+  const [showQueryHelp, setShowQueryHelp] = useState(false);
 
   const [inspectHostId, setInspectHostId] = useState<string | null>(searchParams.get('host'));
 
@@ -125,6 +129,7 @@ export function AssetsPage() {
           page,
           limit: pageSize,
         });
+        setQueryError('');
         setHosts(res.hosts);
         setTotalHosts(res.total);
         setTotalPages(Math.max(1, res.total_pages));
@@ -134,7 +139,14 @@ export function AssetsPage() {
         setClusters(list);
       }
     } catch (err) {
-      if (!silent) toast.error('Błąd pobierania', (err as Error).message);
+      if (err instanceof ApiError && err.status === 400 && viewMode === 'table') {
+        // Query-language syntax error: show inline under the search box, not as a toast.
+        setQueryError(err.message);
+        setHosts([]);
+        setTotalHosts(0);
+      } else if (!silent) {
+        toast.error('Błąd pobierania', (err as Error).message);
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -240,9 +252,22 @@ export function AssetsPage() {
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="IP, hostname, domena, technologia"
-                className="pl-6"
+                placeholder="port:3389 tag:wi cidr:10.66.0.0/24 cert:expired, IP, hostname…"
+                className="pr-7 pl-6 font-mono"
+                aria-invalid={queryError ? true : undefined}
               />
+              <button
+                type="button"
+                onClick={() => setShowQueryHelp((v) => !v)}
+                className={cn(
+                  'absolute top-1/2 right-0 -translate-y-1/2 text-muted-foreground hover:text-foreground',
+                  showQueryHelp && 'text-primary'
+                )}
+                aria-label="Składnia wyszukiwania"
+                title="Składnia wyszukiwania"
+              >
+                <RiQuestionLine className="size-4" />
+              </button>
             </div>
             <SimpleSelect
               size="sm"
@@ -282,6 +307,15 @@ export function AssetsPage() {
               Panele admina
             </label>
           </div>
+
+          {queryError && (
+            <p className="-mt-2 mb-3 font-mono text-xs text-destructive">{queryError}</p>
+          )}
+          {showQueryHelp && (
+            <AssetQueryHelp
+              onPick={(snippet) => setQ((prev) => (prev.trim() ? `${prev.trim()} ${snippet}` : snippet))}
+            />
+          )}
 
           <div className="border border-border bg-card">
             <Table>
@@ -346,9 +380,12 @@ export function AssetsPage() {
                         </TableCell>
 
                         <TableCell>
-                          <Pill className={lc.badge} dot>
-                            {lc.label}
-                          </Pill>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Pill className={lc.badge} dot>
+                              {lc.label}
+                            </Pill>
+                            <TriageBadge triage={h.triage} />
+                          </div>
                         </TableCell>
 
                         <TableCell>
