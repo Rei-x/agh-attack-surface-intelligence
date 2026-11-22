@@ -165,8 +165,8 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 			out.Warnings = append(out.Warnings, fmt.Sprintf("describe change test #%d: %v", imp.TestID, perr))
 		}
 	}
-	// All findings, mitigated ones included: DefectDojo marks a false positive mitigated too.
-	existing, lerr := c.listFindings(ctx, cfg, imp.TestID, "")
+	// Open findings and false positives (which DefectDojo marks mitigated too).
+	existing, lerr := c.listCurrentFindings(ctx, cfg, imp.TestID)
 	if lerr != nil {
 		out.TriageErr = fmt.Errorf("list findings of test %d: %w", imp.TestID, lerr)
 		return out, nil

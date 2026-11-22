@@ -254,6 +254,9 @@ func (s *dojoSim) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if v := q.Get("is_mitigated"); v != "" && v != strconv.FormatBool(f.IsMitigated) {
 				continue
 			}
+			if v := q.Get("false_p"); v != "" && v != strconv.FormatBool(f.FalseP) {
+				continue
+			}
 			if v := q.Get("active"); v != "" && v != strconv.FormatBool(f.Active) {
 				continue
 			}

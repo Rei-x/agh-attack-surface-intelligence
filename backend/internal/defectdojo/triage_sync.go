@@ -70,6 +70,22 @@ func (c *Client) listFindings(ctx context.Context, cfg *domain.DefectDojoConfig,
 	return listPaged[dojoFinding](ctx, c, cfg, fmt.Sprintf("/api/v2/findings/?test=%d%s", testID, query), findingsPageSize)
 }
 
+// listCurrentFindings returns the findings of a test that can belong to a current condition:
+// the open ones and the false positives, which DefectDojo marks mitigated too (a reimport
+// leaves them alone). The mitigated rest (fixed conditions, older wordings) only grows over
+// time, so it is not read.
+func (c *Client) listCurrentFindings(ctx context.Context, cfg *domain.DefectDojoConfig, testID int) ([]dojoFinding, error) {
+	open, err := c.listFindings(ctx, cfg, testID, "&is_mitigated=false")
+	if err != nil {
+		return nil, err
+	}
+	fps, err := c.listFindings(ctx, cfg, testID, "&is_mitigated=true&false_p=true")
+	if err != nil {
+		return nil, err
+	}
+	return append(open, fps...), nil
+}
+
 // indexByUID maps unique_id_from_tool to the DefectDojo finding of each change finding. A
 // unique id can have several: an older wording of the same condition (another owner in the
 // title) leaves a mitigated finding behind. The current one is open, or false positive /
@@ -187,8 +203,8 @@ func (c *Client) SyncTriage(ctx context.Context, cfg *domain.DefectDojoConfig, t
 		}
 		return refs, 0, nil
 	}
-	// All findings, mitigated ones included: DefectDojo marks a false positive mitigated too.
-	existing, err := c.listFindings(ctx, cfg, testID, "")
+	// Open findings and false positives (which DefectDojo marks mitigated too).
+	existing, err := c.listCurrentFindings(ctx, cfg, testID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list findings of test %d: %w", testID, err)
 	}

@@ -196,7 +196,7 @@ func (c *Client) adoptChangesTest(ctx context.Context, cfg *domain.DefectDojoCon
 	listed = make(map[int][]dojoFinding, len(cands))
 	best, bestScore := dojoTest{}, -1
 	for _, t := range cands {
-		fs, lerr := c.listFindings(ctx, cfg, t.ID, "")
+		fs, lerr := c.listCurrentFindings(ctx, cfg, t.ID)
 		if lerr != nil {
 			return 0, nil, nil, fmt.Errorf("list findings of test %d: %w", t.ID, lerr)
 		}
@@ -265,8 +265,8 @@ func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoCo
 	version := supersededVersion(imp.TestID)
 	for _, t := range legacy {
 		// Only tests with open findings are closed: once closed (every finding mitigated) a
-		// test costs one small request per sync. Carrying looks at all findings, since
-		// DefectDojo marks a false positive mitigated too.
+		// test costs one small request per sync. Carrying also looks at false positives, which
+		// DefectDojo marks mitigated.
 		fs, cached := listed[t.ID]
 		open := 0
 		if cached {
@@ -299,7 +299,7 @@ func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoCo
 		}
 		if !cached {
 			var lerr error
-			if fs, lerr = c.listFindings(ctx, cfg, t.ID, ""); lerr != nil {
+			if fs, lerr = c.listCurrentFindings(ctx, cfg, t.ID); lerr != nil {
 				warnings = append(warnings, fmt.Sprintf("list findings of test #%d: %v", t.ID, lerr))
 				continue
 			}

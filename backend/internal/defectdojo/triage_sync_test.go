@@ -128,8 +128,13 @@ func TestSyncTriagePagesThroughLargeTests(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/findings/":
 			q := r.URL.Query()
 			queries = append(queries, r.URL.RawQuery)
-			if q.Has("is_mitigated") || q.Has("active") {
-				t.Errorf("listing must include mitigated findings (a false positive is one): %s", r.URL.RawQuery)
+			if q.Get("false_p") == "true" && q.Get("is_mitigated") == "true" {
+				// false positives (DefectDojo marks them mitigated): none here
+				_ = json.NewEncoder(w).Encode(map[string]any{"count": 0, "next": nil, "results": []any{}})
+				return
+			}
+			if q.Get("is_mitigated") != "false" {
+				t.Errorf("unexpected listing: %s", r.URL.RawQuery)
 			}
 			limit, offset := atoiQ(q.Get("limit")), atoiQ(q.Get("offset"))
 			var res []map[string]any
@@ -154,8 +159,8 @@ func TestSyncTriagePagesThroughLargeTests(t *testing.T) {
 	if err != nil || changed != 1 || refs[0].FindingID != total {
 		t.Fatalf("refs=%+v changed=%d err=%v (queries %v)", refs, changed, err, queries)
 	}
-	if len(queries) != 3 || !patched[fmt.Sprintf("/api/v2/findings/%d/", total)] {
-		t.Fatalf("want 3 pages and a patch of finding %d, got %v %v", total, queries, patched)
+	if len(queries) != 4 || !patched[fmt.Sprintf("/api/v2/findings/%d/", total)] {
+		t.Fatalf("want 3 pages of open findings, 1 of false positives and a patch of finding %d, got %v %v", total, queries, patched)
 	}
 }
 

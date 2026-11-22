@@ -219,3 +219,41 @@ func TestSyncChangesRecreatesDeletedTest(t *testing.T) {
 		t.Fatalf("state still points at the deleted test: %+v", st)
 	}
 }
+
+// A false positive is mitigated in DefectDojo: the sync must still find it, link it, and
+// reactivate it when the analyst withdraws the decision in Dzięcioł.
+func TestSyncChangesWithdrawsFalsePositive(t *testing.T) {
+	sim, srv := newDojoSim(t)
+	cfg := &domain.DefectDojoConfig{URL: srv.URL, APIToken: "t"}
+	store := newFixtureStore(t, inventoryHosts(), overlappingProfiles())
+	syncOnce(t, store, cfg, "1")
+	ct := sim.testByTitle(ChangesTest)[0]
+	smb := func() *simFinding {
+		for _, f := range sim.findingsOf(ct.ID) {
+			if strings.Contains(f.Title, "10.66.0.91") {
+				return f
+			}
+		}
+		t.Fatalf("no SMB finding:\n%s", sim.summary())
+		return nil
+	}
+	if f := smb(); !f.FalseP || !f.IsMitigated {
+		t.Fatalf("false positive not applied: %+v", f)
+	}
+	syncOnce(t, store, cfg, "2") // the mitigated false positive is listed: still linked, nothing changes
+	st := db.LoadDefectDojoSync(context.Background(), store)
+	refs := st.FindingsByKey["service:h-10.66.0.91:445"]
+	if len(refs) != 1 || refs[0].FindingID != smb().ID || refs[0].State != DojoStateFalsePos {
+		t.Fatalf("false positive link: %+v", refs)
+	}
+
+	for i := range store.hosts {
+		if store.hosts[i].IP == "10.66.0.91" {
+			store.hosts[i].Services[0].Triage = nil
+		}
+	}
+	syncOnce(t, store, cfg, "3")
+	if f := smb(); f.FalseP || f.IsMitigated || !f.Active || notesWith(f, "withdrawn") != 1 {
+		t.Fatalf("withdrawn false positive not reactivated: %+v", f)
+	}
+}
