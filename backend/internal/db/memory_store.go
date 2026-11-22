@@ -185,6 +185,10 @@ type MemoryStore struct {
 	ddExports    []domain.DefectDojoExport
 	auditLogs    []domain.AuditLog
 
+	// svcByHost indexes services by host (not persisted, rebuilt on load). Reading a host
+	// with its services, deleting a host and upserting a service used to scan every service.
+	svcByHost map[string]map[string]struct{}
+
 	// changeRollups summarizes per host the change events removed by retention (retention.go).
 	changeRollups map[string]domain.ChangeRollup
 	// snapshotFormat is snapshotFormatSlim once every stored scan snapshot is in the slim,
@@ -220,8 +224,33 @@ func NewMemoryStore(vault *crypto.Vault) *MemoryStore {
 		snapshots:    make(map[string]string),
 		signatures:   make(map[string]domain.Signature),
 
+		svcByHost:      make(map[string]map[string]struct{}),
 		changeRollups:  make(map[string]domain.ChangeRollup),
 		snapshotFormat: snapshotFormatSlim,
+	}
+}
+
+// indexServiceLocked records that service id belongs to hostID (moving it if it belonged to
+// another host before).
+func (m *MemoryStore) indexServiceLocked(id, hostID string) {
+	if old, ok := m.services[id]; ok && old.HostID != hostID {
+		delete(m.svcByHost[old.HostID], id)
+		if len(m.svcByHost[old.HostID]) == 0 {
+			delete(m.svcByHost, old.HostID)
+		}
+	}
+	set := m.svcByHost[hostID]
+	if set == nil {
+		set = make(map[string]struct{})
+		m.svcByHost[hostID] = set
+	}
+	set[id] = struct{}{}
+}
+
+func (m *MemoryStore) rebuildServiceIndexLocked() {
+	m.svcByHost = make(map[string]map[string]struct{}, len(m.hosts))
+	for id, s := range m.services {
+		m.indexServiceLocked(id, s.HostID)
 	}
 }
 
@@ -1156,15 +1185,13 @@ func (m *MemoryStore) decryptHostLocked(row encHostRow, withServices bool) (*dom
 	}
 
 	if withServices {
-		svcs := make([]domain.Service, 0)
-		for _, srow := range m.services {
-			if srow.HostID == h.ID {
-				s, err := m.decryptServiceLocked(srow, ip)
-				if err != nil {
-					return nil, err
-				}
-				svcs = append(svcs, *s)
+		svcs := make([]domain.Service, 0, len(m.svcByHost[h.ID]))
+		for sid := range m.svcByHost[h.ID] {
+			s, err := m.decryptServiceLocked(m.services[sid], ip)
+			if err != nil {
+				return nil, err
 			}
+			svcs = append(svcs, *s)
 		}
 		sort.Slice(svcs, func(i, j int) bool { return svcs[i].Port < svcs[j].Port })
 		h.Services = svcs
@@ -1311,21 +1338,28 @@ func (m *MemoryStore) DeleteHost(_ context.Context, id string) error {
 	delete(m.hostByIPHMAC, row.IPHMAC)
 	delete(m.overrides, overrideKey("host", id))
 	delete(m.changeRollups, id)
-	for sid, s := range m.services {
-		if s.HostID == id {
-			delete(m.services, sid)
-			delete(m.observations, sid)
-			delete(m.overrides, overrideKey("service", sid))
-		}
+	for sid := range m.svcByHost[id] {
+		delete(m.services, sid)
+		delete(m.observations, sid)
+		delete(m.overrides, overrideKey("service", sid))
 	}
+	delete(m.svcByHost, id)
 	return nil
 }
 
 func (m *MemoryStore) ListServices(_ context.Context, filter ServiceFilter) ([]domain.Service, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]domain.Service, 0, len(m.services))
-	for _, srow := range m.services {
+	rows := m.services
+	if filter.HostID != "" {
+		// One host's services (host drawer, timeline): decrypt only those.
+		rows = make(map[string]encServiceRow, len(m.svcByHost[filter.HostID]))
+		for sid := range m.svcByHost[filter.HostID] {
+			rows[sid] = m.services[sid]
+		}
+	}
+	out := make([]domain.Service, 0, len(rows))
+	for _, srow := range rows {
 		ip := ""
 		if hrow, ok := m.hosts[srow.HostID]; ok {
 			ip, _ = m.vault.Decrypt(hrow.IPEnc, "hosts:"+hrow.ID+":ip")
@@ -1373,8 +1407,9 @@ func (m *MemoryStore) UpsertObservedService(_ context.Context, svc *domain.Servi
 		proto = "tcp"
 	}
 	id := svc.ID
-	for existingID, existing := range m.services {
-		if existing.HostID == svc.HostID && existing.Port == svc.Port && existing.Protocol == proto {
+	for existingID := range m.svcByHost[svc.HostID] {
+		existing := m.services[existingID]
+		if existing.Port == svc.Port && existing.Protocol == proto {
 			id = existingID
 			if svc.FirstSeen.IsZero() {
 				svc.FirstSeen = existing.FirstSeen
@@ -1405,6 +1440,7 @@ func (m *MemoryStore) UpsertObservedService(_ context.Context, svc *domain.Servi
 		triage = "new"
 	}
 
+	m.indexServiceLocked(id, svc.HostID)
 	m.services[id] = encServiceRow{
 		ID:                 id,
 		HostID:             svc.HostID,

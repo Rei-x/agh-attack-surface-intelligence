@@ -384,6 +384,7 @@ func (m *MemoryStore) ReadState(r io.Reader) (map[string]string, string, error) 
 	m.auditLogs = st.AuditLogs
 	m.scheduleStates = st.ScheduleStates
 	m.settings = st.Settings
+	m.rebuildServiceIndexLocked()
 	m.changeRollups = orEmpty(st.ChangeRollups)
 	m.snapshotFormat = st.SnapshotFormat
 	if len(m.snapshots) == 0 {
