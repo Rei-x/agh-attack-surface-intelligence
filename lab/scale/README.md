@@ -1,6 +1,6 @@
 # Dzięcioł scale lab
 
-A realistic, local, **large-network** test range for Dzięcioł: a whole
+A local test range that gives Dzięcioł a realistic large network: a whole
 `10.66.0.0/18` (16,384 IPs) with ~1,500 live hosts, served by one Go binary on
 one Linux box or container, plus a ground-truth API and an accuracy scorer.
 It exists so we can prove the scanner at 10k+ IPs, with two scan runs and
@@ -59,7 +59,7 @@ cookies, titles, redirects, version leaks; *not* tuned to our fingerprinter):
   CUPS, Dell iDRAC.
 - Staging / misconfig: Express staging apps (`X-Powered-By: Express`, staging banners, version
   endpoints, `connect.sid`), Spring Boot (Whitelabel, `/actuator/info`), Django `runserver` with
-  `DEBUG=True` 404 pages and `/admin/`, "TEST –" Apache/PHP apps with `PHPSESSID` (no
+  `DEBUG=True` 404 pages and `/admin/`, "TEST -" Apache/PHP apps with `PHPSESSID` (no
   HttpOnly/Secure), custom PHP admin panels with footer versions.
 - Plain servers: nginx and Apache default pages with/without versions (incl. `ServerTokens Prod`),
   http → https redirects.
@@ -74,7 +74,7 @@ cookies, titles, redirects, version leaks; *not* tuned to our fingerprinter):
 - ~12 % of hosts (40 % of Windows) drop all ICMP: only TCP-discoverable
 - ~15 % are firewalled: closed ports are DROPped (filtered) instead of RST
 - ~2 % are both, so a default `nmap -sn` (ICMP echo/timestamp, SYN 443, ACK 80) misses them unless 80/443 is open
-- 15 flapping hosts (up for half of a 120–240 s period) and 12 time-of-day hosts (up `07-19` Europe/Warsaw)
+- 15 flapping hosts (up for half of a 120-240 s period) and 12 time-of-day hosts (up `07-19` Europe/Warsaw)
 
 **Scenario B** ("a week later") relative to A: +75 new hosts, −45 gone hosts, +45 new ports
 (MySQL, Redis, Jenkins, vsftpd, Django dev, Prometheus), −45 closed ports, ~60 hosts with version

@@ -1,6 +1,6 @@
-# Testing Dziecioł with the jury lab template
+# Testing Dzięcioł with the jury lab template
 
-This page shows how to point Dziecioł at the lab template published for the final
+This page shows how to point Dzięcioł at the lab template published for the final
 evaluation (`docker-compose-modern.yml`, `-modern-proxy.yml`, `-vulnerable.yml`,
 `-custom-network.yml`, `quickstart.sh`) and what it reports for each stack. Everything
 below was rehearsed on a clean Ubuntu 24.04 VM with Docker 29, nmap 7.94 and Google Chrome
@@ -13,7 +13,7 @@ make build                 # or use a release binary: bin/dzieciol
 sudo apt install nmap      # recommended: service versions come from nmap -sV
 ```
 
-Without nmap Dziecioł falls back to its own TCP scanner and protocol probes (all ports
+Without nmap Dzięcioł falls back to its own TCP scanner and protocol probes (all ports
 are still found; fewer versions are named). Google Chrome or Chromium on the PATH enables
 page screenshots; nothing else is needed.
 
@@ -33,7 +33,7 @@ Defaults that matter for the lab:
   Larger ranges keep the compact campus list. Override with `-p 1-65535` or `-p 22,80,8080`.
 - **Localhost is scanned.** There is no hidden loopback exclusion any more. Exclusions you add
   yourself (Scans, Scope tab) still apply and the CLI says how many IPs they removed.
-- **The host's own LAN IP works too**, also as root: for this machine's addresses Dziecioł
+- **The host's own LAN IP works too**, also as root: for this machine's addresses Dzięcioł
   uses connect scans, because raw SYN probes to a local IP do not see Docker-published ports.
 - **Container IPs**: scan the containers' subnet as a /24 (`dzieciol scan 172.18.0.0/24`),
   not Docker's default /16 (65536 addresses would take a long time). Containers listen on

@@ -314,7 +314,7 @@ func splitPort(hp string) (string, int, error) {
 }
 
 func htmlUnescape(s string) string {
-	r := strings.NewReplacer("&#8211;", "–", "&#8212;", "—", "&lsaquo;", "‹", "&#8250;", "›", "&nbsp;", " ", "&amp;", "&", "&raquo;", "»")
+	r := strings.NewReplacer("&#8211;", "\u2013", "&#8212;", "\u2014", "&lsaquo;", "‹", "&#8250;", "›", "&nbsp;", " ", "&amp;", "&", "&raquo;", "»")
 	return strings.Join(strings.Fields(r.Replace(s)), " ")
 }
 

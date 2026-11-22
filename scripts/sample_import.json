@@ -65,7 +65,7 @@
             "url": "http://monitor.cbi.agh.edu.pl/",
             "scheme": "http",
             "status_code": 200,
-            "title": "Zabbix 6.4 — AGH Campus Monitoring",
+            "title": "Zabbix 6.4 - AGH Campus Monitoring",
             "server_header": "nginx/1.24.0",
             "headers": {
               "Server": "nginx/1.24.0",

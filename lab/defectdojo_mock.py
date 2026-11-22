@@ -240,7 +240,7 @@ def render_ui_html() -> str:
               <div class="card-head">
                 <div>
                   <span class="badge {cls}">{html.escape(sev)}</span>
-                  <strong>#{fid} &mdash; {html.escape(str(f.get('title')))}</strong>{dedup_note}
+                  <strong>#{fid}: {html.escape(str(f.get('title')))}</strong>{dedup_note}
                 </div>
                 <span class="muted">{html.escape(str(f.get('received_at')))}</span>
               </div>
@@ -262,7 +262,7 @@ def render_ui_html() -> str:
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="refresh" content="10" />
-  <title>DefectDojo v2 Mock Receiver — CBI AGH Demo</title>
+  <title>DefectDojo v2 Mock Receiver - CBI AGH Demo</title>
   <style>
     :root {{ color-scheme: dark; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:#0b1120; color:#e2e8f0; margin:0; padding:24px; line-height:1.5; }}

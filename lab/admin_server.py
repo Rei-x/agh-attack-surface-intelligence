@@ -27,7 +27,7 @@ ADMIN_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Admin Panel — CBI AGH Internal Admin Console</title>
+  <title>Admin Panel - CBI AGH Internal Admin Console</title>
 </head>
 <body>
   <h1>Internal Administration Dashboard</h1>
@@ -44,7 +44,7 @@ LOGIN_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Grafana — CBI AGH Internal Admin Console</title>
+  <title>Grafana - CBI AGH Internal Admin Console</title>
 </head>
 <body>
   <script>window.grafanaBootData = { settings: { buildInfo: { version: "10.4.1" } } };</script>

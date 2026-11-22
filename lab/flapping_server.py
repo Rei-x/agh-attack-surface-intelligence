@@ -48,7 +48,7 @@ CHANGED_INDEX_HTML = """<!DOCTYPE html>
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 </head>
 <body>
-  <div style="background:#fee2e2;padding:8px">MAINTENANCE MODE — DEBUG &amp; ADMIN EXPOSED</div>
+  <div style="background:#fee2e2;padding:8px">MAINTENANCE MODE: DEBUG &amp; ADMIN EXPOSED</div>
   <h1>AGH Moodle Maintenance - Admin Exposed</h1>
   <p>Temporary maintenance interface active. <a href="/admin">Open Admin Console</a></p>
   <footer>Moodle 4.3.2-hotfix-staging | Apache/2.4.52</footer>
@@ -60,7 +60,7 @@ CHANGED_ADMIN_HTML = """<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="utf-8" />
-  <title>Moodle Site Administration — Exposed Maintenance Panel</title>
+  <title>Moodle Site Administration - Exposed Maintenance Panel</title>
 </head>
 <body>
   <h1>Moodle Site Administration</h1>

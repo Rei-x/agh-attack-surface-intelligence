@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# =============================================================================
-# Dzięcioł — End-to-End Automated Verification & Demo Script
+# Dzięcioł end-to-end verification and demo script.
 #
-# Verifies all core HackNation / CBI AGH criteria against a running stack:
+# Checks the core HackNation / CBI AGH criteria against a running stack:
 #   1. Healthcheck & active AES-256-GCM encryption
 #   2. Dynamic RBAC enforcement across all 4 roles (403 Forbidden checks)
 #   3. Large-scale target estimation (10.0.0.0/18 -> 16,384 IPs + exclusions)
@@ -13,7 +12,6 @@
 #   8. Scan Diff verification + Analyst Override preservation proof
 #   9. Signature Studio: Safety Validator rejection + Retroactive Playground test
 #  10. DefectDojo v2 integration: Test + Nmap XML push + Finding push verification
-# =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,7 +46,6 @@ pass() { PASS_COUNT=$((PASS_COUNT + 1)); echo -e "  ${GREEN}[PASS]${RESET} $1"; 
 fail() { echo -e "  ${RED}[FAIL]${RESET} $1" >&2; exit 1; }
 
 cleanup() {
-  # Always restore lab-flapping to normal state when exiting
   curl -fsS -X POST "${LAB_CTRL_URL}/control?mode=normal" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -93,9 +90,7 @@ wait_for_scan() {
   fail "Timed out waiting for scan ${scan_id} (last status: ${status})"
 }
 
-# =============================================================================
 step "1/10 Healthcheck & Encryption Status"
-# =============================================================================
 CODE="$(api_status GET "/api/v1/health")"
 [[ "$CODE" == "200" ]] || fail "Health endpoint returned HTTP ${CODE}"
 ENC_ACTIVE="$(jq -r '.encryption_active // false' /tmp/dzieciol_resp.json)"
@@ -103,9 +98,7 @@ KEY_VER="$(jq -r '.key_version // "unknown"' /tmp/dzieciol_resp.json)"
 [[ "$ENC_ACTIVE" == "true" ]] || fail "Expected encryption_active=true, got ${ENC_ACTIVE}"
 pass "API healthy, encryption_active=true (key_version=${KEY_VER})"
 
-# =============================================================================
 step "2/10 RBAC Enforcement Across All 4 Roles"
-# =============================================================================
 ADMIN_TOKEN="$(login_role admin 'Admin123!')"
 OPERATOR_TOKEN="$(login_role operator 'Operator123!')"
 ANALYST_TOKEN="$(login_role analyst 'Analyst123!')"
@@ -136,9 +129,7 @@ CODE="$(api_status GET "/api/v1/admin/crypto/status" "$ADMIN_TOKEN")"
 [[ "$CODE" == "200" ]] || fail "Admin GET /admin/crypto/status expected 200, got ${CODE}"
 pass "All RBAC 200/403 assertions enforced strictly (viewer, analyst, operator, admin)"
 
-# =============================================================================
 step "3/10 Large-Scale Target Estimate (10.0.0.0/18 = 16,384 IPs)"
-# =============================================================================
 EST_REQ='{"targets":["10.0.0.0/18"],"exclusions":["10.0.0.0/24"],"ports":"22,80,443,8080","max_rate_pps":500,"concurrency":64}'
 CODE="$(api_status POST "/api/v1/targets/estimate" "$OPERATOR_TOKEN" "$EST_REQ")"
 [[ "$CODE" == "200" ]] || fail "Target estimate failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
@@ -151,9 +142,7 @@ CHUNKS="$(jq -r '.chunk_count' /tmp/dzieciol_resp.json)"
 [[ "$EFF_IPS" == "16128" ]] || fail "Expected effective_ips=16128, got ${EFF_IPS}"
 pass "Target estimate verified: total=${TOTAL_IPS}, excluded=${EXCL_IPS}, effective=${EFF_IPS}, chunks=${CHUNKS}"
 
-# =============================================================================
 step "4/10 Unified Ingestion (Manual Form + CSV Import + JSON Import)"
-# =============================================================================
 MANUAL_REQ='{
   "scan_name": "E2E Manual Entry",
   "ip": "192.0.2.50",
@@ -206,9 +195,7 @@ fi
 [[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "JSON import failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "JSON import processed through unified pipeline (HTTP ${CODE})"
 
-# =============================================================================
 step "5/10 Deterministic Lab Reset & Scan 1 (172.28.0.10-14)"
-# =============================================================================
 curl -fsS -X POST "${LAB_CTRL_URL}/control?mode=normal" >/dev/null \
   || fail "Could not reach lab-flapping control API at ${LAB_CTRL_URL}. Is docker-compose.lab.yml running?"
 pass "lab-flapping reset to mode=normal"
@@ -241,9 +228,7 @@ SCAN1_ID="$(jq -r '.id // .scan.id // empty' /tmp/dzieciol_resp.json)"
 wait_for_scan "$SCAN1_ID" "$OPERATOR_TOKEN"
 pass "Scan 1 (${SCAN1_ID}) completed against lab hosts 172.28.0.10-14"
 
-# =============================================================================
 step "6/10 Analyst Override on 172.28.0.14 + Scan Metadata Edit"
-# =============================================================================
 CODE="$(api_status GET "/api/v1/hosts?q=172.28.0.14" "$ANALYST_TOKEN")"
 [[ "$CODE" == "200" ]] || fail "GET /hosts failed (HTTP ${CODE})"
 FLAPPING_HOST_ID="$(jq -r '(.hosts // .items // .) | map(select(.ip == "172.28.0.14")) | .[0].id // empty' /tmp/dzieciol_resp.json)"
@@ -263,9 +248,7 @@ CODE="$(api_status PUT "/api/v1/scans/${SCAN1_ID}" "$ANALYST_TOKEN" '{"name":"La
 [[ "$CODE" == "200" ]] || fail "PUT /scans/${SCAN1_ID} failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "Scan 1 metadata edited after completion"
 
-# =============================================================================
 step "7/10 Live Mutate lab-flapping (normal -> changed) & Run Scan 2"
-# =============================================================================
 curl -fsS -X POST "${LAB_CTRL_URL}/control?mode=changed" >/dev/null \
   || fail "Failed switching lab-flapping to mode=changed"
 pass "lab-flapping mutated to mode=changed (title, banner, X-Staging-Debug, /admin 200 OK)"
@@ -276,9 +259,7 @@ SCAN2_ID="$(jq -r '.id // .scan.id // empty' /tmp/dzieciol_resp.json)"
 wait_for_scan "$SCAN2_ID" "$OPERATOR_TOKEN"
 pass "Scan 2 (${SCAN2_ID}) completed"
 
-# =============================================================================
 step "8/10 Diff Verification & Override Preservation Proof"
-# =============================================================================
 CODE="$(api_status GET "/api/v1/scans/diff?from=${SCAN1_ID}&to=${SCAN2_ID}" "$ANALYST_TOKEN")"
 [[ "$CODE" == "200" ]] || fail "GET /scans/diff failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 CHANGED_CNT="$(jq -r '((.changed_services // []) | length) + ((.new_services // []) | length)' /tmp/dzieciol_resp.json)"
@@ -293,9 +274,7 @@ CUR_NOTES="$(jq -r '.notes // .host.notes // empty' /tmp/dzieciol_resp.json)"
 [[ "$CUR_NOTES" == *"must survive rescans"* ]] || fail "Analyst override 'notes' was overwritten! Got: '${CUR_NOTES}'"
 pass "Analyst overrides (owner & notes) preserved intact across Scan 2"
 
-# =============================================================================
 step "9/10 Signature Studio: Safety Validator & Retroactive Playground"
-# =============================================================================
 UNSAFE_SIG='{
   "name": "Unsafe Traversal Attempt",
   "category": "custom",
@@ -321,9 +300,7 @@ MATCH_CNT="$(jq -r '(.matches // .matched_services // .) | length' /tmp/dzieciol
 (( MATCH_CNT >= 1 )) || fail "Retroactive Playground expected >=1 match against stored lab observations, got 0"
 pass "Retroactive Playground matched ${MATCH_CNT} stored service(s) without rescanning"
 
-# =============================================================================
 step "10/10 DefectDojo API v2 Integration (Test + Nmap XML + Finding Push)"
-# =============================================================================
 DD_CFG="{\"url\":\"${DD_INTERNAL_URL}\",\"api_token\":\"${DD_TOKEN}\",\"product_id\":1,\"engagement_id\":1,\"verify_tls\":false,\"auto_push_nmap\":false}"
 CODE="$(api_status PUT "/api/v1/integrations/defectdojo" "$ADMIN_TOKEN" "$DD_CFG")"
 [[ "$CODE" == "200" ]] || fail "PUT DefectDojo config failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
@@ -332,7 +309,6 @@ CODE="$(api_status POST "/api/v1/integrations/defectdojo/test" "$ADMIN_TOKEN" "{
 [[ "$CODE" == "200" ]] || fail "DefectDojo connection test failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "DefectDojo API v2 connection test succeeded against ${DD_INTERNAL_URL}"
 
-# Push Nmap XML if available on Scan 2
 CODE="$(api_status POST "/api/v1/integrations/defectdojo/push-nmap" "$OPERATOR_TOKEN" "{\"scan_run_id\":\"${SCAN2_ID}\",\"engagement_id\":1}")"
 if [[ "$CODE" == "200" || "$CODE" == "201" ]]; then
   pass "Nmap XML scan pushed to DefectDojo API v2"
@@ -340,7 +316,6 @@ else
   echo -e "  ${YELLOW}[INFO]${RESET} Nmap XML push returned HTTP ${CODE} (expected if running without raw nmap XML)"
 fi
 
-# Find a service ID from 172.28.0.14 or 172.28.0.12 to push as a Finding
 CODE="$(api_status GET "/api/v1/services" "$OPERATOR_TOKEN")"
 [[ "$CODE" == "200" ]] || fail "GET /services failed (HTTP ${CODE})"
 SVC_ID="$(jq -r '(.services // .items // .) | .[0].id // empty' /tmp/dzieciol_resp.json)"
@@ -350,7 +325,6 @@ CODE="$(api_status POST "/api/v1/integrations/defectdojo/push-findings" "$OPERAT
 [[ "$CODE" == "200" || "$CODE" == "201" ]] || fail "Push findings to DefectDojo failed (HTTP ${CODE}): $(cat /tmp/dzieciol_resp.json)"
 pass "Finding pushed to DefectDojo API v2 for service ${SVC_ID}"
 
-# Confirm arrival on mock receiver
 DD_COUNT="$(curl -fsS -H "Authorization: Token ${DD_TOKEN}" "${DD_HOST_URL}/api/v2/findings/" | jq -r '.count // 0')"
 (( DD_COUNT >= 1 )) || fail "DefectDojo mock reported 0 received findings"
 pass "Verified ${DD_COUNT} finding(s) live in DefectDojo mock UI (${DD_HOST_URL}/ui)"

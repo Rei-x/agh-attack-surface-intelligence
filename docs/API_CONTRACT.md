@@ -1,14 +1,14 @@
-# Dzięcioł — Kontrakt API & RBAC (v1)
+# Dzięcioł: kontrakt API i RBAC (v1)
 
 Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/demo-accounts` wymagają nagłówka `Authorization: Bearer <jwt>` (lub tokenu `?token=` dla strumienia SSE `/api/v1/events/stream`).
 
-## 1. Role i Uprawnienia RBAC
+## 1. Role i uprawnienia RBAC
 
 ### Predefiniowane role (seedowane przy starcie)
-1. **`admin` („Administracja”):** wszystkie uprawnienia (`*`).
-2. **`operator` („Dodawanie, usuwanie, modyfikacja”):** `dashboard:read`, `assets:read`, `assets:write`, `assets:delete`, `scans:read`, `scans:write`, `scans:delete`, `scans:run`, `signatures:read`, `signatures:write`, `signatures:delete`, `import:write`, `export:read`, `defectdojo:push`.
-3. **`analyst` („Modyfikacja i odczyt”):** `dashboard:read`, `assets:read`, `assets:write`, `scans:read`, `scans:write`, `signatures:read`, `signatures:write`, `export:read`.
-4. **`viewer` („Odczyt”):** `dashboard:read`, `assets:read`, `scans:read`, `signatures:read`, `export:read`.
+1. `admin` („Administracja”): wszystkie uprawnienia (`*`).
+2. `operator` („Dodawanie, usuwanie, modyfikacja”): `dashboard:read`, `assets:read`, `assets:write`, `assets:delete`, `scans:read`, `scans:write`, `scans:delete`, `scans:run`, `signatures:read`, `signatures:write`, `signatures:delete`, `import:write`, `export:read`, `defectdojo:push`.
+3. `analyst` („Modyfikacja i odczyt”): `dashboard:read`, `assets:read`, `assets:write`, `scans:read`, `scans:write`, `signatures:read`, `signatures:write`, `export:read`.
+4. `viewer` („Odczyt”): `dashboard:read`, `assets:read`, `scans:read`, `signatures:read`, `export:read`.
 
 ### Konta demo (seedowane gdy `DZIECIOL_SEED_DEMO=true`)
 - `admin` / `Admin123!` (Administracja)
@@ -41,18 +41,18 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
   - Każdy profil w odpowiedziach `GET/POST/PUT /profiles*` ma dodatkowe pole (wsteczna kompatybilność: pola profilu bez zmian, `schedule` jest addytywne):
     `schedule: {scheduled, cron, timezone, cron_error?, next_slot_at?, next_run_at?, deferred_by_window, pending_catch_up, will_skip, last_fire_at?, last_skip_at?, last_skip_reason?, last_run?: RunRef, active_run?: RunRef}`, gdzie `RunRef = {id, name, status, triggered_by, started_at, finished_at?}`.
   - `next_slot_at` = najbliższy slot cron; `next_run_at` = faktyczny start (slot poza oknem → przesunięty na otwarcie okna, `deferred_by_window=true`). `pending_catch_up=true` gdy slot już minął (np. przestój serwera) i czeka na okno.
-  - Reguły: nigdy dwa równoległe przebiegi jednego profilu — slot przy aktywnym przebiegu jest pomijany, a powód trafia do `last_skip_reason`; przekroczenie okna → `PAUSED_WINDOW` z checkpointem chunków i wznowienie w kolejnym oknie; po restarcie wszystkie przegapione sloty zwijają się do maks. jednego uruchomienia „catch-up” (z poszanowaniem okna). Przerwane restartem przebiegi `RUNNING` są parkowane jako `PAUSED_WINDOW` i wznawiane z checkpointu. Przebiegi z harmonogramu mają `triggered_by="scheduler"`.
+  - Reguły: jeden profil nigdy nie ma dwóch równoległych przebiegów, więc slot przy aktywnym przebiegu jest pomijany, a powód trafia do `last_skip_reason`. Przekroczenie okna → `PAUSED_WINDOW` z checkpointem chunków i wznowienie w kolejnym oknie. Po restarcie wszystkie przegapione sloty zwijają się do maks. jednego uruchomienia „catch-up” (z poszanowaniem okna). Przerwane restartem przebiegi `RUNNING` są parkowane jako `PAUSED_WINDOW` i wznawiane z checkpointu. Przebiegi z harmonogramu mają `triggered_by="scheduler"`.
 - `GET /api/v1/scans` → lista przebiegów skanów (z metrykami i progress)
 - `POST /api/v1/scans` → uruchomienie nowego skanu dla `profile_id` (lub konfiguracji ad-hoc)
-- `GET /api/v1/scans/:id` → szczegóły skanu + lista `chunks[]` (Coverage Ledger). Każdy chunk ma dodatkowo `nmap_commands[]` (dokładne linie poleceń nmap: discovery, ewentualne re-probe, service scan — lub opis fallbacku pure-Go), `max_rate_pps` (udział chunka w globalnym `--max-rate`) i `worker` (slot równoległego workera). Chunk przerwany zamknięciem okna wraca do `PENDING` z `error="interrupted: scan window closed; …"`.
-- `PUT /api/v1/scans/:id` → edycja metadanych/notatek skanu (działa niezależnie od statusu!)
+- `GET /api/v1/scans/:id` → szczegóły skanu + lista `chunks[]` (Coverage Ledger). Każdy chunk ma dodatkowo `nmap_commands[]` (dokładne linie poleceń nmap: discovery, ewentualne re-probe, service scan; albo opis fallbacku pure-Go), `max_rate_pps` (udział chunka w globalnym `--max-rate`) i `worker` (slot równoległego workera). Chunk przerwany zamknięciem okna wraca do `PENDING` z `error="interrupted: scan window closed; …"`.
+- `PUT /api/v1/scans/:id` → edycja metadanych/notatek skanu (działa niezależnie od statusu)
 - `POST /api/v1/scans/:id/pause` | `POST /api/v1/scans/:id/resume` | `POST /api/v1/scans/:id/stop`
 - `DELETE /api/v1/scans/:id`
 
 ### Hosts, Services & Preserved Overrides
 - `GET /api/v1/hosts` → filtrowanie: `?q=&state=&tag=&min_score=&env=&has_admin=&page=&limit=`
 - `GET /api/v1/hosts/:id` → pełny widok hosta (merged observed + overrides), usługi, historia obserwacji, Time-of-Day heatmap, `locked_fields`, ostatnie zmiany
-- `PATCH /api/v1/hosts/:id/overrides` → zapis nadpisań pól hosta (`hostname`, `environment`, `owner`, `notes`, `tags`, `lifecycle_state`, `unlock_fields[]`) — **zachowywane przy kolejnych skanach!**
+- `PATCH /api/v1/hosts/:id/overrides` → zapis nadpisań pól hosta (`hostname`, `environment`, `owner`, `notes`, `tags`, `lifecycle_state`, `unlock_fields[]`). Nadpisania są zachowywane przy kolejnych skanach.
 - `DELETE /api/v1/hosts/:id`
 - `GET /api/v1/services` → lista usług z filtrami
 - `PATCH /api/v1/services/:id/overrides` → nadpisania pól usługi (`service_name`, `product`, `version`, `http_title`, `notes`, `tags`, `triage_status`, `unlock_fields[]`)
@@ -64,14 +64,14 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 - `POST /api/v1/changes/:id/acknowledge`
 
 ### Unified Manual Entry, Import & Export
-- `POST /api/v1/ingest/manual` → formularz ręczny (host + usługi + HTTP/TLS/nagłówki/ciasteczka/notatki) → tworzy `scan_run(MANUAL)` i przepuszcza przez pełny pipeline!
-- `POST /api/v1/ingest/import` → upload `multipart/form-data` lub JSON body (`format: csv|json|nmap|scb|passive`, opcjonalne `scan_name`; findings.json z OWASP secureCodeBox jest wykrywany automatycznie także przy `json`) → tworzy `scan_run(IMPORT_*)` i przepuszcza przez pełny pipeline!
+- `POST /api/v1/ingest/manual` → formularz ręczny (host + usługi + HTTP/TLS/nagłówki/ciasteczka/notatki) → tworzy `scan_run(MANUAL)` i przepuszcza dane przez pełny pipeline
+- `POST /api/v1/ingest/import` → upload `multipart/form-data` lub JSON body (`format: csv|json|nmap|scb|passive`, opcjonalne `scan_name`; findings.json z OWASP secureCodeBox jest wykrywany automatycznie także przy `json`) → tworzy `scan_run(IMPORT_*)` i przepuszcza dane przez pełny pipeline
 - `GET /api/v1/export?format=json|csv|nmap|urls|ecs|scb&scan_id=&state=&tag=` → pobranie pliku (JSON, CSV, nmap XML, lista URL, ECS NDJSON, `scb` = findings.json OWASP secureCodeBox, zob. `docs/SECURECODEBOX.md`)
 
 ### Signatures Studio
 - `GET /api/v1/signatures` | `POST /api/v1/signatures` | `PUT /api/v1/signatures/:id` | `DELETE /api/v1/signatures/:id`
 - `POST /api/v1/signatures/validate` → walidacja bezpieczeństwa sygnatury (blokuje metody mutujące / próby logowania)
-- `POST /api/v1/signatures/test` → **Playground Retroaktywny** (testuje definicję sygnatury na zapisanych obserwacjach z DB i zwraca dopasowania!)
+- `POST /api/v1/signatures/test` → retroaktywny playground: testuje definicję sygnatury na zapisanych obserwacjach z DB i zwraca dopasowania
 - `POST /api/v1/signatures/import` | `GET /api/v1/signatures/export`
 
 ### DefectDojo v2 Integration
@@ -85,7 +85,7 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 - `GET /api/v1/admin/users` | `POST /api/v1/admin/users` | `PUT /api/v1/admin/users/:id` | `DELETE /api/v1/admin/users/:id`
 - `GET /api/v1/admin/roles` | `POST /api/v1/admin/roles` | `PUT /api/v1/admin/roles/:id` | `DELETE /api/v1/admin/roles/:id`
 - `GET /api/v1/admin/permissions` → lista wszystkich dostępnych slugów uprawnień
-- `GET /api/v1/admin/crypto/status` → status szyfrowania, wersja DEK, próbka dowodowa surowego ciphertextu z DB vs zdekryptowanego widoku (bez ujawniania klucza!)
+- `GET /api/v1/admin/crypto/status` → status szyfrowania, wersja DEK, próbka dowodowa surowego ciphertextu z DB vs zdekryptowanego widoku (bez ujawniania klucza)
 - `POST /api/v1/admin/crypto/rotate` → rotacja DEK (re-wrapping + re-szyfrowanie)
 - `GET /api/v1/admin/audit` → dziennik audytowy
 
@@ -93,7 +93,7 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 
 Równoległość: chunki Coverage Ledger przetwarza N workerów (każdy = osobny proces nmap). N = min(`DZIECIOL_CHUNK_WORKERS` (domyślnie 4), `concurrency` profilu, `max_rate_pps`/20, liczba oczekujących chunków). Każdy proces dostaje `--max-rate = max_rate_pps / N`, więc suma nigdy nie przekracza limitu profilu. Rozmiar chunków jest korygowany w trakcie skanu na podstawie zmierzonej przepustowości (cel: `chunk_target_sec` na chunk).
 
-Flagi nmap (bez możliwości dodania `--script`/`-sC`/`-A`/`-O` — polityka bezpieczeństwa skanera):
+Flagi nmap. Polityka bezpieczeństwa skanera nie pozwala dodać `--script`/`-sC`/`-A`/`-O`.
 
 | Zmienna | Domyślnie | Znaczenie |
 |---|---|---|
@@ -102,7 +102,7 @@ Flagi nmap (bez możliwości dodania `--script`/`-sC`/`-A`/`-O` — polityka bez
 | `DZIECIOL_NMAP_PING_ACK_PORTS` | `80,443` | `-PA…`; pusty = wyłączone |
 | `DZIECIOL_NMAP_DISCOVERY_MAX_RETRIES` / `DZIECIOL_NMAP_DISCOVERY_HOST_TIMEOUT` | `1` / `20s` | `--max-retries` / `--host-timeout` dla `-sn` |
 | `DZIECIOL_NMAP_MAX_RETRIES` / `DZIECIOL_NMAP_HOST_TIMEOUT` | `2` / `3m` | `--max-retries` / `--host-timeout` dla `-sT -sV` |
-| `DZIECIOL_NMAP_VERSION_INTENSITY` | `5` | `--version-intensity` (0–9) |
+| `DZIECIOL_NMAP_VERSION_INTENSITY` | `5` | `--version-intensity` (0-9) |
 | `DZIECIOL_NMAP_TIMING` | auto | `-T0…5`; auto = `-T4` gdy udział workera ≥ 200 pps, inaczej `-T3` |
 
 Bez roota nmap automatycznie zamienia sondy `-PS/-PA` na `connect()`; gdy nmap jest niedostępny lub zawiedzie, używany jest fallback pure-Go (TCP connect + pasywny banner), opisany w `nmap_commands` chunka.

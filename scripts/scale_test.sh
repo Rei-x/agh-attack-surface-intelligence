@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# =============================================================================
 # Dzięcioł scale test: two full scans of the scale lab (/18 by default) through
 # the Dzięcioł API, a scenario switch in between, exports, and an accuracy report.
 #
@@ -22,7 +21,6 @@
 #   RUNS        1 or 2 (2 = switch to scenario B and rescan)      [2]
 #   SCAN_TIMEOUT seconds per scan before giving up                [10800]
 #   OUT         output directory                                  [lab/scale/out/<timestamp>]
-# =============================================================================
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -64,7 +62,6 @@ api() { # api METHOD PATH [JSON]
   curl "${args[@]}" "$API$p"
 }
 
-# ---------------------------------------------------------------- 1. lab up
 if [[ "$MODE" == "docker" ]]; then
   need docker
   log "building + starting scale lab container"
@@ -86,7 +83,6 @@ fi
 log "lab: $(jq -c '{scenario,scenario_hosts,up_now,listeners,warnings}' "$OUT/lab-stats-start.json")"
 log "ports: $PORTS"
 
-# ---------------------------------------------------------------- 2. login
 curl -fsS "$API/api/v1/health" >"$OUT/app-health.json" || die "API $API not reachable"
 TOKEN="$(curl -fsS -X POST -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg u "$DZIECIOL_USER" --arg p "$DZIECIOL_PASS" '{username:$u,password:$p}')" \
@@ -102,7 +98,6 @@ meta max_rate_pps "$RATE"
 meta concurrency "$CONCURRENCY"
 meta ports_scanned "$(awk -F, '{print NF}' <<<"$PORTS")"
 
-# ---------------------------------------------------------------- 3. scan helper
 run_scan() { # run_scan N SCENARIO
   local n="$1" sc="$2"
   log "=== run $n: scenario $sc ==="
@@ -166,7 +161,6 @@ if [[ "$RUNS" == "2" ]]; then
   log "app diff summary: $(jq -c .summary "$OUT/app-diff.json" 2>/dev/null)"
 fi
 
-# ---------------------------------------------------------------- 4. score
 ARGS+=(-ports "$PORTS" -meta "$META" -out "$OUT/report.md" -json "$OUT/summary.json")
 if command -v go >/dev/null; then
   (cd "$ROOT/lab/scale" && go run ./cmd/scorer "${ARGS[@]}")

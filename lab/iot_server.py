@@ -14,7 +14,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <body>
   <header>
     <h1>HP LaserJet Pro MFP M428fdw</h1>
-    <p>Embedded Web Server — AGH Pawilon C-2, Pokój 114</p>
+    <p>Embedded Web Server - AGH Pawilon C-2, Pokój 114</p>
   </header>
   <main>
     <table>
@@ -34,10 +34,10 @@ DEVICE_STATUS_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Device Status — HP LaserJet Pro MFP M428fdw</title>
+  <title>Device Status - HP LaserJet Pro MFP M428fdw</title>
 </head>
 <body>
-  <h2>HP LaserJet Pro MFP M428fdw — Device Status</h2>
+  <h2>HP LaserJet Pro MFP M428fdw - Device Status</h2>
   <ul>
     <li>State: Ready</li>
     <li>Serial Number: PHB8N01428</li>

@@ -22,7 +22,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <div style="background:#fef3c7;padding:8px;border:1px solid #f59e0b">
-    <strong>STAGING ENVIRONMENT — DEBUG MODE ACTIVE</strong>
+    <strong>STAGING ENVIRONMENT: DEBUG MODE ACTIVE</strong>
   </div>
   <h1>Staging - USOS Test Portal (AGH)</h1>
   <p>Wewnętrzne środowisko testowe przed wdrożeniem produkcyjnym.</p>
