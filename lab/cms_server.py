@@ -10,7 +10,7 @@ INDEX_HTML = """<!DOCTYPE html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="generator" content="WordPress 6.4.2" />
-  <title>Wydział Informatyki AGH — Portal Aktualności</title>
+  <title>Wydział Informatyki AGH - Portal Aktualności</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
   <link rel="stylesheet" href="/wp-content/themes/agh-portal/style.css?ver=6.4.2" />
   <script src="/wp-includes/js/jquery/jquery.min.js?ver=3.7.1"></script>

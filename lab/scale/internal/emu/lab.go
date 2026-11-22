@@ -244,8 +244,6 @@ func (l *Lab) Close() {
 	}
 }
 
-// ---------------------------------------------------------------- listeners
-
 func (l *Lab) listen(ip netip.Addr, port int, kind string) (io.Closer, error) {
 	lc := net.ListenConfig{Control: func(network, address string, c syscall.RawConn) error {
 		var serr error
@@ -354,8 +352,6 @@ func nonEmpty(a, b string) string {
 	return b
 }
 
-// ---------------------------------------------------------------- truth
-
 // Truth builds the ground truth document for a scenario.
 func (l *Lab) Truth(scenario string) (*truth.Document, error) {
 	p := l.opt.Plan
@@ -408,8 +404,6 @@ func (l *Lab) Truth(scenario string) (*truth.Document, error) {
 	}
 	return doc, nil
 }
-
-// ---------------------------------------------------------------- control API
 
 func (l *Lab) ControlHandler() http.Handler {
 	mux := http.NewServeMux()

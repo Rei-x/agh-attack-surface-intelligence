@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# =============================================================================
-# Dzięcioł — Encryption At Rest Proof Script (PostgreSQL Direct Inspection)
+# Dzięcioł encryption-at-rest proof (direct PostgreSQL inspection).
 #
 # Queries PostgreSQL directly via `docker compose exec -T postgres psql` to prove:
 #   1. Sensitive columns are stored as AES-256-GCM envelope ciphertext (`enc:v1:<kid>:...`)
 #   2. Wrapped Data Encryption Keys are stored as `wrap:v1:<kid>:...` (never plaintext)
 #   3. Lookup indexes use deterministic HMAC-SHA256 blind indexes (64-char hex)
 #   4. Zero plaintext lab IP addresses or sensitive cookies appear in encrypted columns
-# =============================================================================
 set -euo pipefail
 
 PG_SERVICE="${PG_SERVICE:-postgres}"
@@ -33,7 +31,6 @@ echo "${BOLD}${CYAN}=== Dzięcioł Encryption At Rest Verification (PostgreSQL D
 echo "Target container: ${PG_SERVICE} | Database: ${PG_DB} | User: ${PG_USER}"
 echo ""
 
-# 1. Verify database connectivity and list tables
 echo "${BOLD}[1/4] Discovering schema tables in PostgreSQL...${RESET}"
 TABLES="$(psql_exec -tA -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;")"
 if [[ -z "$TABLES" ]]; then
@@ -43,7 +40,6 @@ fi
 echo "$TABLES" | sed 's/^/  - /'
 echo ""
 
-# 2. Scan all text/varchar columns in public schema for enc:v1: and wrap:v1: values
 echo "${BOLD}[2/4] Auditing encrypted columns (enc:v1:* AES-256-GCM & wrap:v1:* DEKs)...${RESET}"
 AUDIT_OUTPUT="$(psql_exec -tA -F '|' <<'SQL'
 DO $$
@@ -119,7 +115,6 @@ while IFS='|' read -r tbl col nonempty enc_cnt wrap_cnt sample; do
 done <<< "$AUDIT_OUTPUT"
 echo ""
 
-# 3. Show concrete raw DB rows from hosts / services / crypto_keys / users if present
 echo "${BOLD}[3/4] Raw PostgreSQL row proof (direct SELECT without application decryption)...${RESET}"
 if echo "$TABLES" | grep -qx "crypto_keys"; then
   echo "${CYAN}-- Table: crypto_keys (KEK-wrapped DEKs) --${RESET}"
@@ -142,7 +137,7 @@ if echo "$TABLES" | grep -qx "users"; then
 fi
 echo ""
 
-# 4. Negative check: ensure no plaintext lab IPs (172.28.0.10..14) or sensitive tokens exist in encrypted tables
+# '%172.28.0.1%' catches the plaintext lab IPs 172.28.0.10-14.
 echo "${BOLD}[4/4] Negative plaintext leak check across encrypted columns...${RESET}"
 LEAK_COUNT="$(psql_exec -tA <<'SQL'
 DO $$

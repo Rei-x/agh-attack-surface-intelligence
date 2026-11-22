@@ -1,4 +1,4 @@
-# Dzięcioł - instrukcja operacyjna
+# Dzięcioł: instrukcja operacyjna
 
 Krótko: jak zainstalować, uruchomić, zabezpieczyć klucz i co znaczą komunikaty, które można zobaczyć.
 
@@ -32,11 +32,11 @@ dzieciol serve --listen 127.0.0.1:9090 --data-dir /srv/dzieciol
 Przy pierwszym starcie Dzięcioł sam tworzy katalog danych, losowy 256-bitowy klucz główny
 (`master.key`, prawa 0600) i zaszyfrowany magazyn (`dzieciol-store.enc`, AES-256-GCM).
 
-**Tryb demo (domyślny)** - zakłada 4 konta z jawnymi hasłami, po jednym na rolę:
+**Tryb demo (domyślny)** zakłada 4 konta z jawnymi hasłami, po jednym na rolę:
 `admin / Admin123!`, `operator / Operator123!`, `analyst / Analyst123!`, `viewer / Viewer123!`.
 Baner i log pokazują wtedy ostrzeżenie `DEMO MODE`. Tylko do laboratorium.
 
-**Tryb produkcyjny** - `DZIECIOL_SEED_DEMO=false` (lub `dzieciol serve --seed-demo=false`):
+**Tryb produkcyjny** (`DZIECIOL_SEED_DEMO=false` lub `dzieciol serve --seed-demo=false`):
 
 - konta demo, które wciąż mają jawne hasło, zostają wyłączone,
 - jeśli nie ma aktywnego administratora, powstaje konto `admin` z hasłem z `DZIECIOL_ADMIN_PASSWORD`
@@ -51,7 +51,7 @@ dzieciol import wyniki.csv   # CSV (',' ';' lub TAB, także eksport z Excela), J
 dzieciol export --format csv -o inwentarz.csv
 ```
 
-## 3. Klucz główny - kopia zapasowa (ważne)
+## 3. Klucz główny: kopia zapasowa (ważne)
 
 Bez klucza danych **nie da się odszyfrować**. Zrób kopię od razu po pierwszym starcie:
 
@@ -61,9 +61,9 @@ Bez klucza danych **nie da się odszyfrować**. Zrób kopię od razu po pierwszy
 | Docker | wolumen `dzieciol-data`, plik `/data/master.key` | `docker compose cp dzieciol:/data/master.key ./master.key.bak` |
 | własny klucz | zmienna `DZIECIOL_MASTER_KEY` (64 znaki hex) | przechowuj w menedżerze sekretów |
 
-Kopia danych: binarka - cały katalog `~/.dzieciol` (najlepiej przy zatrzymanym `dzieciol serve`);
-Docker - `docker compose exec postgres pg_dump -U dzieciol dzieciol > backup.sql` plus klucz.
-`docker compose down -v` **usuwa wolumeny** (dane i klucz) - używaj `down` bez `-v`.
+Kopia danych: dla binarki cały katalog `~/.dzieciol` (najlepiej przy zatrzymanym `dzieciol serve`),
+dla Dockera `docker compose exec postgres pg_dump -U dzieciol dzieciol > backup.sql` plus klucz.
+`docker compose down -v` **usuwa wolumeny** (dane i klucz), więc używaj `down` bez `-v`.
 
 Klucz można też podać z zewnątrz: `DZIECIOL_MASTER_KEY=$(openssl rand -hex 32)`; podpis tokenów JWT
 jest z niego wyprowadzany (albo `DZIECIOL_JWT_SECRET`).
@@ -106,7 +106,7 @@ Dzięcioł sam ustawia miękki limit pamięci Go na 80% limitu kontenera (widać
 
 - Każdy endpoint poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/demo-accounts`
   wymaga tokenu JWT (HS256, ważny 24 h); uprawnienia sprawdzane per trasa (4 role, RBAC).
-- Hasła: Argon2id. Po 10 nieudanych logowaniach na konto (30 na adres IP) w 5 min - blokada (HTTP 429).
+- Hasła: Argon2id. Po 10 nieudanych logowaniach na konto (30 na adres IP) w ciągu 5 min następuje blokada (HTTP 429).
 - Nagłówki: CSP, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`; CORS tylko dla `DZIECIOL_CORS_ORIGINS`.
 - Limity: 8 MB na żądanie JSON, 64 MB na import; timeouty HTTP (ochrona przed slowloris).
 - Eksport CSV neutralizuje formuły arkusza (`=`, `+`, `-`, `@`) pochodzące ze skanowanych hostów.

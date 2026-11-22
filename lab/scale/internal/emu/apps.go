@@ -15,7 +15,7 @@ import (
 
 // The HTTP personalities below are modelled on what the real products put on
 // the wire (headers, cookies, titles, redirect behaviour, paths). They are not
-// derived from — and must not be tuned to — Dzięcioł's fingerprinter.
+// derived from (and must not be tuned to) Dzięcioł's fingerprinter.
 
 type reqCtx struct {
 	w      http.ResponseWriter
@@ -240,8 +240,6 @@ func hostOnly(hostport, fallback string) string {
 	return hostport
 }
 
-// ---------------------------------------------------------------- generic web servers
-
 func appNginxDefault(c *reqCtx, p string) {
 	c.server()
 	switch p {
@@ -275,8 +273,6 @@ func appApacheDefault(c *reqCtx, p string) {
 		c.notFound()
 	}
 }
-
-// ---------------------------------------------------------------- CMS
 
 func appWordPress(c *reqCtx, p string) {
 	c.server()
@@ -581,8 +577,6 @@ M.cfg = {"wwwroot":"%[1]s","homeurl":{},"sesskey":"%[2]s","sessiontimeout":"2880
 	}
 }
 
-// ---------------------------------------------------------------- dev & ops tools
-
 func jettyVersion(jenkins string) string {
 	if strings.HasPrefix(jenkins, "2.3") {
 		return "Jetty(9.4.50.v20221201)"
@@ -787,7 +781,7 @@ func appTomcat(c *reqCtx, p string) {
 	case "/favicon.ico":
 		c.favicon("tomcat")
 	default:
-		c.html(404, fmt.Sprintf("<!doctype html><html lang=\"en\"><head><title>HTTP Status 404 – Not Found</title><style type=\"text/css\">body {font-family:Tahoma,Arial,sans-serif;}</style></head><body><h1>HTTP Status 404 – Not Found</h1><hr class=\"line\" /><p><b>Type</b> Status Report</p><p><b>Description</b> The origin server did not find a current representation for the target resource or is not willing to disclose that one exists.</p><hr class=\"line\" /><h3>Apache Tomcat/%s</h3></body></html>", v))
+		c.html(404, fmt.Sprintf("<!doctype html><html lang=\"en\"><head><title>HTTP Status 404 - Not Found</title><style type=\"text/css\">body {font-family:Tahoma,Arial,sans-serif;}</style></head><body><h1>HTTP Status 404 - Not Found</h1><hr class=\"line\" /><p><b>Type</b> Status Report</p><p><b>Description</b> The origin server did not find a current representation for the target resource or is not willing to disclose that one exists.</p><hr class=\"line\" /><h3>Apache Tomcat/%s</h3></body></html>", v))
 	}
 }
 
@@ -857,8 +851,6 @@ func appIISAspNet(c *reqCtx, p string) {
 		c.notFound()
 	}
 }
-
-// ---------------------------------------------------------------- appliances
 
 func appSynology(c *reqCtx, p string) {
 	c.set("Server", "nginx", "X-Content-Type-Options", "nosniff", "X-XSS-Protection", "1; mode=block", "X-Frame-Options", "SAMEORIGIN",
@@ -963,8 +955,6 @@ func appHikvision(c *reqCtx, p string) {
 		c.html(404, "<!DOCTYPE html><html><head><title>Document Error: Page not found</title></head><body><h2>Access Error: 404 -- Not Found</h2><p>Can't locate document: "+p+"</p></body></html>")
 	}
 }
-
-// ---------------------------------------------------------------- identity, VCS, observability
 
 func appGitLab(c *reqCtx, p string) {
 	c.set("Server", "nginx", "X-Content-Type-Options", "nosniff", "X-Frame-Options", "SAMEORIGIN", "X-Xss-Protection", "1; mode=block",
@@ -1188,8 +1178,6 @@ rcmail.set_env({"task":"login","standard_windows":false,"locale":"pl_PL","devel_
 	}
 }
 
-// ---------------------------------------------------------------- app frameworks / staging
-
 func appExpress(c *reqCtx, p string) {
 	c.set("X-Powered-By", "Express")
 	sess := func() {
@@ -1209,7 +1197,7 @@ func appExpress(c *reqCtx, p string) {
   <link rel="stylesheet" href="/stylesheets/style.css">
 </head>
 <body>
-  <div class="env-banner" style="background:#f0ad4e">ŚRODOWISKO TESTOWE (staging) – dane nieprodukcyjne, build 1.12.0-rc.3</div>
+  <div class="env-banner" style="background:#f0ad4e">ŚRODOWISKO TESTOWE (staging): dane nieprodukcyjne, build 1.12.0-rc.3</div>
   <h1>%[2]s</h1>
   <p><a href="/login">Zaloguj się</a></p>
   <footer>%[2]s staging &middot; api: http://staging-api.lab.agh.local:4000 &middot; v1.12.0-rc.3</footer>
@@ -1289,7 +1277,7 @@ func appCustomAdmin(c *reqCtx, p string) {
 		c.html(200, fmt.Sprintf("<!DOCTYPE html>\n<html lang=\"pl\">\n<head><meta charset=\"utf-8\"><title>%[1]s</title><link rel=\"stylesheet\" href=\"/assets/css/app.css?v=%[2]s\"></head>\n<body>\n<nav><a href=\"/\">Start</a> | <a href=\"/admin\">Administracja</a></nav>\n<h1>%[1]s</h1>\n<p>System wewnętrzny CBI AGH. Dostęp wyłącznie dla upoważnionych pracowników.</p>\n<footer>%[1]s v%[2]s &copy; 2024 CBI AGH</footer>\n</body>\n</html>\n", c.s.Site, c.s.Ver))
 	case "/admin", "/admin/", "/login", "/admin/login.php":
 		sess()
-		c.html(200, fmt.Sprintf("<!DOCTYPE html>\n<html lang=\"pl\">\n<head><meta charset=\"utf-8\"><title>Panel administracyjny – %[1]s</title></head>\n<body class=\"login\">\n<h1>Panel administracyjny</h1>\n<form method=\"post\" action=\"/admin/login.php\"><label>Login <input name=\"login\"></label><label>Hasło <input type=\"password\" name=\"haslo\"></label><button type=\"submit\">Zaloguj</button></form>\n<footer>%[1]s v%[2]s</footer>\n</body>\n</html>\n", c.s.Site, c.s.Ver))
+		c.html(200, fmt.Sprintf("<!DOCTYPE html>\n<html lang=\"pl\">\n<head><meta charset=\"utf-8\"><title>Panel administracyjny - %[1]s</title></head>\n<body class=\"login\">\n<h1>Panel administracyjny</h1>\n<form method=\"post\" action=\"/admin/login.php\"><label>Login <input name=\"login\"></label><label>Hasło <input type=\"password\" name=\"haslo\"></label><button type=\"submit\">Zaloguj</button></form>\n<footer>%[1]s v%[2]s</footer>\n</body>\n</html>\n", c.s.Site, c.s.Ver))
 	case "/favicon.ico":
 		c.favicon("agh-custom-admin")
 	default:

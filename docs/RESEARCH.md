@@ -50,7 +50,7 @@ Wektory odtworzysz skryptem `backend/internal/fingerprint/testdata/jarm/katgen.p
 
 **Model.** Rozdzielamy dwie rzeczy:
 
-1. **Dostępność hosta, który istnieje**, osobno dla 4 okien doby (00–06, 06–12, 12–18, 18–24):
+1. **Dostępność hosta, który istnieje**, osobno dla 4 okien doby (00-06, 06-12, 12-18, 18-24):
    `p_s ~ Beta(α_s, β_s)`. Odpowiedź dodaje 1 do `α_s`. Brak odpowiedzi, po którym host wrócił, dodaje 1 do `β_s`: to był przestój, a host nadal istnieje. Stare obserwacje tracą wagę wykładniczo z okresem połowicznym **H = 14 dni**, więc model uczy się zmian zachowania. Prior to `Beta(2; 0,5)`, czyli średnio 80% dostępności przy wadze 2,5 obserwacji.
 2. **Trwająca seria braków** `k_s` w każdym oknie. Gdy host istnieje, prawdopodobieństwo takiej serii daje rozkład beta-dwumianowy. Gdy hosta już nie ma, braki są pewne:
 
@@ -60,7 +60,7 @@ L = Π_s Π_{i<k_s} (β_s + i) / (α_s + β_s + i)
 P(host istnieje | historia, seria braków) = π·L / (π·L + (1 − π)),   π = 0,9
 ```
 
-**Reguła (jeden akapit na slajd).** Host przechodzi w stan **INACTIVE**, gdy prawdopodobieństwo, że nadal istnieje, spada poniżej **5%** i jednocześnie spełnione są minima z profilu skanu: `missing_threshold` kolejnych braków (domyślnie 3) oraz `grace_period_hours` od ostatniej odpowiedzi (domyślnie 72 h). Braki w oknie, w którym host zwykle nie działa, prawie nie obniżają tego prawdopodobieństwa, bo `β_s` jest tam duże. Dlatego host aktywny w godzinach 07–19 nie zostanie uznany za nieaktywny w nocy. Stanie się INACTIVE dopiero wtedy, gdy przestanie odpowiadać także w dzień. Każda decyzja ma czytelne uzasadnienie, np.:
+**Reguła (jeden akapit na slajd).** Host przechodzi w stan **INACTIVE**, gdy prawdopodobieństwo, że nadal istnieje, spada poniżej **5%** i jednocześnie spełnione są minima z profilu skanu: `missing_threshold` kolejnych braków (domyślnie 3) oraz `grace_period_hours` od ostatniej odpowiedzi (domyślnie 72 h). Braki w oknie, w którym host zwykle nie działa, prawie nie obniżają tego prawdopodobieństwa, bo `β_s` jest tam duże. Dlatego host aktywny w godzinach 07-19 nie zostanie uznany za nieaktywny w nocy. Stanie się INACTIVE dopiero wtedy, gdy przestanie odpowiadać także w dzień. Każda decyzja ma czytelne uzasadnienie, np.:
 
 > *INACTIVE: prawdopodobieństwo, że host nadal działa: 1% po 4 nieudanych próbach (okno nocne 00-06: 1× (hist. dostępność 16%); okno poranne 06-12: 1× (hist. dostępność 96%); okno popołudniowe 12-18: 1× (hist. dostępność 96%); okno wieczorne 18-24: 1× (hist. dostępność 16%)) < próg 5%*
 
@@ -70,7 +70,7 @@ P(host istnieje | historia, seria braków) = π·L / (π·L + (1 − π)),   π 
 |---|---|---|
 | Stabilny (zawsze odpowiadał) | **2** (z domyślnymi minimami decyduje okres 72 h: INACTIVE w pierwszym skanie po jego upływie) | brak u takiego hosta jest bardzo mało prawdopodobny |
 | Niestabilny (~50% odpowiedzi) | **7** | braki są u niego normalne, więc potrzeba więcej dowodów |
-| Działa tylko 07–19 | **nigdy w nocy**; po zniknięciu INACTIVE po 2 brakach w oknach dziennych | nocne braki są zgodne z harmonogramem |
+| Działa tylko 07-19 | **nigdy w nocy**; po zniknięciu INACTIVE po 2 brakach w oknach dziennych | nocne braki są zgodne z harmonogramem |
 | Wraca po przestoju | seria braków trafia do `β` jako przestój | dzięki temu model uczy się realnej dostępności hosta |
 
 **Zgodność wsteczna.** Stany (NEW/ACTIVE/INTERMITTENT/MISSING/INACTIVE/REACTIVATED), pola API i zdarzenia (`HOST_MISSING`, `HOST_INACTIVE`, `EXPECTED_OFF_HOURS`, `TIME_ANOMALY`) zostają bez zmian. Dochodzą:
@@ -107,16 +107,16 @@ Każda technologia w API ma pole `explanation` z rachunkiem, np. `html 0.80 ⊕ 
 
 | Przewidywana pewność | Przed: n | Przed: precyzja | Po: n | Po: precyzja |
 |---|---|---|---|---|
-| 0–49% | 0 | – | 23 | 0% (śr. przew. 25%) |
-| 60–69% | 382 | 100% | 14 | 100% |
-| 70–79% | 25 | 100% | 426 | 100% |
-| 80–89% | 161 | **67%** (śr. przew. 85%) | 1513 | 98% |
-| 90–94% | 92 | 100% | 16 | 100% |
-| 95–100% | 1656 | 100% | 324 | 100% |
+| 0-49% | 0 | - | 23 | 0% (śr. przew. 25%) |
+| 60-69% | 382 | 100% | 14 | 100% |
+| 70-79% | 25 | 100% | 426 | 100% |
+| 80-89% | 161 | **67%** (śr. przew. 85%) | 1513 | 98% |
+| 90-94% | 92 | 100% | 16 | 100% |
+| 95-100% | 1656 | 100% | 324 | 100% |
 | **Nadmierna pewność (OCE)** | | **1,3 pp** | | **0,2 pp** |
 | ECE (dwustronny) | | 8,8 pp | | 16,6 pp |
 
-**Jak to czytać.** Stary model dawał 85–90% pojedynczemu trafieniu w ścieżkę (np. „Prometheus”, bo odpowiada `/metrics`), a w tym przedziale tylko 67% predykcji było trafnych. Nowy model nie przecenia pewności w żadnym przedziale powyżej 50%. Ceną jest zamierzona ostrożność: laboratorium jest „czyste” (nikt nie podmienia nagłówków), więc wykrycia z jednego nagłówka są w nim zawsze trafne, a my i tak pokazujemy dla nich 78–80%. W prawdziwej sieci proxy, WAF-y i load balancery zmieniają nagłówki. Dlatego wolimy zaniżać pewność niż ją zawyżać. Pomiar powtórzysz poleceniem `calibrate -replay obs.jsonl` (bez sieci) albo zbierzesz nowe dane w kontenerze w `dzieciol-net`.
+**Jak to czytać.** Stary model dawał 85-90% pojedynczemu trafieniu w ścieżkę (np. „Prometheus”, bo odpowiada `/metrics`), a w tym przedziale tylko 67% predykcji było trafnych. Nowy model nie przecenia pewności w żadnym przedziale powyżej 50%. Ceną jest zamierzona ostrożność: laboratorium jest „czyste” (nikt nie podmienia nagłówków), więc wykrycia z jednego nagłówka są w nim zawsze trafne, a my i tak pokazujemy dla nich 78-80%. W prawdziwej sieci proxy, WAF-y i load balancery zmieniają nagłówki. Dlatego wolimy zaniżać pewność niż ją zawyżać. Pomiar powtórzysz poleceniem `calibrate -replay obs.jsonl` (bez sieci) albo zbierzesz nowe dane w kontenerze w `dzieciol-net`.
 
 ---
 

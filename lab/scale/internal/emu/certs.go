@@ -13,10 +13,10 @@ import (
 	"time"
 )
 
-// CertStore lazily mints one certificate per (ip, kind) at handshake time.
-// valid       — issued by an internal CA, currently valid, CN = host FQDN
-// self_signed — issuer == subject, long validity (appliance default)
-// expired     — issued by the internal CA, NotAfter in the past
+// CertStore lazily mints one certificate per (ip, kind) at handshake time:
+//   - valid: issued by an internal CA, currently valid, CN = host FQDN
+//   - self_signed: issuer == subject, long validity (appliance default)
+//   - expired: issued by the internal CA, NotAfter in the past
 type CertStore struct {
 	mu     sync.Mutex
 	key    *ecdsa.PrivateKey

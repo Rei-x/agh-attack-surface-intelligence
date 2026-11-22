@@ -67,7 +67,7 @@ cykl życia hostów, sygnatury, szyfrowanie w spoczynku.
 | inne, bez portu (np. `SSH Policy Violation`) | tag `scb:<kategoria>` na hoście |
 | bez adresu IP (np. `Subdomain`) | pomijamy. Inwentarz jest indeksowany po IP, a podczas importu nie rozwiązujemy nazw DNS. |
 
-Limity: 32 MiB i 500 000 findingów na plik. Porty spoza 1–65535 i niepoprawne adresy IP
+Limity: 32 MiB i 500 000 findingów na plik. Porty spoza 1-65535 i niepoprawne adresy IP
 są odrzucane.
 
 ### Dane testowe z SCB
@@ -153,7 +153,7 @@ reguły kaskadowe, a jego wyniki zaimportować z powrotem do Dzięcioł.
 
 | Wymaganie zadania | SCB | Dzięcioł |
 |---|---|---|
-| Okna czasowe skanowania z pauzą i wznowieniem | ScheduledScan uruchamia skan, ale nie pauzuje go w trakcie | okno HH:MM–HH:MM ze strefą czasową. Przebieg pauzuje się na końcu okna (`PAUSED_WINDOW`) i wznawia od niedokończonego chunku |
+| Okna czasowe skanowania z pauzą i wznowieniem | ScheduledScan uruchamia skan, ale nie pauzuje go w trakcie | okno HH:MM-HH:MM ze strefą czasową. Przebieg pauzuje się na końcu okna (`PAUSED_WINDOW`) i wznawia od niedokończonego chunku |
 | >10 000 IP bez obciążania sieci | jeden pod nmap na cały zakres (lub ręczne dzielenie) | adaptacyjny podział na chunki (`chunk_target_sec`), Target Noise Governor (wycofanie przy timeoutach i RST), limity pps i rps na profil |
 | Wykrywanie zmian między skanami | brak (każdy skan to osobny zbiór findingów) | diff nowe/zniknięte/zmienione usługi, cykl życia hosta NEW→ACTIVE→MISSING z histerezą, wykrywanie hostów migających (flapping) i działających tylko o pewnych porach (model bayesowski) |
 | Kontrola dostępu | RBAC Kubernetesa | 4 role aplikacyjne (admin, operator, analyst, viewer), uprawnienia per endpoint, dziennik audytu |

@@ -1,10 +1,10 @@
 <p align="center"><img src="docs/assets/dzieciol-cover.png" alt="Dzięcioł. Knocks on every address. Shows what changed." width="640"></p>
 
-# Dzięcioł — Attack Surface Intelligence dla CBI AGH
+# Dzięcioł: Attack Surface Intelligence dla CBI AGH
 
 > Knocks on every address. Shows what changed.
 
-Cykliczne discovery i analiza zmian powierzchni ataku w sieciach powyżej 10 000 adresów IP. Projekt na **HackNation 2026** dla **Centrum Bezpieczeństwa Informacji AGH**.
+Cykliczne discovery i analiza zmian powierzchni ataku w sieciach powyżej 10 000 adresów IP. Projekt na HackNation 2026 dla Centrum Bezpieczeństwa Informacji AGH.
 
 Jeden plik binarny `dzieciol` (Go) zawiera skaner, potok analizy, REST API z SSE, panel React i narzędzia CLI. Domyślnie dane trzyma w zaszyfrowanym pliku, opcjonalnie w PostgreSQL. Skan jest dzielony na chunki z punktami kontrolnymi, mieści się w oknach czasowych i ma jeden budżet pakietów na cały skan. Zmiany między skanami (nowe/zniknięte hosty, usługi, wersje) trafiają do panelu, webhooka i DefectDojo.
 
@@ -110,12 +110,12 @@ Bez Dockera, bez bazy danych, bez uprawnień roota.
 curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sh
 ```
 
-Skrypt wykrywa system i architekturę (macOS arm64/amd64, Linux amd64/arm64, Windows amd64 w Git Bash), pobiera plik z [GitHub Releases](https://github.com/Rei-x/agh-attack-surface-intelligence/releases), **weryfikuje sumę SHA-256** i instaluje do `~/.local/bin` (albo `/usr/local/bin`, gdy uruchomiony jako root). Konkretna wersja: `DZIECIOL_VERSION=v1.2.0`, inny katalog: `DZIECIOL_INSTALL_DIR=...`.
+Skrypt wykrywa system i architekturę (macOS arm64/amd64, Linux amd64/arm64, Windows amd64 w Git Bash), pobiera plik z [GitHub Releases](https://github.com/Rei-x/agh-attack-surface-intelligence/releases), weryfikuje sumę SHA-256 i instaluje do `~/.local/bin` (albo `/usr/local/bin`, gdy uruchomiony jako root). Konkretna wersja: `DZIECIOL_VERSION=v1.2.0`, inny katalog: `DZIECIOL_INSTALL_DIR=...`.
 
 Ręcznie: pobierz `dzieciol-<os>-<arch>` oraz `checksums.txt` z Releases, sprawdź `grep dzieciol-darwin-arm64 checksums.txt | shasum -a 256 -c`, nadaj `chmod +x`. (macOS, plik pobrany przeglądarką: `xattr -d com.apple.quarantine dzieciol-darwin-arm64`.)
 
-**Opcjonalnie nmap** — bez niego działa wbudowany skaner pure-Go (TCP connect + banner grabbing); z nmapem dostajesz detekcję wersji `-sV`:
-`brew install nmap` / `sudo apt install nmap` / `winget install Insecure.Nmap`. Root nie jest potrzebny (skan TCP connect `-sT`; na macOS bez roota nmap nie wysyła ICMP — wykrywanie hostów idzie przez TCP).
+nmap jest opcjonalny. Bez niego działa wbudowany skaner pure-Go (TCP connect + banner grabbing), z nim dochodzi detekcja wersji `-sV`:
+`brew install nmap` / `sudo apt install nmap` / `winget install Insecure.Nmap`. Root nie jest potrzebny: nmap robi wtedy skan TCP connect `-sT`. Na macOS bez roota nmap nie wysyła ICMP, więc hosty wykrywa przez TCP.
 
 ### 2. Panel webowy
 
@@ -124,7 +124,7 @@ dzieciol serve                   # http://localhost:8080
 dzieciol serve --listen 127.0.0.1:9000 --data-dir ./dane
 ```
 
-Przy pierwszym uruchomieniu w terminalu pojawi się adres i konta demo (tabela wyżej). Domyślnie `:8080` nasłuchuje na wszystkich interfejsach — na współdzielonej sieci użyj `--listen 127.0.0.1:8080`.
+Przy pierwszym uruchomieniu w terminalu pojawi się adres i konta demo (tabela wyżej). Domyślnie `:8080` nasłuchuje na wszystkich interfejsach, więc we współdzielonej sieci użyj `--listen 127.0.0.1:8080`.
 
 ### 3. Skan z terminala
 
@@ -136,9 +136,9 @@ dzieciol scan --profile "Szybki Skan Demo"             # zapisany profil z UI
 dzieciol scan 127.0.0.1 -p 22,8080 --ignore-exclusions    # lokalny test (127.0.0.0/8 jest domyślnie wykluczone)
 ```
 
-W trakcie skanu widać pasek postępu (hosty zrobione/wszystkie, hosts/s, ETA, liczba żywych hostów i usług), a na końcu tabelę: żywe hosty, najciekawsze znaleziska (panele admina, środowiska staging, IoT, wykryte technologie) oraz **zmiany względem poprzedniego skanu** (nowe / zniknięte hosty, nowe / zamknięte / zmienione usługi). Wyniki trafiają do tej samej bazy, więc `dzieciol serve` od razu je pokazuje.
+W trakcie skanu widać pasek postępu (hosty zrobione/wszystkie, hosts/s, ETA, liczba żywych hostów i usług), a na końcu tabelę: żywe hosty, najciekawsze znaleziska (panele admina, środowiska staging, IoT, wykryte technologie) oraz zmiany względem poprzedniego skanu (nowe / zniknięte hosty, nowe / zamknięte / zmienione usługi). Wyniki trafiają do tej samej bazy, więc `dzieciol serve` od razu je pokazuje.
 
-Magazyn danych ma jednego pisarza: jeśli działa `dzieciol serve` na tym samym katalogu, `dzieciol scan` odmówi z czytelnym komunikatem — wtedy uruchom skan z panelu (zakładka *Skaner*) albo zatrzymaj serwer.
+Magazyn danych ma jednego pisarza: jeśli działa `dzieciol serve` na tym samym katalogu, `dzieciol scan` odmówi z czytelnym komunikatem. Wtedy uruchom skan z panelu (zakładka *Skaner*) albo zatrzymaj serwer.
 
 ### 4. Pozostałe polecenia
 
@@ -158,8 +158,8 @@ Domyślnie `~/.dzieciol` (zmiana: `--data-dir` lub `DZIECIOL_DATA_DIR`):
 
 | Plik | Zawartość |
 | :--- | :--- |
-| `dzieciol-store.enc` | cała baza, zaszyfrowana AES-256-GCM (klucz pochodny od klucza głównego); w środku pola wrażliwe (IP, hostname, bannery, nagłówki HTTP, notatki, e-maile) są **dodatkowo** szyfrowane per rekord wersjonowanymi kluczami DEK — tak samo jak w trybie PostgreSQL |
-| `master.key` | klucz główny (256 bit, generowany przy pierwszym uruchomieniu, prawa `0600`) — **zrób kopię**, bez niego danych nie da się odczytać. Można go zastąpić zmienną `DZIECIOL_MASTER_KEY` |
+| `dzieciol-store.enc` | cała baza, zaszyfrowana AES-256-GCM (klucz pochodny od klucza głównego); w środku pola wrażliwe (IP, hostname, bannery, nagłówki HTTP, notatki, e-maile) są dodatkowo szyfrowane per rekord wersjonowanymi kluczami DEK, tak samo jak w trybie PostgreSQL |
+| `master.key` | klucz główny (256 bit, generowany przy pierwszym uruchomieniu, prawa `0600`). **Zrób kopię**: bez niego danych nie da się odczytać. Można go zastąpić zmienną `DZIECIOL_MASTER_KEY` |
 | `dzieciol.lock` | blokada: tylko jeden proces zapisuje do magazynu |
 
 Zapis jest atomowy (plik tymczasowy + fsync + rename): po ~1,5 s bez zmian, najpóźniej co 10 s przy ciągłych zapisach oraz przy zamknięciu (Ctrl+C).

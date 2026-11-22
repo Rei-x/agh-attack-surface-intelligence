@@ -32,7 +32,6 @@ say() { printf '%s\n' "dzieciol-install: $*"; }
 die() { printf '%s\n' "dzieciol-install: error: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
 
-# --- detect platform ---------------------------------------------------------
 os=$(uname -s 2>/dev/null || echo unknown)
 arch=$(uname -m 2>/dev/null || echo unknown)
 case "$os" in
@@ -61,7 +60,6 @@ else
   base="https://github.com/$REPO/releases/download/$VERSION"
 fi
 
-# --- pick downloader & hasher -----------------------------------------------
 if command -v curl >/dev/null 2>&1; then
   fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
 elif command -v wget >/dev/null 2>&1; then
@@ -79,7 +77,6 @@ fi
 need awk
 need uname
 
-# --- install dir --------------------------------------------------------------
 if [ -n "$INSTALL_DIR" ]; then
   dir="$INSTALL_DIR"
 elif [ "$(id -u 2>/dev/null || echo 1)" = 0 ]; then
@@ -90,7 +87,6 @@ fi
 mkdir -p "$dir" || die "cannot create $dir (set DZIECIOL_INSTALL_DIR)"
 [ -w "$dir" ] || die "$dir is not writable (set DZIECIOL_INSTALL_DIR, e.g. DZIECIOL_INSTALL_DIR=\$HOME/.local/bin)"
 
-# --- download & verify --------------------------------------------------------
 tmp=$(mktemp -d 2>/dev/null || mktemp -d -t dzieciol)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 

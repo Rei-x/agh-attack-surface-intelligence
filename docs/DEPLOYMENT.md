@@ -1,10 +1,10 @@
-# Dzięcioł — Deployment, Lab & Production Hardening Guide
+# Dzięcioł: deployment, lab and production hardening
 
-This guide covers the single-binary install (no Docker), quick-start deployment with Docker Compose, running the deterministic university test lab, verifying encryption and RBAC end-to-end, key rotation, and production hardening for **CBI AGH**.
+This guide covers the single-binary install (no Docker), a quick-start deployment with Docker Compose, the deterministic university test lab, end-to-end checks of encryption and RBAC, key rotation, and production hardening for CBI AGH.
 
 ---
 
-## 0. Single Binary (no Docker, no database)
+## 0. Single binary (no Docker, no database)
 
 The `dzieciol` binary contains the web UI (embedded with `go:embed`), the REST API, the scanner
 and the CLI. It is a static `CGO_ENABLED=0` build for darwin/arm64, darwin/amd64,
@@ -172,7 +172,7 @@ publishes the binaries, `checksums.txt` and `install.sh` as a GitHub Release.
 ## 0a. Zdalni agenci skanujący (`dzieciol agent`)
 
 Agent to ten sam plik binarny uruchomiony jako lekki demon wewnątrz innego segmentu sieci
-(VLAN innego wydziału, inna uczelnia, sieć za NAT-em). Łączy się **wyłącznie wychodząco** do
+(VLAN innego wydziału, inna uczelnia, sieć za NAT-em). Łączy się wyłącznie wychodząco do
 centralnego serwera Dzięcioł, pobiera zadania skanowania, skanuje lokalnie tym samym silnikiem
 (chunki, limity PPS, okna czasowe, wykluczenia) i odsyła wyniki. Serwer nigdy nie łączy się z
 agentem, agent nie otwiera żadnego portu.
@@ -198,17 +198,17 @@ agentem, agent nie otwiera żadnego portu.
 
 Sekwencja wywołań (JSON, `Authorization: Bearer <poświadczenie agenta>`):
 
-1. `POST /api/v1/agent/enroll` – jednorazowy token -> `agent_id` + poświadczenie (zapisane 0600 w `agent.json`).
-2. `POST /api/v1/agent/heartbeat` co 15 s – wersja, możliwości (nmap, root, allowlista); odpowiedź niesie polecenia `pause`/`stop` dla bieżącego skanu.
-3. `POST /api/v1/agent/jobs/next?wait=25` – long-poll; zwraca profil, wykluczenia i księgę chunków (pusta = nowy skan, inaczej wznowienie od punktu kontrolnego).
-4. `POST /jobs/{id}/start` – agent planuje chunki własnym DNS-em i wysyła księgę.
-5. `POST /jobs/{id}/chunks` – wynik każdego zakończonego chunku (obserwacje); serwer wpuszcza je przez `Pipeline.ProcessObservations` z wykrywaniem zniknięć ograniczonym do IP tego chunku. Idempotentne po `chunk.id`.
-6. `POST /jobs/{id}/progress` co 2 s – liczniki, księga, zdarzenia na żywo (przekazywane do SSE, więc UI działa bez zmian).
-7. `POST /jobs/{id}/finish` – koniec segmentu: `completed` / `paused_window` / `paused_user` / `stopped` / `interrupted` / `failed` / `refused` + scalony surowy XML nmap. Idempotentne po `segment_id`.
+1. `POST /api/v1/agent/enroll`: jednorazowy token -> `agent_id` + poświadczenie (zapisane 0600 w `agent.json`).
+2. `POST /api/v1/agent/heartbeat` co 15 s: wersja, możliwości (nmap, root, allowlista); odpowiedź niesie polecenia `pause`/`stop` dla bieżącego skanu.
+3. `POST /api/v1/agent/jobs/next?wait=25`: long-poll, zwraca profil, wykluczenia i księgę chunków (pusta = nowy skan, inaczej wznowienie od punktu kontrolnego).
+4. `POST /jobs/{id}/start`: agent planuje chunki własnym DNS-em i wysyła księgę.
+5. `POST /jobs/{id}/chunks`: wynik każdego zakończonego chunku (obserwacje). Serwer wpuszcza je przez `Pipeline.ProcessObservations` z wykrywaniem zniknięć ograniczonym do IP tego chunku. Idempotentne po `chunk.id`.
+6. `POST /jobs/{id}/progress` co 2 s: liczniki, księga, zdarzenia na żywo (przekazywane do SSE, więc UI działa bez zmian).
+7. `POST /jobs/{id}/finish`: koniec segmentu ze statusem `completed` / `paused_window` / `paused_user` / `stopped` / `interrupted` / `failed` / `refused` i scalonym surowym XML nmap. Idempotentne po `segment_id`.
 
 ### Instalacja
 
-1. W UI: **Skany -> Agenci -> Dodaj agenta** (wymaga `admin:settings`). Token jest pokazany raz, ważny 1–720 h, jednorazowy, przechowywany tylko jako SHA-256.
+1. W UI: **Skany -> Agenci -> Dodaj agenta** (wymaga `admin:settings`). Token jest pokazany raz, ważny 1-720 h, jednorazowy, przechowywany tylko jako SHA-256.
 2. Na maszynie w segmencie (Linux + systemd, root):
 
 ```bash
@@ -235,36 +235,36 @@ aktywnych przebiegów.
 
 ### Model bezpieczeństwa
 
-- **Token rejestracyjny**: losowe 256 bitów, jednorazowy, z datą ważności, w bazie tylko SHA-256; można go unieważnić.
-- **Poświadczenie agenta** (`agt.<id>.<sekret>`): losowe 256 bitów, w bazie tylko SHA-256 (porównanie w stałym czasie). Otwiera **wyłącznie** `/api/v1/agent/*`; tokeny użytkowników (JWT) są tam odrzucane (401), a poświadczenie agenta na endpointach użytkowników też daje 401 (test `TestAgentAuthIsolation`). Agent widzi i raportuje tylko swoje zadania; wyłączenie/usunięcie agenta w UI natychmiast blokuje poświadczenie.
-- **TLS**: certyfikat serwera weryfikowany domyślnie; `--ca-file` dla wewnętrznego CA; `--insecure` tylko w laboratorium. Zwykły HTTP jest odrzucany poza adresem lokalnym.
-- **Lokalna allowlista** (`--allow-cidr`): agent odmawia (`refused`, z notatką w skanie) każdego zadania, którego cel lub chunk wychodzi poza dozwolone sieci – przejęty serwer nie zmusi agenta do skanowania dowolnych sieci.
-- **Unit systemd**: `DynamicUser`, `NoNewPrivileges`, `ProtectSystem=strict`, puste `CapabilityBoundingSet` – agent działa bez uprawnień.
+- Token rejestracyjny: losowe 256 bitów, jednorazowy, z datą ważności, w bazie tylko SHA-256; można go unieważnić.
+- Poświadczenie agenta (`agt.<id>.<sekret>`): losowe 256 bitów, w bazie tylko SHA-256 (porównanie w stałym czasie). Otwiera wyłącznie `/api/v1/agent/*`; tokeny użytkowników (JWT) są tam odrzucane (401), a poświadczenie agenta na endpointach użytkowników też daje 401 (test `TestAgentAuthIsolation`). Agent widzi i raportuje tylko swoje zadania; wyłączenie/usunięcie agenta w UI natychmiast blokuje poświadczenie.
+- TLS: certyfikat serwera weryfikowany domyślnie; `--ca-file` dla wewnętrznego CA; `--insecure` tylko w laboratorium. Zwykły HTTP jest odrzucany poza adresem lokalnym.
+- Lokalna allowlista (`--allow-cidr`): agent odmawia (`refused`, z notatką w skanie) każdego zadania, którego cel lub chunk wychodzi poza dozwolone sieci. Przejęty serwer nie zmusi więc agenta do skanowania dowolnych sieci.
+- Unit systemd: `DynamicUser`, `NoNewPrivileges`, `ProtectSystem=strict`, puste `CapabilityBoundingSet`, więc agent działa bez uprawnień.
 - Stan agentów (rejestr, tokeny, zadania) leży w zaszyfrowanych dokumentach `app_settings` (plik `dzieciol-store.enc` lub PostgreSQL), jak reszta danych.
 
 ### Odporność
 
-- Wyniki każdego chunku trafiają najpierw do `outbox/` (fsync), dopiero potem są wysyłane – utrata sieci lub restart agenta niczego nie gubi; wysyłka z wykładniczym backoffem.
+- Wyniki każdego chunku trafiają najpierw do `outbox/` (fsync), a dopiero potem są wysyłane, więc utrata sieci lub restart agenta niczego nie gubi. Wysyłka ponawia się z wykładniczym backoffem.
 - Agent milczący dłużej niż `DZIECIOL_AGENT_OFFLINE_AFTER` (domyślnie 90 s) jest oznaczany offline, a jego skan przechodzi w `PAUSED_WINDOW` z notatką; po powrocie agent dostaje ten sam skan i wznawia od punktu kontrolnego (chunki DONE są pomijane).
 - Restart serwera nie przerywa skanów agentów (lokalny mechanizm odzyskiwania je pomija).
 
 ### Porównanie
 
-- **runZero Explorer / Rapid7 Scan Engine (engine-to-console)**: ten sam wzorzec – lekki skaner w segmencie, tylko połączenie wychodzące do konsoli, rejestracja tokenem.
-- **Tenable Nessus linked scanner / agent**: jak „linking key” – jednorazowy klucz zamieniany na tożsamość skanera, zadania pobierane z centrali.
+- runZero Explorer / Rapid7 Scan Engine (engine-to-console): ten sam wzorzec, czyli lekki skaner w segmencie, tylko połączenie wychodzące do konsoli i rejestracja tokenem.
+- Tenable Nessus linked scanner / agent: odpowiednik „linking key”, czyli jednorazowego klucza zamienianego na tożsamość skanera; zadania są pobierane z centrali.
 - Różnica: jeden plik binarny dla serwera i agenta, wyniki przechodzą przez ten sam potok co skany lokalne i import, plus lokalna allowlista po stronie agenta.
 
 ---
 
 ## 1. Prerequisites
 
-- **Docker Engine** 24+ and **Docker Compose v2** (`docker compose version`)
+- Docker Engine 24+ and Docker Compose v2 (`docker compose version`)
 - Optional for local verification scripts: `bash`, `curl`, `jq`
 - Minimum resources: 1 vCPU, 512 MB RAM (production with 65k IP scans: 2 vCPU, 2 GB RAM, SSD for PostgreSQL)
 
 ---
 
-## 2. Quick Start (Application + PostgreSQL)
+## 2. Quick start (application + PostgreSQL)
 
 ```bash
 # 1. Start PostgreSQL 17 and Dzięcioł (multi-stage build: React UI + Go binary + nmap)
@@ -274,9 +274,9 @@ docker compose up -d --build
 curl -s http://localhost:8080/api/v1/health | jq .
 ```
 
-Open the SOC Dashboard at **http://localhost:8080**.
+Open the SOC dashboard at http://localhost:8080.
 
-### Seeded Demo Accounts (`DZIECIOL_SEED_DEMO=true`)
+### Seeded demo accounts (`DZIECIOL_SEED_DEMO=true`)
 
 | Username | Password | Role (Polish) | Key Capabilities |
 | :--- | :--- | :--- | :--- |
@@ -285,20 +285,20 @@ Open the SOC Dashboard at **http://localhost:8080**.
 | `analyst` | `Analyst123!` | Modyfikacja i odczyt | Curate hosts/services (preserved overrides), edit scan notes, test signatures, export |
 | `viewer` | `Viewer123!` | Odczyt | Read-only dashboard, graph, assets, diff, signatures, export (`403` on all writes) |
 
-> **Production Note:** Set `DZIECIOL_SEED_DEMO=false` before exposing Dzięcioł on a production network and provision real operator accounts via the Admin panel.
+> In production, set `DZIECIOL_SEED_DEMO=false` before exposing Dzięcioł on the network, and create real operator accounts in the Admin panel.
 
 ---
 
-## 3. Running the Deterministic University Test Lab
+## 3. Running the deterministic university test lab
 
-The test lab (`docker-compose.lab.yml`) spins up 6 ultra-lightweight Python stdlib containers (<100 MB RAM total, <5 s startup, zero external pip installs) on subnet `172.28.0.0/24` sharing `dzieciol-net`:
+The test lab (`docker-compose.lab.yml`) starts 6 small containers that use only the Python standard library (<100 MB RAM total, <5 s startup, no pip installs) on subnet `172.28.0.0/24`, sharing `dzieciol-net`:
 
 ```bash
 # Start Dzięcioł + PostgreSQL + full deterministic test lab + DefectDojo v2 mock
 docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d --build
 ```
 
-### Lab Topology (`172.28.0.0/24`)
+### Lab topology (`172.28.0.0/24`)
 
 | Service | Static IP & Port | Host Exposure | Simulated Asset & Key Signals |
 | :--- | :--- | :--- | :--- |
@@ -309,7 +309,7 @@ docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d --build
 | `lab-flapping` | `172.28.0.14:80` | `:19999` (control) | Dynamic mutating & flapping Moodle host (`normal` / `changed` / `down`) |
 | `lab-defectdojo-mock` | `172.28.0.20:8000` | `:18000` (UI & API) | Offline DefectDojo API v2 receiver + live viewer at **http://localhost:18000/ui** |
 
-### Live Mutation Control (`lab-flapping`)
+### Live mutation control (`lab-flapping`)
 
 Between Scan 1 and Scan 2, toggle `lab-flapping` behavior live without restarting containers:
 
@@ -326,9 +326,9 @@ curl -X POST "http://localhost:19999/control?mode=down"
 
 ---
 
-## 4. Automated Verification Scripts
+## 4. Automated verification scripts
 
-### 4.1 Prove Encryption At Rest Directly in PostgreSQL
+### 4.1 Proving encryption at rest directly in PostgreSQL
 
 ```bash
 ./scripts/verify_encryption.sh
@@ -337,19 +337,19 @@ curl -X POST "http://localhost:19999/control?mode=down"
 Connects directly to PostgreSQL via `docker compose exec -T postgres psql` and verifies:
 - All encrypted columns store `enc:v1:<kid>:...` AES-256-GCM ciphertext and `wrap:v1:<kid>:...` wrapped DEKs.
 - Lookup columns use 64-character hex HMAC-SHA256 blind indexes.
-- Zero plaintext lab IPs, cookies, or debug headers appear in encrypted tables.
+- No plaintext lab IPs, cookies or debug headers appear in encrypted tables.
 
-### 4.2 Full End-to-End Verification Suite
+### 4.2 Full end-to-end verification suite
 
 ```bash
 ./scripts/demo_e2e.sh
 ```
 
-Automates a 10-stage verification covering: health & crypto status, 4-role RBAC `200`/`403` enforcement, 16,384-IP target estimation (`10.0.0.0/18`), manual + CSV (`scripts/sample_import.csv`) + JSON (`scripts/sample_import.json`) unified ingestion, Scan 1 on `172.28.0.10-14`, analyst override curation, live mutation of `lab-flapping`, Scan 2, Scan Diff & override preservation proof, Signature Studio safety validation & retroactive playground (`scripts/sample_signatures.json`), and DefectDojo API v2 export verification.
+Runs a 10-stage verification: health and crypto status, 4-role RBAC `200`/`403` enforcement, 16,384-IP target estimation (`10.0.0.0/18`), manual + CSV (`scripts/sample_import.csv`) + JSON (`scripts/sample_import.json`) unified ingestion, Scan 1 on `172.28.0.10-14`, analyst override curation, live mutation of `lab-flapping`, Scan 2, scan diff and override preservation proof, Signature Studio safety validation and retroactive playground (`scripts/sample_signatures.json`), and DefectDojo API v2 export verification.
 
 ---
 
-## 5. Environment Variables
+## 5. Environment variables
 
 | Variable | Required | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -373,19 +373,19 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 
 ---
 
-## 6. Key Management & Online DEK Rotation
+## 6. Key management and online DEK rotation
 
-### Generating a Production Master Key
+### Generating a production master key
 
 ```bash
 openssl rand -hex 32
 ```
 
-Store `DZIECIOL_MASTER_KEY` in a dedicated secret manager (HashiCorp Vault, Kubernetes SealedSecrets, or systemd `LoadCredential=`) — **never commit it to Git** or bake it into container images.
+Store `DZIECIOL_MASTER_KEY` in a dedicated secret manager (HashiCorp Vault, Kubernetes SealedSecrets, or systemd `LoadCredential=`). **Never commit it to Git** or bake it into container images.
 
-### Rotating the Data Encryption Key (DEK)
+### Rotating the data encryption key (DEK)
 
-Dzięcioł supports zero-downtime DEK rotation via the Admin UI (**Admin → Encryption At Rest → Rotate DEK**) or REST API:
+DEK rotation needs no downtime. Run it from the Admin UI (**Admin → Encryption At Rest → Rotate DEK**) or the REST API:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/admin/crypto/rotate \
@@ -394,16 +394,16 @@ curl -X POST http://localhost:8080/api/v1/admin/crypto/rotate \
 
 1. Generates a fresh 256-bit DEK (`dek-v(N+1)`) and wraps it under `DZIECIOL_MASTER_KEY` (`wrap:v1:dek-v(N+1):...`).
 2. Activates the new DEK for all new writes while retaining previous wrapped DEKs for decryption.
-3. Re-encrypts existing sensitive rows in PostgreSQL under `dek-v(N+1)` verifying every `table:record_id:column` AAD tag.
+3. Re-encrypts existing sensitive rows in PostgreSQL under `dek-v(N+1)`, checking every `table:record_id:column` AAD tag.
 
 ---
 
-## 7. Production Hardening Checklist for CBI AGH
+## 7. Production hardening checklist for CBI AGH
 
-1. **TLS Termination:** Place Dzięcioł behind CBI AGH's reverse proxy (Nginx / Traefik / HAProxy) with TLS 1.3, HSTS, and SSE proxy buffering disabled (`proxy_buffering off;` on `/api/v1/events/stream`).
-2. **Database TLS & Least Privilege:** Enable `sslmode=verify-full` in `DATABASE_URL`, bind PostgreSQL to internal VLAN/loopback only, and use a dedicated non-superuser PostgreSQL role.
-3. **Disable Demo Accounts:** Set `DZIECIOL_SEED_DEMO=false` and enforce strong unique passwords for all SOC personnel.
-4. **Network Capabilities:** The container requests only `NET_RAW` and `NET_ADMIN` so `nmap` can perform fast SYN/ICMP host discovery; drop all other Linux capabilities (`cap_drop: [ALL]`, `cap_add: [NET_RAW, NET_ADMIN]`, `security_opt: [no-new-privileges:true]`) in production.
-5. **Scope/Deny Gate Governance:** Immediately configure permanent `TargetExclusion` rules for sensitive medical/SCADA/safety-critical subnets and core routing infrastructure before scheduling recurring scans.
-6. **Maintenance Windows & Rate Limits:** Configure `window_enabled: true` (e.g., `22:00–06:00` `Europe/Warsaw`) and conservative `max_rate_pps` / `http_rps` values for production campus `/16` sweeps.
-7. **Automated Backups:** Back up both PostgreSQL (`pg_dump`) and `DZIECIOL_MASTER_KEY` separately; without `DZIECIOL_MASTER_KEY`, database backups remain cryptographically unreadable.
+1. TLS termination: put Dzięcioł behind CBI AGH's reverse proxy (Nginx / Traefik / HAProxy) with TLS 1.3, HSTS, and SSE proxy buffering disabled (`proxy_buffering off;` on `/api/v1/events/stream`).
+2. Database TLS and least privilege: enable `sslmode=verify-full` in `DATABASE_URL`, bind PostgreSQL to internal VLAN/loopback only, and use a dedicated non-superuser PostgreSQL role.
+3. Demo accounts: set `DZIECIOL_SEED_DEMO=false` and require strong, unique passwords for all SOC staff.
+4. Network capabilities: the container requests only `NET_RAW` and `NET_ADMIN` so `nmap` can perform fast SYN/ICMP host discovery; drop all other Linux capabilities (`cap_drop: [ALL]`, `cap_add: [NET_RAW, NET_ADMIN]`, `security_opt: [no-new-privileges:true]`) in production.
+5. Scope/Deny Gate: before scheduling recurring scans, configure permanent `TargetExclusion` rules for sensitive medical/SCADA/safety-critical subnets and core routing infrastructure.
+6. Maintenance windows and rate limits: configure `window_enabled: true` (e.g. `22:00-06:00` `Europe/Warsaw`) and conservative `max_rate_pps` / `http_rps` values for production campus `/16` sweeps.
+7. Backups: back up PostgreSQL (`pg_dump`) and `DZIECIOL_MASTER_KEY` separately. Without `DZIECIOL_MASTER_KEY` the database backups cannot be decrypted.

@@ -22,7 +22,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/lab/scale/internal/truth"
 )
 
-// ---------------------------------------------------------------- export model (subset of backend domain.Host)
+// The ex* types mirror the subset of backend domain.Host that the scorer reads.
 
 type exCookie struct {
 	Name     string   `json:"name"`
@@ -84,8 +84,6 @@ type export struct {
 	Count int      `json:"count"`
 	Hosts []exHost `json:"hosts"`
 }
-
-// ---------------------------------------------------------------- helpers
 
 type prf struct{ TP, FP, FN int }
 
@@ -239,8 +237,6 @@ func openSvcs(h exHost) []exService {
 }
 
 func normTitle(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
-
-// ---------------------------------------------------------------- per-run scoring
 
 type runScore struct {
 	Label         string
@@ -624,8 +620,6 @@ func b2i(b bool) int {
 	return 0
 }
 
-// ---------------------------------------------------------------- diff scoring
-
 type diffSets struct{ newHosts, goneHosts, newPorts, closedPorts, changed map[string]bool }
 
 func svcSig(product, version, title string, techs []string) string {
@@ -829,8 +823,6 @@ func union(a, b map[string]bool) map[string]bool {
 	return o
 }
 
-// ---------------------------------------------------------------- report
-
 func row(w io.Writer, name string, m prf) {
 	fmt.Fprintf(w, "| %s | %d | %d | %d | %s | %s | **%s** |\n", name, m.TP, m.FP, m.FN, pct(m.P()), pct(m.R()), pct(m.F1()))
 }
@@ -906,7 +898,7 @@ func writeRun(w io.Writer, rs *runScore) {
 	ex("Technology false positives (examples)", rs.TechFPEx)
 	ex("Technology misses (examples)", rs.TechFNEx)
 	if len(rs.UnstableRows) > 0 {
-		fmt.Fprintf(w, "<details><summary>Unstable hosts (flapping / toggled during the scan) — not scored above</summary>\n\n| IP | Archetype | Kind | Up at truth dump | Predicted alive | App lifecycle |\n|---|---|---|---|---|---|\n")
+		fmt.Fprintf(w, "<details><summary>Unstable hosts (flapping / toggled during the scan), not scored above</summary>\n\n| IP | Archetype | Kind | Up at truth dump | Predicted alive | App lifecycle |\n|---|---|---|---|---|---|\n")
 		for _, r := range rs.UnstableRows {
 			fmt.Fprintln(w, r)
 		}
@@ -991,7 +983,7 @@ func main() {
 		}
 		fmt.Fprintln(w)
 	}
-	rs1 := scoreRun("Run 1 — scenario "+td1.Scenario, &td1, &ex1, ports)
+	rs1 := scoreRun("Run 1: scenario "+td1.Scenario, &td1, &ex1, ports)
 	writeRun(w, rs1)
 	summary["run1"] = summarize(rs1)
 
@@ -1000,7 +992,7 @@ func main() {
 		var ex2 export
 		loadJSON(*t2, &td2)
 		loadJSON(*e2, &ex2)
-		rs2 := scoreRun("Run 2 — scenario "+td2.Scenario, &td2, &ex2, ports)
+		rs2 := scoreRun("Run 2: scenario "+td2.Scenario, &td2, &ex2, ports)
 		writeRun(w, rs2)
 		summary["run2"] = summarize(rs2)
 

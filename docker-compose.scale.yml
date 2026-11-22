@@ -1,5 +1,4 @@
-# =============================================================================
-# Dzięcioł — large-network scale lab (default 10.66.0.0/18 = 16,384 IPs, ~1,500 live)
+# Dzięcioł: large-network scale lab (default 10.66.0.0/18 = 16,384 IPs, ~1,500 live)
 #
 # One container owns the whole /18: live hosts are /32 addresses on a dummy
 # interface, dead IPs are blackholed (no reply at all). Scanners on
@@ -14,7 +13,6 @@
 #     nmap -n -sn -PS22,80,443 10.66.0.0/22
 #
 # Full end-to-end run against the app: scripts/scale_test.sh
-# =============================================================================
 
 services:
   scale-lab:
