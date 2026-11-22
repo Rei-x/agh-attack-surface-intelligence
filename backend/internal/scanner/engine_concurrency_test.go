@@ -460,7 +460,7 @@ func TestRechunkTailFromMeasuredThroughput(t *testing.T) {
 func TestBuildNmapArgsSafeAndTuned(t *testing.T) {
 	o := DefaultNmapOptions()
 	d := strings.Join(o.BuildDiscoveryArgs([]string{"10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.1.7"}, []int{8081}, 75), " ")
-	want := "-sn -n -PE -PS21,22,23,25,80,443,445,3389,8080,8081,8443 -PA80,443 --max-retries 1 --host-timeout 20s -T3 --max-rate 75 -oX - 10.0.0.1-3 10.0.1.7"
+	want := "-sn -n -PE -PS21-23,25,80,443,445,3389,8080,8081,8443 -PA80,443 --max-retries 1 --host-timeout 20s -T3 --max-rate 75 -oX - 10.0.0.1-3 10.0.1.7"
 	if d != want {
 		t.Fatalf("discovery argv\n got: %s\nwant: %s", d, want)
 	}

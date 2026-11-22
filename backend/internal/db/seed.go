@@ -130,16 +130,15 @@ func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 		}
 	}
 
-	// 4. Seed default safety exclusion if empty
-	exclusions, err := store.ListExclusions(ctx)
-	if err == nil && len(exclusions) == 0 {
-		_ = store.CreateExclusion(ctx, &domain.TargetExclusion{
-			ID:        NewID(),
-			Value:     "127.0.0.0/8",
-			Reason:    "Loopback safety exclusion",
-			CreatedBy: "system",
-			CreatedAt: now,
-		})
+	// 4. Older versions seeded a 127.0.0.0/8 "loopback safety" exclusion. It silently blocked
+	// the most common first test (scanning a lab on localhost), so it is no longer created,
+	// and the system-created copy is removed. Exclusions added by a user are kept.
+	if exclusions, err := store.ListExclusions(ctx); err == nil {
+		for _, ex := range exclusions {
+			if ex.CreatedBy == "system" && ex.Value == "127.0.0.0/8" {
+				_ = store.DeleteExclusion(ctx, ex.ID)
+			}
+		}
 	}
 
 	return nil

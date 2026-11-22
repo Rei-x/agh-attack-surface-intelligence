@@ -21,6 +21,8 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"cms", "php", "wordpress"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "meta_generator", Pattern: `(?i)WordPress\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)?`, Regex: true, VersionGroup: 1},
+				// Core stylesheets carry the core version (install.php, wp-login.php, admin pages).
+				{Type: "html_body", Pattern: `(?i)/wp-(?:includes|admin)/css/[a-z0-9_.-]+\.css\?ver=([0-9]+\.[0-9]+(?:\.[0-9]+)?)`, Regex: true, VersionGroup: 1},
 				{Type: "html_body", Pattern: `(?i)/wp-content/|/wp-includes/`, Regex: true},
 				{Type: "safe_path", Key: "/wp-login.php", Pattern: "/wp-login.php", StatusCodes: []int{200, 301, 302, 401, 403}},
 				{Type: "cookie", Key: "wordpress_", Pattern: "wordpress_"},
@@ -419,6 +421,8 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"database", "admin", "phpmyadmin"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)phpMyAdmin\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)?`, Regex: true, VersionGroup: 1},
+				// Asset URLs carry the version (?v=5.2.3); only counted on a page titled phpMyAdmin.
+				{Type: "html_body", Pattern: `(?is)\?v=([0-9]+\.[0-9]+\.[0-9]+)["'].*<title>phpMyAdmin`, Regex: true, VersionGroup: 1},
 				{Type: "cookie", Key: "phpMyAdmin", Pattern: "phpMyAdmin"},
 				{Type: "safe_path", Key: "/phpmyadmin", Pattern: "/phpmyadmin", StatusCodes: []int{200, 301, 302, 401, 403}},
 			},
@@ -434,7 +438,7 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"database", "admin", "adminer"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)Login - Adminer|Adminer\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)?`, Regex: true, VersionGroup: 1},
-				{Type: "html_body", Pattern: `(?i)Adminer ([0-9]+\.[0-9]+(?:\.[0-9]+)?)`, Regex: true, VersionGroup: 1},
+				{Type: "html_body", Pattern: `(?i)Adminer(?:</a>)?\s*(?:<span class=.version.>)?\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)`, Regex: true, VersionGroup: 1},
 			},
 		},
 		{
@@ -541,6 +545,7 @@ func BuiltinSignatures() []domain.Signature {
 			Matchers: []domain.SignatureMatcher{
 				{Type: "title", Pattern: `(?i)^Traefik`, Regex: true},
 				{Type: "header", Key: "Server", Pattern: `(?i)traefik`, Regex: true},
+				{Type: "safe_path", Key: "/api/version", Pattern: `"Version":"([0-9]+\.[0-9]+\.[0-9]+)"[^}]*"Codename"`, Regex: true, VersionGroup: 1, StatusCodes: []int{200}},
 			},
 		},
 		{
@@ -849,6 +854,134 @@ func BuiltinSignatures() []domain.Signature {
 			Tags:             []string{"tls", "certificate", "expired"},
 			Matchers: []domain.SignatureMatcher{
 				{Type: "tls_cert", Key: "is_expired", Pattern: "true"},
+			},
+		},
+
+		// ==================== LAB / SELF-HOSTED TOOLS ====================
+		{
+			ID:               "builtin-installer-exposed",
+			Name:             "Unfinished Web Installer",
+			Description:      "Setup page of a web application that was never configured (WordPress install.php, Gitea installation). Whoever opens it first creates the administrator account.",
+			Category:         "admin_panel",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.92,
+			InterestingPts:   30,
+			Tags:             []string{"installer", "unfinished-setup", "admin"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "title", Pattern: `(?i)^WordPress\s*\S{0,8}\s*(Installation|Setup Configuration File)$`, Regex: true},
+				{Type: "title", Pattern: `(?i)^Installation\s*-\s*Gitea`, Regex: true},
+			},
+		},
+		{
+			ID:               "builtin-devops-gitea",
+			Name:             "Gitea",
+			Description:      "Detects the Gitea self-hosted Git service via its cookie, title or version API.",
+			Category:         "server",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.92,
+			InterestingPts:   12,
+			Tags:             []string{"devops", "git", "gitea"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "safe_path", Key: "/api/v1/version", Pattern: `\{"version":"([0-9]+\.[0-9]+(?:\.[0-9]+)?)"`, Regex: true, VersionGroup: 1, StatusCodes: []int{200}},
+				{Type: "cookie", Key: "i_like_gitea", Pattern: "i_like_gitea"},
+				{Type: "title", Pattern: `(?i)Gitea: Git with a cup of tea|\bGitea\b`, Regex: true},
+				{Type: "html_body", Pattern: `(?i)Powered by Gitea\s*(?:Version:\s*)?([0-9]+\.[0-9]+(?:\.[0-9]+)?)?`, Regex: true, VersionGroup: 1},
+			},
+		},
+		{
+			ID:               "builtin-admin-rabbitmq",
+			Name:             "RabbitMQ Management",
+			Description:      "Detects the RabbitMQ management web UI (broker administration, default guest account on localhost).",
+			Category:         "admin_panel",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.93,
+			InterestingPts:   22,
+			Tags:             []string{"admin", "message-queue", "rabbitmq"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "title", Pattern: `(?i)^RabbitMQ Management$`, Regex: true},
+				{Type: "html_body", Pattern: `(?i)<title>RabbitMQ Management</title>`, Regex: true},
+			},
+		},
+		{
+			ID:               "builtin-admin-npm",
+			Name:             "Nginx Proxy Manager",
+			Description:      "Detects the Nginx Proxy Manager admin UI (default admin account on first start).",
+			Category:         "admin_panel",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.93,
+			InterestingPts:   24,
+			Tags:             []string{"admin", "proxy", "nginx-proxy-manager"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "title", Pattern: `(?i)^Nginx Proxy Manager$`, Regex: true},
+				{Type: "safe_path", Key: "/api/", Pattern: `"version":\{"major":([0-9]+,"minor":[0-9]+,"revision":[0-9]+)`, Regex: true, VersionGroup: 1, StatusCodes: []int{200}},
+			},
+		},
+		{
+			ID:               "builtin-admin-traefik-api",
+			Name:             "Traefik Dashboard / API",
+			Description:      "Detects the Traefik dashboard and API (api.insecure): routing configuration readable without authentication.",
+			Category:         "admin_panel",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.92,
+			InterestingPts:   24,
+			Tags:             []string{"admin", "proxy", "traefik"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "safe_path", Key: "/api/version", Pattern: `"Version":"([0-9]+\.[0-9]+\.[0-9]+)"[^}]*"Codename"`, Regex: true, VersionGroup: 1, StatusCodes: []int{200}},
+				{Type: "title", Pattern: `^Traefik$`, Regex: true},
+			},
+		},
+		{
+			ID:               "builtin-admin-toxiproxy",
+			Name:             "Toxiproxy API",
+			Description:      "Detects the Toxiproxy control API: anyone who reaches it can add latency, cut connections or redirect proxied traffic.",
+			Category:         "admin_panel",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.90,
+			InterestingPts:   24,
+			Tags:             []string{"admin", "proxy", "toxiproxy", "fault-injection"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "safe_path", Key: "/proxies", Pattern: `"listen"\s*:\s*"[^"]*"\s*,\s*"upstream"`, Regex: true, StatusCodes: []int{200}},
+				{Type: "safe_path", Key: "/version", Pattern: `(?:^|\s)\{"version": "([0-9]+\.[0-9]+\.[0-9]+)"\}\s*$`, Regex: true, VersionGroup: 1, StatusCodes: []int{200}},
+			},
+		},
+		{
+			ID:               "builtin-app-dvwa",
+			Name:             "DVWA (Damn Vulnerable Web Application)",
+			Description:      "Detects DVWA, an intentionally vulnerable training application (default login admin/password).",
+			Category:         "custom",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.95,
+			InterestingPts:   35,
+			Tags:             []string{"vulnerable-app", "dvwa", "php"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "title", Pattern: `(?i)Damn Vulnerable Web Application(?:\s*\(DVWA\))?\s*v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)?`, Regex: true, VersionGroup: 1},
+			},
+		},
+		{
+			ID:               "builtin-devtool-httpbin",
+			Name:             "httpbin",
+			Description:      "Detects httpbin, an HTTP request/response test service (echoes headers, can redirect anywhere).",
+			Category:         "custom",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.92,
+			InterestingPts:   8,
+			Tags:             []string{"devtool", "httpbin", "non-prod"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "title", Pattern: `^httpbin\.org$`, Regex: true},
+				{Type: "html_body", Pattern: `(?i)A simple HTTP Request &amp; Response Service`, Regex: true},
+			},
+		},
+		{
+			ID:               "builtin-default-page",
+			Name:             "Default Web Server Page",
+			Description:      "Stock welcome page of a web server or proxy that was never configured (nginx, Apache, IIS, Nginx Proxy Manager).",
+			Category:         "custom",
+			MatchMode:        "any",
+			ConfidenceWeight: 0.90,
+			InterestingPts:   3,
+			Tags:             []string{"default-page"},
+			Matchers: []domain.SignatureMatcher{
+				{Type: "title", Pattern: `(?i)^(Welcome to nginx!|Apache2 \S+ Default Page: It works|IIS Windows Server|Welcome to OpenResty!|Default Site)$`, Regex: true},
 			},
 		},
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
@@ -29,14 +30,18 @@ const scanUsage = `Usage: dzieciol scan <targets...> [flags]
 
 Targets: IPs, CIDRs (10.0.0.0/24), ranges (10.0.0.1-10.0.0.50) or hostnames.
 Results are stored in the local encrypted store and visible in 'dzieciol serve'.
-Stored target exclusions (configured in the web UI) are honoured unless --ignore-exclusions.`
+Ports default to "auto": all 65535 TCP ports for 1-4 target IPs, nmap's top 1000 plus
+common alternative web/admin/database/queue ports up to 1024 IPs, a compact list above.
+Stored target exclusions (configured in the web UI) are honoured unless --ignore-exclusions.
 
-const defaultCLIPorts = "21,22,23,25,53,80,110,143,443,445,3306,3389,5432,5900,6379,8000,8080,8443,9000,9200"
+Example (a docker lab on this machine):  dzieciol scan localhost`
+
+const defaultCLIPorts = "auto"
 
 func cmdScan(args []string) error {
 	fs := newFlagSet("scan", scanUsage)
 	var ports string
-	fs.StringVar(&ports, "ports", defaultCLIPorts, "ports to scan (e.g. 22,80,443,8000-8100)")
+	fs.StringVar(&ports, "ports", defaultCLIPorts, "ports to scan (e.g. 22,80,443,8000-8100, 1-65535 or auto)")
 	fs.StringVar(&ports, "p", defaultCLIPorts, "shorthand for --ports")
 	file := fs.String("f", "", "read targets from file (one per line, # comments)")
 	rate := fs.Int("rate", 500, "max probe rate (packets/connections per second)")
@@ -46,7 +51,7 @@ func cmdScan(args []string) error {
 	profileRef := fs.String("profile", "", "use a stored scan profile (name or ID) for defaults/targets")
 	name := fs.String("name", "", "scan run name (default: CLI <targets> <time>)")
 	noNmap := fs.Bool("no-nmap", false, "force the pure-Go scanner even if nmap is installed")
-	ignoreExcl := fs.Bool("ignore-exclusions", false, "do not apply stored target exclusions (e.g. the default 127.0.0.0/8)")
+	ignoreExcl := fs.Bool("ignore-exclusions", false, "do not apply stored target exclusions")
 	noHTTP := fs.Bool("no-http", false, "skip HTTP/TLS fingerprinting")
 	jsonOut := fs.Bool("json", false, "print the JSON report to stdout instead of tables")
 	outFile := fs.String("o", "", "also write the JSON report to this file")
@@ -145,6 +150,16 @@ func cmdScan(args []string) error {
 		return fmt.Errorf("prepare scan: %w", err)
 	}
 
+	// Auto ports on a tiny scope scan all 65535 ports; unless --rate was given, raise the rate
+	// so that takes seconds, not minutes. Re-plan the chunks with the new rate.
+	if scanner.IsAutoPorts(profile.AllowedPorts) && prepared.TotalIPs <= scanner.AutoFullRangeMaxIPs && !setFlags["rate"] &&
+		profile.MaxRatePPS < scanner.AutoFullRangeRatePPS {
+		profile.MaxRatePPS = scanner.AutoFullRangeRatePPS
+		if p2, r2, e2 := engine.PrepareRun(bg, runID, profile, exclusions); e2 == nil {
+			prepared, resolution = p2, r2
+		}
+	}
+
 	run := prepared
 	run.Name = runName
 	run.TriggeredBy = "cli"
@@ -159,9 +174,13 @@ func cmdScan(args []string) error {
 	if resolution != nil {
 		excluded = resolution.ExcludedCount
 	}
-	fmt.Fprintf(status, "scan:    %d target IPs, ports %s, rate %d pps, %d workers, %d chunks", run.TotalIPs, compactPorts(profile.AllowedPorts), profile.MaxRatePPS, profile.Concurrency, run.TotalChunks)
+	portsLabel := compactPorts(profile.AllowedPorts)
+	if scanner.IsAutoPorts(profile.AllowedPorts) {
+		portsLabel = scanner.AutoPortsLabel(run.TotalIPs)
+	}
+	fmt.Fprintf(status, "scan:    %d target IPs, ports %s, rate %d pps, %d workers, %d chunks", run.TotalIPs, portsLabel, profile.MaxRatePPS, profile.Concurrency, run.TotalChunks)
 	if excluded > 0 {
-		fmt.Fprintf(status, ", %d IPs excluded", excluded)
+		fmt.Fprintf(status, ", %d IPs excluded by stored exclusions (--ignore-exclusions to scan them)", excluded)
 	}
 	fmt.Fprintf(status, "\nstore:   %s\n\n", rt.storeDescription())
 
@@ -674,6 +693,8 @@ func buildScanReport(ctx context.Context, store db.Store, run *domain.ScanRun, r
 			}
 		}
 		sort.Slice(rep.Hosts, func(i, j int) bool { return ipLess(rep.Hosts[i].IP, rep.Hosts[j].IP) })
+		// Same derived fields as the API: end-of-life components and passive CVE hints.
+		eol.AnnotateHosts(rep.Hosts, time.Now())
 		sort.SliceStable(rep.Findings, func(i, j int) bool { return rep.Findings[i].Score > rep.Findings[j].Score })
 		if len(rep.Findings) > 10 {
 			rep.Findings = rep.Findings[:10]
@@ -723,7 +744,7 @@ func changeCategory(t string) string {
 		return "new_host"
 	case "HOST_MISSING", "HOST_INACTIVE":
 		return "gone_host"
-	case "NEW_SERVICE", "ADMIN_PANEL_EXPOSED":
+	case "NEW_SERVICE", "ADMIN_PANEL_EXPOSED", "SERVICE_REOPENED":
 		return "new_service"
 	case "SERVICE_CLOSED":
 		return "closed_service"
@@ -785,6 +806,8 @@ func printScanReport(w io.Writer, rep *scanReport) {
 		fmt.Fprintln(w)
 	}
 
+	printResponseTimes(w, rep.Hosts)
+
 	c := rep.Changes
 	if c.PreviousRunID == "" {
 		fmt.Fprintln(w, "CHANGES: first scan in this store - baseline recorded.")
@@ -804,4 +827,41 @@ func printScanReport(w io.Writer, rep *scanReport) {
 		}
 	}
 	fmt.Fprintf(w, "\nResults saved. View them with `dzieciol serve`, compare with `dzieciol diff`, export with `dzieciol export`.\n")
+}
+
+// printResponseTimes lists the HTTP response time of every web service (median over the
+// fingerprint requests), so injected latency is visible right in the terminal.
+func printResponseTimes(w io.Writer, hosts []domain.Host) {
+	type row struct {
+		ip                 string
+		port, samples      int
+		median, first      int64
+		title, serviceName string
+	}
+	var rows []row
+	for _, h := range hosts {
+		for _, s := range h.Services {
+			if s.HTTP == nil || s.State != "open" {
+				continue
+			}
+			rows = append(rows, row{h.IP, s.Port, s.HTTP.ResponseSamples, ingest.ServiceResponseMs(s.HTTP), s.HTTP.ResponseTimeMs, s.HTTP.Title, s.ServiceName})
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].ip != rows[j].ip {
+			return ipLess(rows[i].ip, rows[j].ip)
+		}
+		return rows[i].port < rows[j].port
+	})
+	fmt.Fprintln(w, "HTTP RESPONSE TIMES (median over the fingerprint requests)")
+	tw := newTable(w)
+	fmt.Fprintln(tw, "  ENDPOINT\tMEDIAN\tFIRST\tSAMPLES\tTITLE")
+	for _, r := range rows {
+		fmt.Fprintf(tw, "  %s:%d\t%d ms\t%d ms\t%d\t%s\n", r.ip, r.port, r.median, r.first, max(r.samples, 1), truncate(dash(r.title), 50))
+	}
+	tw.Flush()
+	fmt.Fprintln(w)
 }

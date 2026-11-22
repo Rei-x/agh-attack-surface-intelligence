@@ -96,12 +96,23 @@ func ParseAndNormalizeTargetsWithLimit(ctx context.Context, targets []string, ex
 				res.InvalidEntries = append(res.InvalidEntries, entry)
 				continue
 			}
+			// A name with IPv4 addresses is scanned over IPv4 only: "localhost" also resolves
+			// to ::1, which would show every published docker port twice as a second host.
+			hasV4 := false
+			for _, ipStr := range ips {
+				if a, err := netip.ParseAddr(strings.TrimSpace(ipStr)); err == nil && a.Unmap().Is4() {
+					hasV4 = true
+				}
+			}
 			for _, ipStr := range ips {
 				addr, err := netip.ParseAddr(strings.TrimSpace(ipStr))
 				if err != nil {
 					continue
 				}
 				addr = addr.Unmap()
+				if hasV4 && !addr.Is4() {
+					continue
+				}
 				if addr.Is4() {
 					v := addr4ToUint32(addr)
 					inc4 = append(inc4, ip4Range{start: v, end: v})

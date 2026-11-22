@@ -303,6 +303,18 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "notes too long")
 		return
 	}
+	exclusions, _ := s.store.ListExclusions(r.Context())
+	if res, err := scanner.ParseAndNormalizeTargets(r.Context(), profile.Targets, exclusions, nil); err == nil {
+		if len(res.IPs) == 0 && res.ExcludedCount > 0 {
+			writeErr(w, http.StatusBadRequest, "every target is covered by an exclusion (Scans, Scope tab); remove the exclusion to scan it")
+			return
+		}
+		// Auto ports on a tiny scope scan all 65535 ports: raise the default rate so a
+		// single-host scan finishes in seconds (only when the caller did not set a rate).
+		if req.MaxRatePPS <= 0 && scanner.IsAutoPorts(profile.AllowedPorts) && len(res.IPs) <= scanner.AutoFullRangeMaxIPs {
+			profile.MaxRatePPS = scanner.AutoFullRangeRatePPS
+		}
+	}
 	applyProfileDefaults(profile)
 	if req.WindowEnabled {
 		if err := validateProfileSchedule(profile); err != nil {
@@ -334,7 +346,6 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exclusions, _ := s.store.ListExclusions(r.Context())
 	bgCtx := context.Background()
 	// The runner mutates the run it is given while this handler encodes the response: give the
 	// background goroutine its own copy (was a data race).
@@ -443,8 +454,8 @@ func (s *Server) handleScanDiff(w http.ResponseWriter, r *http.Request) {
 }
 
 func applyProfileDefaults(p *domain.ScanProfile) {
-	if p.AllowedPorts == "" {
-		p.AllowedPorts = "22,80,443,8080,8443"
+	if scanner.IsAutoPorts(p.AllowedPorts) {
+		p.AllowedPorts = scanner.AutoPortsKeyword
 	}
 	if p.MaxRatePPS <= 0 {
 		p.MaxRatePPS = 500

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 )
 
 // ChangedServiceDiff describes a before/after diff for a service between two scans.
@@ -93,17 +94,22 @@ func ComputeScanDiff(fromID, toID string, fromHosts, toHosts []domain.Host, toCh
 				resp.ClosedServices = append(resp.ClosedServices, ts)
 				continue
 			}
+			if ts.State == "open" && fs.State != "" && fs.State != "open" {
+				resp.NewServices = append(resp.NewServices, ts) // reopened
+				continue
+			}
 			before := map[string]any{}
 			after := map[string]any{}
-			if fs.Product != ts.Product {
+			// An empty new value is "not observed this time", not a change.
+			if fs.Product != ts.Product && ts.Product != "" {
 				before["product"] = fs.Product
 				after["product"] = ts.Product
 			}
-			if fs.Version != ts.Version {
+			if fs.Version != ts.Version && ts.Version != "" {
 				before["version"] = fs.Version
 				after["version"] = ts.Version
 			}
-			if fs.Banner != ts.Banner {
+			if fs.Banner != ts.Banner && ts.Banner != "" {
 				before["banner"] = fs.Banner
 				after["banner"] = ts.Banner
 			}
@@ -118,9 +124,16 @@ func ComputeScanDiff(fromID, toID string, fromHosts, toHosts []domain.Host, toCh
 			if ts.HTTP != nil {
 				tsTitle = ts.HTTP.Title
 			}
-			if fsTitle != tsTitle {
+			if fsTitle != tsTitle && tsTitle != "" {
 				before["http_title"] = fsTitle
 				after["http_title"] = tsTitle
+			}
+			if fs.HTTP != nil && ts.HTTP != nil {
+				b, a := ingest.ServiceResponseMs(fs.HTTP), ingest.ServiceResponseMs(ts.HTTP)
+				if slower, faster := ingest.ResponseTimeJump(b, a); slower || faster {
+					before["response_time_ms"] = b
+					after["response_time_ms"] = a
+				}
 			}
 			if len(after) > 0 {
 				resp.ChangedServices = append(resp.ChangedServices, ChangedServiceDiff{

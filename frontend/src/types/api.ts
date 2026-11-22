@@ -96,6 +96,9 @@ export interface TargetEstimate {
   estimated_seconds: number;
   fits_in_window: boolean;
   estimated_windows?: number;
+  port_count?: number;
+  ports_label?: string;
+  max_rate_pps?: number;
 }
 
 export interface ScanProfile {
@@ -303,6 +306,8 @@ export interface HTTPFingerprint {
   body_snippet?: string;
   safe_path_hits?: SafePathHit[];
   response_time_ms?: number;
+  median_response_ms?: number;
+  response_samples?: number;
 }
 
 export interface TechEvidence {

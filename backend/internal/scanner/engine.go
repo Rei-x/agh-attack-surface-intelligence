@@ -116,7 +116,7 @@ func (e *Engine) PrepareRun(ctx context.Context, scanRunID string, profile domai
 
 	chunkSize := est.RecommendedChunkSize
 	if e.cfg.Calibrate && len(resolution.IPs) > 0 {
-		ports, _ := ParsePorts(profile.AllowedPorts)
+		ports, _ := ParsePorts(EffectivePorts(profile.AllowedPorts, len(resolution.IPs)))
 		cal := Calibrate(ctx, resolution.IPs, profile.ChunkTargetSec, profile.Concurrency, func(pctx context.Context, ip string) (bool, time.Duration) {
 			t0 := time.Now()
 			alive, _, _ := e.discoverStage(pctx, []string{ip}, ports, profile.MaxRatePPS, nil)
@@ -181,6 +181,9 @@ func (e *Engine) fingerprintStage(
 		scheme   string
 	}
 
+	var probeMu sync.Mutex
+	e.protocolProbeStage(ctx, activeIPs, svcMap, guessed, gov, &probeMu, false)
+
 	var jobs []fpJob
 	for _, ip := range activeIPs {
 		svcs := svcMap[ip]
@@ -189,7 +192,9 @@ func (e *Engine) fingerprintStage(
 			dom = ds[0]
 		}
 		for idx, s := range svcs {
-			if !isHTTPServiceCandidate(s) {
+			// Services nmap could only name from its port table (3001 "nessus") or not at all
+			// ("tcpwrapped") get a speculative HTTP probe too: web apps on unusual ports.
+			if !isHTTPServiceCandidate(s) && !(isUnidentified(s, guessed[ip+":"+strconv.Itoa(s.Port)]) && s.Banner == "") {
 				continue
 			}
 			scheme := ""
@@ -207,6 +212,8 @@ func (e *Engine) fingerprintStage(
 		}
 	}
 	if len(jobs) == 0 {
+		e.protocolProbeStage(ctx, activeIPs, svcMap, guessed, gov, &probeMu, true)
+		e.captureScreenshots(ctx, activeIPs, svcMap, profile, gov, st, &probeMu)
 		return
 	}
 	st.httpServices.Add(int64(len(jobs)))
@@ -274,13 +281,26 @@ func (e *Engine) fingerprintStage(
 					return
 				}
 				fp, err := e.cfg.Fingerprinter.Probe(ctx, job.ip, job.port, job.domain, &opts)
+				// Some servers accept TLS and plain HTTP on one port (Traefik entrypoints answer a
+				// TLS hello with their default certificate and a 404); nmap then reports "https".
+				// When HTTPS gives an error page or fails, also try plain HTTP and keep the
+				// answer that is not an error.
+				if job.scheme == "https" && job.port != 443 && ctx.Err() == nil && (err != nil || fp == nil || fp.StatusCode >= 400) {
+					plain := opts
+					plain.Scheme = "http"
+					if fp2, err2 := e.cfg.Fingerprinter.Probe(ctx, job.ip, job.port, job.domain, &plain); err2 == nil && fp2 != nil && fp2.StatusCode > 0 && fp2.StatusCode < 400 {
+						fp, err = fp2, nil
+					}
+				}
 				<-fpSem
 				if err == nil && fp != nil {
 					gov.RecordSuccess(job.ip)
 					mu.Lock()
-					svcMap[job.ip][job.svcIndex].HTTP = fp
-					if svcMap[job.ip][job.svcIndex].ServiceName == "" || svcMap[job.ip][job.svcIndex].ServiceName == "unknown" {
-						svcMap[job.ip][job.svcIndex].ServiceName = fp.Scheme
+					svc := &svcMap[job.ip][job.svcIndex]
+					svc.HTTP = fp
+					// A real HTTP answer beats nmap's port-table guess or "tcpwrapped".
+					if (isUnidentified(*svc, speculative) || (svc.ServiceName == "https" && fp.Scheme == "http")) && fp.Scheme != "" {
+						svc.ServiceName = fp.Scheme
 					}
 					mu.Unlock()
 				}
@@ -288,6 +308,7 @@ func (e *Engine) fingerprintStage(
 		}()
 	}
 	wg.Wait()
+	e.protocolProbeStage(ctx, activeIPs, svcMap, guessed, gov, &mu, true)
 	e.captureScreenshots(ctx, activeIPs, svcMap, profile, gov, st, &mu)
 }
 

@@ -15,6 +15,7 @@ Jeden plik binarny `dzieciol` (Go) zawiera skaner, potok analizy, REST API z SSE
 curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sh
 dzieciol serve                              # http://localhost:8080
 dzieciol scan 192.168.1.0/24 -p 22,80,443   # skan z terminala, wyniki w tym samym magazynie
+dzieciol scan localhost                     # jury lab template on this machine: see docs/JURY_TEST.md
 
 # 2) Docker Compose: aplikacja + PostgreSQL 17 (+ opcjonalne laboratorium testowe)
 docker compose up -d --build                                              # http://localhost:8080

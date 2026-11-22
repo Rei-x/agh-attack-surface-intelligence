@@ -360,12 +360,30 @@ func nmapDuration(d time.Duration) string {
 	}
 }
 
+// joinPorts renders a sorted port list for nmap, collapsing runs of three or more
+// consecutive ports into ranges. Without that, a full-range scan ("1-65535", 384 KB as a
+// comma list) exceeds Linux's 128 KB limit for one argv string and exec fails.
 func joinPorts(ports []int) string {
-	s := make([]string, len(ports))
-	for i, p := range ports {
-		s[i] = strconv.Itoa(p)
+	var b strings.Builder
+	for i := 0; i < len(ports); {
+		j := i
+		for j+1 < len(ports) && ports[j+1] == ports[j]+1 {
+			j++
+		}
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		switch {
+		case j-i >= 2:
+			b.WriteString(strconv.Itoa(ports[i]) + "-" + strconv.Itoa(ports[j]))
+		case j == i+1:
+			b.WriteString(strconv.Itoa(ports[i]) + "," + strconv.Itoa(ports[j]))
+		default:
+			b.WriteString(strconv.Itoa(ports[i]))
+		}
+		i = j + 1
 	}
-	return strings.Join(s, ",")
+	return b.String()
 }
 
 func dedupeSortPorts(ports []int) []int {

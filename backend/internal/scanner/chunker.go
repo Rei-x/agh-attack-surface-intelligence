@@ -47,12 +47,16 @@ func EstimateTargets(ctx context.Context, req EstimateRequest) (*domain.TargetEs
 		return nil, nil, err
 	}
 
-	ports, err := ParsePorts(req.Ports)
+	portSpec := EffectivePorts(req.Ports, len(resolution.IPs))
+	ports, err := ParsePorts(portSpec)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	maxRate := req.MaxRatePPS
+	if maxRate <= 0 && IsAutoPorts(req.Ports) && len(resolution.IPs) <= AutoFullRangeMaxIPs {
+		maxRate = AutoFullRangeRatePPS
+	}
 	if maxRate <= 0 {
 		maxRate = 300
 	}
@@ -81,6 +85,14 @@ func EstimateTargets(ctx context.Context, req EstimateRequest) (*domain.TargetEs
 			estSec = 1
 		}
 	}
+	// Small scopes with long port lists (auto: all 65535 ports for 1-4 IPs): the sweep sends
+	// one probe per (IP, port), plus about 20 s of version detection and HTTP fingerprinting.
+	// (Large scopes keep the calibrated model above.)
+	if effectiveIPs > 0 && effectiveIPs <= AutoTopPortsMaxIPs {
+		if floor := int64(math.Ceil(float64(effectiveIPs)*float64(len(ports))/float64(maxRate))) + 20; estSec < floor {
+			estSec = floor
+		}
+	}
 
 	now := req.Now
 	if now.IsZero() {
@@ -103,6 +115,12 @@ func EstimateTargets(ctx context.Context, req EstimateRequest) (*domain.TargetEs
 		EstimatedSeconds:     estSec,
 		FitsInWindow:         fits,
 		EstimatedWindows:     estWindows,
+		PortCount:            len(ports),
+		PortsLabel:           portSpec,
+		MaxRatePPS:           maxRate,
+	}
+	if IsAutoPorts(req.Ports) {
+		est.PortsLabel = AutoPortsLabel(effectiveIPs)
 	}
 	return est, resolution, nil
 }

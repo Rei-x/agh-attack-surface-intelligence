@@ -921,15 +921,20 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                           );
                                         })()}
                                       </KV>
-                                      <KV label="Status">
-                                        {http.status_code}
-                                        {http.response_time_ms ? (
-                                          <span className="text-muted-foreground">
-                                            {' '}
-                                            · {http.response_time_ms} ms
+                                      <KV label="Status">{http.status_code}</KV>
+                                      {(http.median_response_ms || http.response_time_ms) ? (
+                                        <KV label="Response time">
+                                          <span className="font-mono tabular-nums">
+                                            {http.median_response_ms || http.response_time_ms} ms
                                           </span>
-                                        ) : null}
-                                      </KV>
+                                          {http.response_samples && http.response_samples > 1 ? (
+                                            <span className="text-muted-foreground">
+                                              {' '}
+                                              median of {http.response_samples} requests, first {http.response_time_ms} ms
+                                            </span>
+                                          ) : null}
+                                        </KV>
+                                      ) : null}
                                       {http.server_header && <KV label="Server">{http.server_header}</KV>}
                                       {http.meta_generator && (
                                         <KV label="Generator">{http.meta_generator}</KV>

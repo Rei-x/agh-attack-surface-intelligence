@@ -49,7 +49,30 @@ func followupPaths(fp *domain.HTTPFingerprint, already []string) []string {
 	if reTomcatMarker.MatchString(page) {
 		add("/manager/html")
 	}
+	lower := strings.ToLower(page)
+	// Gitea: the version API answers without a login.
+	if strings.Contains(lower, "gitea") || hasCookie(fp, "i_like_gitea") {
+		add("/api/v1/version")
+	}
+	// Nginx Proxy Manager: /api/ states the version.
+	if strings.Contains(fp.Title, "Nginx Proxy Manager") {
+		add("/api/")
+	}
+	// A bare Go net/http 404 at / is how API-only Go services answer (Toxiproxy, exporters):
+	// /proxies identifies Toxiproxy.
+	if fp.StatusCode == 404 && strings.TrimSpace(fp.BodySnippet) == "404 page not found" {
+		add("/proxies")
+	}
 	return out
+}
+
+func hasCookie(fp *domain.HTTPFingerprint, name string) bool {
+	for _, c := range fp.Cookies {
+		if strings.EqualFold(c.Name, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func truncateHeader(v string, n int) string {

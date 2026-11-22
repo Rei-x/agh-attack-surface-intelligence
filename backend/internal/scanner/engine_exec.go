@@ -86,7 +86,11 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	if err != nil {
 		return nil, err
 	}
-	ports, err := ParsePorts(profile.AllowedPorts)
+	scopeIPs := run.TotalIPs
+	if resolution != nil {
+		scopeIPs = len(resolution.IPs)
+	}
+	ports, err := ParsePorts(EffectivePorts(profile.AllowedPorts, scopeIPs))
 	if err != nil {
 		return nil, err
 	}
@@ -141,13 +145,23 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		govRate = httpShare
 	}
 
+	// Without nmap every port probe also goes through the per-host bucket. On a tiny scope
+	// (a lab on localhost) the per-host HTTP rate would turn a full-range port scan into
+	// 40+ minutes, so the global budget is shared by the scope's hosts instead.
+	perHost := httpRPS
+	if !useNmap && scopeIPs > 0 {
+		if share := float64(maxRate) / float64(scopeIPs); share > perHost {
+			perHost = share
+		}
+	}
+
 	gov := NewGovernor(GovernorConfig{
 		GlobalRatePerSec: float64(govRate),
 		// A tenth of a second's worth of burst (default would be a full second): on the
 		// Hetzner /18 run, HTTP bursts on top of fully paced nmap shares were the brief
 		// 1572..1598/s peaks against the 1500 cap.
 		GlobalBurst:       max(4, govRate/10),
-		PerHostRatePerSec: httpRPS,
+		PerHostRatePerSec: perHost,
 		MinRatePerSec:     math.Min(float64(govRate), math.Max(5, float64(govRate)*0.1)),
 		OnThrottle: func(te ThrottleEvent) {
 			log.Printf("[INFO] scan %s governor throttle: host=%s reason=%s rate %.1f -> %.1f (%d events)", run.ID, te.Host, te.Reason, te.OldRate, te.NewRate, te.ErrorCount)

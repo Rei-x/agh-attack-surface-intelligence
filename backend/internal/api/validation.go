@@ -55,7 +55,7 @@ func validateTargetList(values []string) ([]string, error) {
 }
 
 func validatePortSpec(spec string) error {
-	if strings.TrimSpace(spec) == "" {
+	if scanner.IsAutoPorts(spec) {
 		return nil
 	}
 	if _, err := scanner.ParsePorts(spec); err != nil {

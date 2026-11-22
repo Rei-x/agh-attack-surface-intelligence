@@ -83,8 +83,11 @@ sudo apt install chromium                 # Debian/Ubuntu (or chromium-browser)
 DZIECIOL_CHROME_PATH=/opt/chrome-headless-shell/chrome-headless-shell   # if not on PATH
 ```
 
-An agent running as root starts Chromium with `--no-sandbox` (also forced by
-`DZIECIOL_CHROME_NO_SANDBOX=1`). Agents capture locally and upload the images with chunk
+Chromium starts with `--no-sandbox` when its own sandbox cannot work: as root, under the
+systemd unit (`NoNewPrivileges`/`DynamicUser` set no_new_privs and `RestrictNamespaces`
+blocks user namespaces), or with `DZIECIOL_CHROME_NO_SANDBOX=1`; a sandboxed start that fails
+is retried once without it. A browser that cannot start is logged as one
+`[WARN] screenshots: cannot start the browser` line with Chromium's error. Agents capture locally and upload the images with chunk
 results (gzip, capped at 24 MB of images per chunk). Images are stored encrypted in
 `<data dir>/screenshots/` (AES-256-GCM, deduplicated by content, last 5 per service); a
 visibly different page records a `screenshot_changed` change event. Per profile:

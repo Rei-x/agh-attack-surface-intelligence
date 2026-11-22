@@ -135,7 +135,10 @@ func ValidateSignature(sig domain.Signature) ValidationResult {
 			if checkPath == "" {
 				checkPath = strings.TrimSpace(m.Pattern)
 			}
-			if rePathTraversal.MatchString(checkPath) || rePathTraversal.MatchString(m.Pattern) {
+			// With a Key the Pattern is matched against the response (path, title, body
+			// snippet), not requested, so a regex there may contain escapes like \.
+			patternIsPath := strings.TrimSpace(m.Key) == "" || !m.Regex
+			if rePathTraversal.MatchString(checkPath) || (patternIsPath && rePathTraversal.MatchString(m.Pattern)) {
 				addErr(fmt.Sprintf("%s: path traversal or unsafe characters are forbidden in safe_path", prefix))
 			}
 			if reExternalScheme.MatchString(checkPath) || reExternalScheme.MatchString(m.Pattern) {
