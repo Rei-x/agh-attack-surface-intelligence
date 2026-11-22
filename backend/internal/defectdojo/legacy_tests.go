@@ -350,7 +350,6 @@ type carryOver struct {
 	c         *Client
 	cfg       *domain.DefectDojoConfig
 	productID int
-	testID    int
 	findings  []ChangeFinding
 	refs      []FindingRef
 	byUID     map[string]int          // unique id -> index into findings/refs
@@ -360,7 +359,7 @@ type carryOver struct {
 }
 
 func newCarryOver(c *Client, cfg *domain.DefectDojoConfig, imp *ImportResult, findings []ChangeFinding, refs []FindingRef, existing []dojoFinding) *carryOver {
-	co := &carryOver{c: c, cfg: cfg, productID: imp.ProductID, testID: imp.TestID, findings: findings, refs: refs,
+	co := &carryOver{c: c, cfg: cfg, productID: imp.ProductID, findings: findings, refs: refs,
 		byUID: map[string]int{}, marks: map[int]map[string]bool{}}
 	for i := range findings {
 		if i < len(refs) && refs[i].FindingID > 0 {
@@ -399,7 +398,8 @@ func (co *carryOver) mark(findingID int, marker string) bool {
 	return true
 }
 
-// carry copies the notes and DefectDojo-side triage of one superseded test's open findings.
+// carry copies the notes and DefectDojo-side triage of one superseded test's current
+// findings (open ones and false positives).
 func (co *carryOver) carry(ctx context.Context, t dojoTest, fs []dojoFinding) (notes, triage int) {
 	for _, lf := range fs {
 		i, ok := co.byUID[lf.UniqueIDFromTool]
@@ -422,10 +422,12 @@ func (co *carryOver) carry(ctx context.Context, t dojoTest, fs []dojoFinding) (n
 			}
 			notes++
 		}
-		// A decision made in Dzięcioł wins (SyncTriage applied it); one made in DefectDojo on
-		// the old finding moves to the new one unless that one has its own already.
+		// A decision made in Dzięcioł wins (SyncTriage applied it, or it was withdrawn since
+		// the old test was last synced); one made in DefectDojo on the old finding moves to
+		// the new one unless that one has its own already.
 		state := lf.state()
-		if (state != DojoStateFalsePos && state != DojoStateRiskAccepted) || co.findings[i].Triage != nil || ref.State != DojoStateActive {
+		if (state != DojoStateFalsePos && state != DojoStateRiskAccepted) || co.findings[i].Triage != nil ||
+			ref.State != DojoStateActive || decidedByDzieciol(lf.Notes, state) {
 			continue
 		}
 		if err := co.c.setFindingState(ctx, co.cfg, ref.FindingID, co.productID, state, &co.raEnabled); err != nil {

@@ -21,7 +21,7 @@ type legacyLayout struct {
 	product                              *simProduct
 	t18old, t18, t22, rest, integ, empty *simTest
 	nmap, obs, peer, otherProduct        *simTest
-	eolUID, jenkinsUID                   string
+	eolUID, jenkinsUID, rdpUID           string
 	eolNoteOn, jenkinsFP                 *simFinding
 	canonEOLBefore, canonJenkinsBefore   int
 }
@@ -51,9 +51,17 @@ func seedLegacyLayout(t *testing.T, sim *dojoSim, hosts []domain.Host, profiles 
 	eng := sim.addEngagement(l.product, DefaultEngagement) // DefectDojo resolves the name to the last one
 	otherEng := sim.addEngagement(sim.addProduct("Another product"), DefaultEngagement)
 
-	// /18 under its old name: stale since the rename, misses the host found later.
+	// /18 under its old name: stale since the rename, misses the host found later. Dzięcioł
+	// marked its RDP finding false positive then; the analyst withdrew that decision since,
+	// which this test never got.
 	l.t18old = sim.addTest(eng, "Dzięcioł changes: Lab AGH — cała sieć /18", genericScanType)
-	sim.seed(l.t18old, pick(in22))
+	for _, sf := range sim.seed(l.t18old, pick(in22)) {
+		if strings.Contains(sf.Title, "RDP") {
+			sf.FalseP, sf.Active, sf.IsMitigated = true, false, true
+			sim.addNote(sf, "Dzięcioł triage: False positive by ana on 2026-11-20. Reason: lab")
+			l.rdpUID = sf.UID
+		}
+	}
 	sim.seed(l.t18old, []ChangeFinding{{genericFinding: genericFinding{Title: "Gone long ago", Description: "x", UniqueIDFromTool: "aegis-stale"}}})
 	// /18 under its current name: holds the most of today's findings.
 	l.t18 = sim.addTest(eng, "Dzięcioł changes: Lab AGH · cała sieć /18", genericScanType)
@@ -191,6 +199,10 @@ func TestSyncChangesRetiresPerProfileTests(t *testing.T) {
 	jenkins := findingByUID(sim, l.t18, l.jenkinsUID)
 	if jenkins == nil || !jenkins.FalseP || jenkins.Active || notesWith(jenkins, "VPN only") != 1 {
 		t.Errorf("DefectDojo-side false positive not carried: %+v", jenkins)
+	}
+	// A false positive Dzięcioł set on a stale test, and withdrew since, does not come back.
+	if rdp := findingByUID(sim, l.t18, l.rdpUID); rdp == nil || rdp.FalseP || !rdp.Active {
+		t.Errorf("withdrawn Dzięcioł decision carried over: %+v", rdp)
 	}
 	// Decisions made in Dzięcioł are applied by the triage sync as always.
 	for _, f := range sim.findingsOf(l.t18.ID) {
