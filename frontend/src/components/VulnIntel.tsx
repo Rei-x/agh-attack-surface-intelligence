@@ -17,11 +17,16 @@ import { useToast } from '@/context/ToastContext';
 import { assetsLink, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
+  applicabilityLabel,
+  checkedTime,
   cvssSeverity,
+  liveVulns,
   pct,
   severityTone,
+  suppressedCount,
   vulnApi,
   worstVuln,
+  type CVERef,
   type VerifiedFinding,
   type VerifyHostScope,
   type VerifyProfileView,
@@ -42,9 +47,27 @@ function Heading({ children, aside }: { children: React.ReactNode; aside?: React
 /** Compact "23 CVE 9.8" chip for the service row; tone follows the worst CVSS. */
 export function VulnChip({ service }: { service: VulnService }) {
   const v = worstVuln(service.vulns);
-  if (!v) return null;
-  const total = (service.vulns || []).reduce((n, x) => n + x.total, 0);
-  const possibleOnly = (service.vulns || []).every((x) => x.confidence === 'low' || x.possible === x.total);
+  const suppressed = suppressedCount(service.vulns);
+  if (!v) {
+    if (suppressed === 0) return null;
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span className="inline-flex h-[18px] items-center border border-dashed border-muted-foreground/40 px-1 font-mono text-[10px] leading-none text-muted-foreground line-through decoration-muted-foreground/60" />
+          }
+        >
+          {suppressed} CVE
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm text-left">
+          Version matches ruled out by the protocol probe: {suppressedLine(service.vulns)}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  const live = liveVulns(service.vulns);
+  const total = live.reduce((n, x) => n + x.total, 0);
+  const possibleOnly = live.every((x) => x.confidence === 'low' || x.possible === x.total);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -65,7 +88,7 @@ export function VulnChip({ service }: { service: VulnService }) {
         {v.max_cvss.toFixed(1)}
       </TooltipTrigger>
       <TooltipContent className="max-w-sm flex-col items-start gap-0.5 text-left">
-        {(service.vulns || []).map((x) => (
+        {live.map((x) => (
           <span key={x.product}>
             <span className="font-semibold">
               {x.product} {x.version}
@@ -75,8 +98,76 @@ export function VulnChip({ service }: { service: VulnService }) {
             {x.confidence === 'low' && ', possible (distro backport)'}
           </span>
         ))}
+        {suppressed > 0 && <span className="opacity-80">{suppressed} suppressed: {suppressedLine(service.vulns)}</span>}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/** "CVE-2023-44487, CVE-2019-9513 (not applicable: HTTP/2 off)". */
+function suppressedLine(vulns: VulnSummary[] | undefined): string {
+  const refs = (vulns || []).flatMap((v) => v.suppressed || []);
+  if (!refs.length) return 'see the host drawer';
+  const ids = refs.slice(0, 4).map((c) => c.id).join(', ') + (refs.length > 4 ? ` +${refs.length - 4}` : '');
+  return `${ids} (${applicabilityLabel(refs[0])})`;
+}
+
+/** Applicability of a protocol-dependent CVE that still counts (on, or not checked). */
+function ApplicabilityTag({ c }: { c: CVERef }) {
+  if (!c.applicability || c.applicability === 'not_applicable') return null;
+  const on = c.applicability === 'applicable';
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn(
+              'shrink-0 border px-1 text-[10px]',
+              on ? 'border-foreground/30 text-foreground' : 'border-dashed border-muted-foreground/50 text-muted-foreground'
+            )}
+          />
+        }
+      >
+        {applicabilityLabel(c)}
+      </TooltipTrigger>
+      <TooltipContent className="max-w-sm text-left">
+        {c.applicability_note}
+        {c.checked_at && ` Checked ${checkedTime(c.checked_at)}.`}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Version matches ruled out by the protocol probe: kept visible, struck through, with why. */
+function SuppressedList({ refs }: { refs: CVERef[] }) {
+  if (!refs.length) return null;
+  return (
+    <ul className="space-y-0.5 border-t border-dashed border-border pt-1.5" aria-label="Not applicable CVEs">
+      {refs.map((c) => (
+        <li key={c.id} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
+          <a
+            href={c.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 font-mono line-through decoration-muted-foreground/60 underline-offset-2 hover:underline"
+          >
+            {c.id}
+          </a>
+          {c.kev && (
+            <span className="shrink-0 text-[10px] opacity-70" title={`In CISA KEV since ${c.kev_date_added}, not applicable here`}>
+              KEV
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
+              · {applicabilityLabel(c)}
+              {c.checked_at && ` (checked ${checkedTime(c.checked_at)})`}
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm text-left">{c.applicability_note}</TooltipContent>
+          </Tooltip>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -139,10 +230,42 @@ export function KevBadge({ count, ransomware }: { count: number; ransomware?: bo
 export function VulnEvidence({ service }: { service: VulnService }) {
   const vulns = service.vulns || [];
   if (vulns.length === 0) return null;
+  const suppressed = suppressedCount(vulns);
   return (
     <div className="space-y-2">
-      <Heading aside={`NVD, CISA KEV, FIRST EPSS as of ${vulns[0].data_as_of}`}>Known vulnerabilities</Heading>
-      {vulns.map((v) => (
+      <Heading aside={`NVD, CISA KEV, FIRST EPSS as of ${vulns[0].data_as_of}`}>
+        Known vulnerabilities
+        {suppressed > 0 && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="ml-2 inline-flex h-4 items-center border border-dashed border-muted-foreground/50 px-1 align-middle text-[10px] font-medium tracking-normal normal-case" />
+              }
+            >
+              {suppressed} suppressed
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm text-left">
+              Version matches whose precondition the scan ruled out (HTTP/2 off on this port). Kept for the record;
+              not counted in the score, the KEV badge, queries or DefectDojo.
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </Heading>
+      {vulns.map((v) =>
+        v.total === 0 ? (
+          <div key={v.product} className="space-y-1.5 border border-dashed border-border bg-card/50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <ServiceLogo name={v.product} size="sm" />
+              <span className="text-sm font-semibold text-muted-foreground">
+                {v.product} <span className="font-mono text-xs font-normal">{v.version}</span>
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                every match is not applicable on this port
+              </span>
+            </div>
+            <SuppressedList refs={v.suppressed || []} />
+          </div>
+        ) : (
         <div key={v.product} className="space-y-2 border border-border bg-card p-3">
           <div className="flex flex-wrap items-center gap-2">
             <ServiceLogo name={v.product} size="sm" />
@@ -197,13 +320,14 @@ export function VulnEvidence({ service }: { service: VulnService }) {
                   EPSS {pct(c.epss, 1)}
                 </span>
                 {c.possible && <span className="shrink-0 border border-dashed px-1 text-[10px] text-muted-foreground">possible</span>}
+                <ApplicabilityTag c={c} />
                 <span className="min-w-0 flex-1 truncate text-muted-foreground" title={`${c.summary}${c.range ? ` (affected: ${c.range})` : ''}`}>
                   {c.summary}
                 </span>
               </li>
             ))}
           </ul>
-          {v.total > v.top.length && (
+          {v.total > v.top.length && v.top[0] && (
             <p className="text-[11px] text-muted-foreground">
               +{v.total - v.top.length} more, ordered by KEV, EPSS and CVSS.{' '}
               <Link to={assetsLink(`cve:${v.top[0].id}`)} className="underline">
@@ -211,8 +335,10 @@ export function VulnEvidence({ service }: { service: VulnService }) {
               </Link>
             </p>
           )}
+          <SuppressedList refs={v.suppressed || []} />
         </div>
-      ))}
+        )
+      )}
     </div>
   );
 }

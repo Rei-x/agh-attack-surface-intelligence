@@ -225,11 +225,13 @@ export function serviceFlags(svc: FlaggableService): CategoryFlag[] {
       kind: 'kev',
       detail: kev.flatMap((v) => v.top.filter((c) => c.kev).map((c) => `${c.id} (${v.product} ${v.version}), in KEV since ${c.kev_date_added}`)),
     });
-  if (svc.known_vulns?.length || svc.vulns?.length)
+  // Products whose every match the protocol probe ruled out (e.g. HTTP/2 off) are no finding.
+  const liveV = (svc.vulns || []).filter((v) => v.total > 0);
+  if (svc.known_vulns?.length || liveV.length)
     out.push({
       kind: 'cve',
       detail: [
-        ...(svc.vulns || []).map(
+        ...liveV.map(
           (v) => `${v.product} ${v.version}: ${v.total} CVEs, max CVSS ${v.max_cvss.toFixed(1)}, match confidence ${v.confidence}`
         ),
         ...(svc.known_vulns || []).map(vulnDetail),

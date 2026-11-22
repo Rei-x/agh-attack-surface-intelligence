@@ -308,6 +308,20 @@ export interface HTTPFingerprint {
   response_time_ms?: number;
   median_response_ms?: number;
   response_samples?: number;
+  /** HTTP versions the port accepts (read-only capability probe during fingerprinting). */
+  protocols?: ProtocolSupport;
+}
+
+export type ProtoState = 'yes' | 'no' | 'unknown';
+
+export interface ProtocolSupport {
+  http2: ProtoState | string;
+  http2_method?: string;
+  http2_evidence?: string;
+  /** "yes" when Alt-Svc advertises h3; never "no" (absence proves nothing). */
+  http3?: ProtoState | string;
+  http3_evidence?: string;
+  checked_at: string;
 }
 
 export interface TechEvidence {
@@ -327,7 +341,12 @@ export interface DetectedTechnology {
 
 export interface InterestingnessFactor {
   reason: string;
+  /** What the factor added to the score; the points of a list add up to the score. */
   points: number;
+  /** Standalone weight before diminishing returns. */
+  weight?: number;
+  /** "hygiene": low-signal, capped together. */
+  kind?: string;
 }
 
 export interface TimeSlotStat {

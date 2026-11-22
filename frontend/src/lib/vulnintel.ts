@@ -13,6 +13,12 @@ export interface CVERef {
   possible?: boolean;
   range?: string;
   url: string;
+  /** Protocol the vulnerable code needs (http2, http3). */
+  requires?: string;
+  /** applicable | not_applicable | unverified (only set when `requires` is). */
+  applicability?: 'applicable' | 'not_applicable' | 'unverified' | string;
+  applicability_note?: string;
+  checked_at?: string;
 }
 
 export interface VulnSummary {
@@ -37,6 +43,11 @@ export interface VulnSummary {
   top: CVERef[];
   cve_ids: string[];
   data_as_of: string;
+  /** Matches ruled out by the protocol probe (e.g. HTTP/2 off); excluded from every count. */
+  suppressed?: CVERef[];
+  suppressed_count?: number;
+  /** Counted CVEs whose protocol precondition was not checked. */
+  unverified?: number;
 }
 
 /** Result of a safe verification check (backend internal/verify). */
@@ -198,8 +209,46 @@ export function pct(x: number, digits = 0): string {
   return `${(x * 100).toFixed(digits)}%`;
 }
 
-/** Worst summary first: KEV, then CVSS. */
+/** Summaries with at least one CVE left after suppression (protocol probe). */
+export function liveVulns(vulns: VulnSummary[] | undefined): VulnSummary[] {
+  return (vulns || []).filter((v) => v.total > 0);
+}
+
+/** Matches ruled out by the protocol probe, over all products of a service. */
+export function suppressedCount(vulns: VulnSummary[] | undefined): number {
+  return (vulns || []).reduce((n, v) => n + (v.suppressed_count ?? v.suppressed?.length ?? 0), 0);
+}
+
+/** Worst summary first: KEV, then CVSS (suppressed-only summaries left out). */
 export function worstVuln(vulns: VulnSummary[] | undefined): VulnSummary | undefined {
-  if (!vulns?.length) return undefined;
-  return [...vulns].sort((a, b) => (b.kev > 0 ? 1 : 0) - (a.kev > 0 ? 1 : 0) || b.max_cvss - a.max_cvss)[0];
+  const live = liveVulns(vulns);
+  if (!live.length) return undefined;
+  return [...live].sort((a, b) => (b.kev > 0 ? 1 : 0) - (a.kev > 0 ? 1 : 0) || b.max_cvss - a.max_cvss)[0];
+}
+
+const PROTO_LABEL: Record<string, string> = { http2: 'HTTP/2', http3: 'HTTP/3' };
+
+/** Short applicability label, e.g. "not applicable: HTTP/2 off". */
+export function applicabilityLabel(c: CVERef): string {
+  const proto = PROTO_LABEL[c.requires || ''] || c.requires || 'protocol';
+  switch (c.applicability) {
+    case 'not_applicable':
+      return `not applicable: ${proto} off`;
+    case 'applicable':
+      return `${proto} on`;
+    case 'unverified':
+      return `version match, unverified (needs ${proto})`;
+  }
+  return '';
+}
+
+/** "01:12" (today) or "21 Nov 01:12" in the viewer's time zone. */
+export function checkedTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  return d.toDateString() === new Date().toDateString()
+    ? hm
+    : `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${hm}`;
 }

@@ -240,7 +240,7 @@ export function DashboardPage() {
     try {
       await api.pushDefectDojoFindings({
         service_ids: [svc.id],
-        severity: svc.interestingness >= 75 ? 'High' : svc.interestingness >= 50 ? 'Medium' : 'Low',
+        // Severity left to the backend (domain.ScoreSeverity: one mapping for every caller).
       });
       toast.success('Sent to DefectDojo', `${svc.host_ip || ''}:${svc.port}`);
     } catch (err) {
