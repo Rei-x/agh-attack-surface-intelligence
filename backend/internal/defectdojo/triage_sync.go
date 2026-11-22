@@ -287,6 +287,18 @@ func triageNote(t *domain.TriageInfo) string {
 	return note
 }
 
+// VerificationNotePrefix starts the note a scan-verified remediation ticket leaves on its
+// finding. It is not a triage note, so SyncTriage's own bookkeeping ignores it.
+const VerificationNotePrefix = "Dzięcioł verification: "
+
+// AddFindingNote adds a note to a DefectDojo finding.
+func (c *Client) AddFindingNote(ctx context.Context, cfg *domain.DefectDojoConfig, findingID int, entry string) error {
+	if findingID <= 0 || strings.TrimSpace(entry) == "" {
+		return nil
+	}
+	return c.postJSON(ctx, cfg, fmt.Sprintf("/api/v2/findings/%d/notes/", findingID), map[string]any{"entry": entry})
+}
+
 func (c *Client) patchJSON(ctx context.Context, cfg *domain.DefectDojoConfig, path string, body any) error {
 	return c.sendJSON(ctx, cfg, http.MethodPatch, path, body)
 }
