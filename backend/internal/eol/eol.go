@@ -477,3 +477,40 @@ func nonEmpty(a, b string) string {
 	}
 	return b
 }
+
+// VersionOf returns the version a service shows for product (a table name, alias or key,
+// any case), read from the same evidence as Assess; ok=false when no version of that
+// product is visible on the service.
+func VersionOf(svc *domain.Service, product string) (string, bool) {
+	return table.VersionOf(svc, product)
+}
+
+// VersionOf is the table-bound variant of the package-level VersionOf.
+func (d *Data) VersionOf(svc *domain.Service, product string) (string, bool) {
+	p := d.LookupProduct(product)
+	if p == nil {
+		p = d.byKey[strings.ToLower(strings.TrimSpace(product))]
+	}
+	if p == nil || svc == nil {
+		return "", false
+	}
+	for _, c := range d.candidates(svc) {
+		if c.product.Key == p.Key {
+			return c.version, true
+		}
+	}
+	return "", false
+}
+
+// VulnProduct is the display name of the product a known-vulnerability hint is about
+// ("" for an unknown id).
+func VulnProduct(id string) string {
+	for _, kv := range table.KnownVulns {
+		if strings.EqualFold(kv.ID, id) {
+			if p := table.byKey[kv.Product]; p != nil {
+				return p.Name
+			}
+		}
+	}
+	return ""
+}
