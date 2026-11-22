@@ -631,6 +631,13 @@ type DefectDojoConfig struct {
 	AutoPushFindings bool `json:"auto_push_findings"`
 }
 
+// DefectDojoLogin is a DefectDojo account an admin typed in. The header chip shows it to
+// everyone signed in to Dzięcioł so they can open DefectDojo without asking for access.
+type DefectDojoLogin struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 // DefectDojoSyncState is the last automatic DefectDojo sync, shown in the header chip and
 // used for the per-service "in DefectDojo" status.
 type DefectDojoSyncState struct {

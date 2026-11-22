@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
@@ -75,6 +76,45 @@ func (s *Server) handleSaveDefectDojoConfig(w http.ResponseWriter, r *http.Reque
 	}
 	saved.APIToken = ""
 	writeJSON(w, http.StatusOK, saved)
+}
+
+// handleSaveDefectDojoLogin stores the DefectDojo account the header chip shows to everyone
+// signed in. Both fields empty clears it.
+func (s *Server) handleSaveDefectDojoLogin(w http.ResponseWriter, r *http.Request) {
+	var req domain.DefectDojoLogin
+	if err := decodeJSON(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" && req.Password == "" {
+		s.handleClearDefectDojoLogin(w, r)
+		return
+	}
+	switch {
+	case req.Username == "" || req.Password == "":
+		writeErr(w, http.StatusBadRequest, "username and password are both required (send both empty to clear the login)")
+		return
+	case len(req.Username) > 150 || len(req.Password) > 256: // 150: Django's username limit
+		writeErr(w, http.StatusBadRequest, "username must be at most 150 characters and password at most 256")
+		return
+	case strings.ContainsFunc(req.Username+req.Password, unicode.IsControl):
+		writeErr(w, http.StatusBadRequest, "username and password must not contain control characters or line breaks")
+		return
+	}
+	if err := db.SaveDefectDojoLogin(r.Context(), s.store, &req); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"login": req})
+}
+
+func (s *Server) handleClearDefectDojoLogin(w http.ResponseWriter, r *http.Request) {
+	if err := db.SaveDefectDojoLogin(r.Context(), s.store, nil); err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"login": nil})
 }
 
 func (s *Server) handleTestDefectDojo(w http.ResponseWriter, r *http.Request) {

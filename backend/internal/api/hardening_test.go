@@ -87,6 +87,7 @@ func TestRoleMatrixAdminOnlyRoutes(t *testing.T) {
 	adminOnly := []string{
 		"GET /api/v1/admin/users", "GET /api/v1/admin/roles", "GET /api/v1/admin/audit",
 		"GET /api/v1/admin/crypto/status", "PUT /api/v1/integrations/defectdojo", "GET /api/v1/integrations/webhook",
+		"PUT /api/v1/integrations/defectdojo/login", "DELETE /api/v1/integrations/defectdojo/login",
 	}
 	for _, u := range []struct{ name, pass string }{{"operator", "Operator123!"}, {"analyst", "Analyst123!"}, {"viewer", "Viewer123!"}} {
 		tok := loginTest(t, h, u.name, u.pass)

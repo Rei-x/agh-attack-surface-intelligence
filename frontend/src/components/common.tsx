@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { Link } from 'react-router-dom';
-import { RiArrowRightUpLine } from '@remixicon/react';
+import { RiArrowRightUpLine, RiCheckLine, RiCloseLine, RiFileCopyLine } from '@remixicon/react';
 import { cn } from '@/lib/utils';
 import { TONE, type Tone } from '@/lib/format';
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { WoodpeckerMark } from '@/components/Woodpecker';
 import {
@@ -284,5 +285,53 @@ export function Notice({
       {Icon && <Icon className="mt-0.5 size-3.5 shrink-0" />}
       <div className="min-w-0 flex-1">{children}</div>
     </div>
+  );
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  // The Clipboard API exists only on https and localhost; plain http needs the old path.
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand('copy');
+  ta.remove();
+  if (!ok) throw new Error('copy failed');
+}
+
+/** Icon button that copies text and confirms with a check mark for a moment. */
+export function CopyButton({ text, label = 'Copy', className }: { text: string; label?: string; className?: string }) {
+  const [state, setState] = React.useState<'idle' | 'copied' | 'failed'>('idle');
+  React.useEffect(() => {
+    if (state === 'idle') return;
+    const t = window.setTimeout(() => setState('idle'), 1500);
+    return () => window.clearTimeout(t);
+  }, [state]);
+  const title = state === 'copied' ? 'Copied' : state === 'failed' ? 'Could not copy, select the text instead' : label;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon-xs"
+      aria-label={title}
+      title={title}
+      className={className}
+      onClick={() => copyText(text).then(() => setState('copied'), () => setState('failed'))}
+    >
+      {state === 'copied' ? (
+        <RiCheckLine className="text-emerald-600 dark:text-emerald-400" />
+      ) : state === 'failed' ? (
+        <RiCloseLine className="text-rose-600 dark:text-rose-400" />
+      ) : (
+        <RiFileCopyLine />
+      )}
+    </Button>
   );
 }

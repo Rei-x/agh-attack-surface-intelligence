@@ -31,6 +31,7 @@ import type {
   User,
 } from '@/types/api';
 import { WebhookPanel } from '@/components/WebhookPanel';
+import { DOJO_STATUS_CHANGED } from '@/components/DojoStatusChip';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,7 @@ import {
 } from '@/components/ui/table';
 import {
   Code,
+  CopyButton,
   Empty,
   Field,
   PageHeader,
@@ -80,6 +82,7 @@ const AUDIT_RESOURCES: [RegExp, string][] = [
   [/^\/api\/v1\/integrations\/defectdojo\/sync$/, 'DefectDojo sync started'],
   [/^\/api\/v1\/integrations\/defectdojo\/test$/, 'DefectDojo connection tested'],
   [/^\/api\/v1\/integrations\/defectdojo\/push-/, 'Manual DefectDojo push started'],
+  [/^\/api\/v1\/integrations\/defectdojo\/login$/, 'DefectDojo login shown in the header'],
   [/^\/api\/v1\/integrations\/defectdojo/, 'DefectDojo integration'],
   [/^\/api\/v1\/integrations\/webhook/, 'Alert webhook'],
   [/^\/api\/v1\/agents/, 'Scanning agent'],
@@ -142,6 +145,8 @@ export function AdminPage() {
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [ddSeverity, setDdSeverity] = useState('High');
   const [ddBusy, setDdBusy] = useState(false);
+  const [ddLogin, setDdLogin] = useState({ username: '', password: '' });
+  const [ddLoginBusy, setDdLoginBusy] = useState(false);
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -174,7 +179,10 @@ export function AdminPage() {
         api.listServices({ min_score: 20 }),
         api.defectDojoStatus(),
       ]);
-      if (st.status === 'fulfilled') setDdStatus(st.value);
+      if (st.status === 'fulfilled') {
+        setDdStatus(st.value);
+        setDdLogin(st.value.login ?? { username: '', password: '' });
+      }
       if (cfg.status === 'fulfilled' && cfg.value) {
         setDdConfig((prev) => ({ ...prev, ...cfg.value, api_token: '' }));
       }
@@ -243,11 +251,47 @@ export function AdminPage() {
       if (ddConfig.api_token?.trim()) payload.api_token = ddConfig.api_token.trim();
       await api.updateDefectDojoConfig(payload);
       toast.success('Saved', 'API token stored encrypted (AES-256-GCM)');
+      window.dispatchEvent(new Event(DOJO_STATUS_CHANGED));
       loadDefectDojo();
     } catch (err) {
       toast.error('Save failed', (err as Error).message);
     } finally {
       setDdBusy(false);
+    }
+  };
+
+  const handleSaveDDLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const username = ddLogin.username.trim();
+    if (!username || !ddLogin.password) {
+      toast.warning('Enter both a username and a password');
+      return;
+    }
+    setDdLoginBusy(true);
+    try {
+      await api.saveDefectDojoLogin({ username, password: ddLogin.password });
+      toast.success('Login saved', 'The DefectDojo chip in the header now shows it');
+      window.dispatchEvent(new Event(DOJO_STATUS_CHANGED));
+      loadDefectDojo();
+    } catch (err) {
+      toast.error('Save failed', (err as Error).message);
+    } finally {
+      setDdLoginBusy(false);
+    }
+  };
+
+  const handleClearDDLogin = async () => {
+    setDdLoginBusy(true);
+    try {
+      await api.clearDefectDojoLogin();
+      setDdLogin({ username: '', password: '' });
+      toast.success('Login cleared', 'The DefectDojo chip no longer shows a login');
+      window.dispatchEvent(new Event(DOJO_STATUS_CHANGED));
+      loadDefectDojo();
+    } catch (err) {
+      toast.error('Clear failed', (err as Error).message);
+    } finally {
+      setDdLoginBusy(false);
     }
   };
 
@@ -415,121 +459,197 @@ export function AdminPage() {
         {canDD && (
           <TabsContent value="defectdojo" className="space-y-6">
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-              <Card size="sm" className="h-fit xl:col-span-5">
-                <form onSubmit={handleSaveDDConfig} className="flex flex-col gap-(--card-spacing)">
-                  <CardHeader className="border-b">
-                    <CardTitle className="text-sm">Connection (API v2)</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <Field label="Base URL" htmlFor="dd-url">
-                      <Input
-                        id="dd-url"
-                        value={ddConfig.url}
-                        onChange={(e) => setDdConfig((c) => ({ ...c, url: e.target.value }))}
-                        placeholder="http://lab-defectdojo-mock:8000"
-                        className="font-mono"
-                      />
-                    </Field>
-                    <Field
-                      label={
-                        <span className="flex items-center gap-2">
-                          API token
-                          {ddConfig.has_api_token && (
-                            <Pill tone="success">
-                              <RiLockLine className="size-3" /> stored encrypted
-                            </Pill>
-                          )}
-                        </span>
-                      }
-                      htmlFor="dd-token"
-                    >
-                      <Input
-                        id="dd-token"
-                        type="password"
-                        value={ddConfig.api_token || ''}
-                        onChange={(e) => setDdConfig((c) => ({ ...c, api_token: e.target.value }))}
-                        placeholder={ddConfig.has_api_token ? '•••••••• (unchanged)' : 'Token'}
-                        className="font-mono"
-                      />
-                    </Field>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Field label="Product ID" htmlFor="dd-product">
+              <div className="space-y-6 xl:col-span-5">
+                <Card size="sm" className="h-fit">
+                  <form onSubmit={handleSaveDDConfig} className="flex flex-col gap-(--card-spacing)">
+                    <CardHeader className="border-b">
+                      <CardTitle className="text-sm">Connection (API v2)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      <Field label="Base URL" htmlFor="dd-url">
                         <Input
-                          id="dd-product"
-                          type="number"
-                          value={ddConfig.product_id}
-                          onChange={(e) =>
-                            setDdConfig((c) => ({ ...c, product_id: Number(e.target.value) }))
-                          }
+                          id="dd-url"
+                          value={ddConfig.url}
+                          onChange={(e) => setDdConfig((c) => ({ ...c, url: e.target.value }))}
+                          placeholder="http://lab-defectdojo-mock:8000"
                           className="font-mono"
                         />
                       </Field>
-                      <Field label="Engagement ID" htmlFor="dd-engagement">
+                      <Field
+                        label={
+                          <span className="flex items-center gap-2">
+                            API token
+                            {ddConfig.has_api_token && (
+                              <Pill tone="success">
+                                <RiLockLine className="size-3" /> stored encrypted
+                              </Pill>
+                            )}
+                          </span>
+                        }
+                        htmlFor="dd-token"
+                      >
                         <Input
-                          id="dd-engagement"
-                          type="number"
-                          value={ddConfig.engagement_id}
-                          onChange={(e) =>
-                            setDdConfig((c) => ({ ...c, engagement_id: Number(e.target.value) }))
-                          }
+                          id="dd-token"
+                          type="password"
+                          value={ddConfig.api_token || ''}
+                          onChange={(e) => setDdConfig((c) => ({ ...c, api_token: e.target.value }))}
+                          placeholder={ddConfig.has_api_token ? '•••••••• (unchanged)' : 'Token'}
                           className="font-mono"
                         />
                       </Field>
-                    </div>
-                    <div className="space-y-3 pt-1">
-                      <Label className="justify-between">
-                        <span className="text-xs font-normal tracking-normal normal-case">
-                          Verify TLS certificate
-                        </span>
-                        <Switch
-                          checked={ddConfig.verify_tls}
-                          onCheckedChange={(checked) =>
-                            setDdConfig((c) => ({ ...c, verify_tls: checked }))
-                          }
-                        />
-                      </Label>
-                      <Label className="justify-between">
-                        <span className="text-xs font-normal tracking-normal normal-case">
-                          Push change findings after every completed run (and sync triage)
-                        </span>
-                        <Switch
-                          checked={ddConfig.auto_push_findings ?? true}
-                          onCheckedChange={(checked) =>
-                            setDdConfig((c) => ({ ...c, auto_push_findings: checked }))
-                          }
-                        />
-                      </Label>
-                      <Label className="justify-between">
-                        <span className="text-xs font-normal tracking-normal normal-case">
-                          Push nmap XML after every completed run
-                        </span>
-                        <Switch
-                          checked={ddConfig.auto_push_nmap}
-                          onCheckedChange={(checked) =>
-                            setDdConfig((c) => ({ ...c, auto_push_nmap: checked }))
-                          }
-                        />
-                      </Label>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="justify-end gap-2 border-t">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={ddBusy}
-                      onClick={handleTestDD}
-                    >
-                      <RiCheckboxCircleLine /> Test
-                    </Button>
-                    {can(PERMISSIONS.ADMIN_SETTINGS) && (
-                      <Button type="submit" size="sm" disabled={ddBusy}>
-                        <RiSave3Line /> Save
+                      <div className="grid grid-cols-2 gap-4">
+                        <Field label="Product ID" htmlFor="dd-product">
+                          <Input
+                            id="dd-product"
+                            type="number"
+                            value={ddConfig.product_id}
+                            onChange={(e) =>
+                              setDdConfig((c) => ({ ...c, product_id: Number(e.target.value) }))
+                            }
+                            className="font-mono"
+                          />
+                        </Field>
+                        <Field label="Engagement ID" htmlFor="dd-engagement">
+                          <Input
+                            id="dd-engagement"
+                            type="number"
+                            value={ddConfig.engagement_id}
+                            onChange={(e) =>
+                              setDdConfig((c) => ({ ...c, engagement_id: Number(e.target.value) }))
+                            }
+                            className="font-mono"
+                          />
+                        </Field>
+                      </div>
+                      <div className="space-y-3 pt-1">
+                        <Label className="justify-between">
+                          <span className="text-xs font-normal tracking-normal normal-case">
+                            Verify TLS certificate
+                          </span>
+                          <Switch
+                            checked={ddConfig.verify_tls}
+                            onCheckedChange={(checked) =>
+                              setDdConfig((c) => ({ ...c, verify_tls: checked }))
+                            }
+                          />
+                        </Label>
+                        <Label className="justify-between">
+                          <span className="text-xs font-normal tracking-normal normal-case">
+                            Push change findings after every completed run (and sync triage)
+                          </span>
+                          <Switch
+                            checked={ddConfig.auto_push_findings ?? true}
+                            onCheckedChange={(checked) =>
+                              setDdConfig((c) => ({ ...c, auto_push_findings: checked }))
+                            }
+                          />
+                        </Label>
+                        <Label className="justify-between">
+                          <span className="text-xs font-normal tracking-normal normal-case">
+                            Push nmap XML after every completed run
+                          </span>
+                          <Switch
+                            checked={ddConfig.auto_push_nmap}
+                            onCheckedChange={(checked) =>
+                              setDdConfig((c) => ({ ...c, auto_push_nmap: checked }))
+                            }
+                          />
+                        </Label>
+                      </div>
+                    </CardContent>
+                    <CardFooter className="justify-end gap-2 border-t">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={ddBusy}
+                        onClick={handleTestDD}
+                      >
+                        <RiCheckboxCircleLine /> Test
                       </Button>
+                      {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                        <Button type="submit" size="sm" disabled={ddBusy}>
+                          <RiSave3Line /> Save
+                        </Button>
+                      )}
+                    </CardFooter>
+                  </form>
+                </Card>
+
+                <Card size="sm" className="h-fit">
+                  <form onSubmit={handleSaveDDLogin} autoComplete="off" className="flex flex-col gap-(--card-spacing)">
+                    <CardHeader className="border-b">
+                      <CardTitle className="text-sm">Login shown in the header</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4 text-xs">
+                      <p className="text-muted-foreground">
+                        Anyone signed in to Dzięcioł sees this login in the DefectDojo chip.
+                      </p>
+                      {ddStatus?.login ? (
+                        <dl className="space-y-1.5">
+                          {(
+                            [
+                              ['Username', ddStatus.login.username, false],
+                              ['Password', ddStatus.login.password, true],
+                            ] as const
+                          ).map(([label, value, mono]) => (
+                            <div key={label} className="flex items-center gap-2">
+                              <dt className="w-20 shrink-0 text-[10px] tracking-wider text-muted-foreground uppercase">{label}</dt>
+                              <dd className={cn('min-w-0 flex-1 truncate select-all', mono ? 'font-mono' : 'font-medium')}>{value}</dd>
+                              <CopyButton text={value} label={`Copy ${label.toLowerCase()}`} />
+                            </div>
+                          ))}
+                        </dl>
+                      ) : (
+                        <p>No login set. The chip shows the sync status and a link only.</p>
+                      )}
+                      {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <Field label="Username" htmlFor="dd-login-username">
+                            <Input
+                              id="dd-login-username"
+                              value={ddLogin.username}
+                              onChange={(e) => setDdLogin((l) => ({ ...l, username: e.target.value }))}
+                              autoComplete="off"
+                              data-1p-ignore
+                              data-lpignore="true"
+                              spellCheck={false}
+                            />
+                          </Field>
+                          <Field label="Password" htmlFor="dd-login-password">
+                            <Input
+                              id="dd-login-password"
+                              value={ddLogin.password}
+                              onChange={(e) => setDdLogin((l) => ({ ...l, password: e.target.value }))}
+                              autoComplete="off"
+                              data-1p-ignore
+                              data-lpignore="true"
+                              spellCheck={false}
+                              className="font-mono"
+                            />
+                          </Field>
+                        </div>
+                      )}
+                    </CardContent>
+                    {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                      <CardFooter className="justify-end gap-2 border-t">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={ddLoginBusy || !ddStatus?.login}
+                          onClick={handleClearDDLogin}
+                        >
+                          <RiDeleteBinLine /> Clear
+                        </Button>
+                        <Button type="submit" size="sm" disabled={ddLoginBusy}>
+                          <RiSave3Line /> Save
+                        </Button>
+                      </CardFooter>
                     )}
-                  </CardFooter>
-                </form>
-              </Card>
+                  </form>
+                </Card>
+              </div>
 
               <div className="space-y-6 xl:col-span-7">
                 <Card size="sm">

@@ -4,8 +4,13 @@ import { RiExternalLinkLine } from '@remixicon/react';
 import { api } from '@/lib/api';
 import { useLiveEvents } from '@/context/LiveEventsContext';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CopyButton } from '@/components/common';
 import type { DefectDojoStatus } from '@/types/api';
+
+/** Dispatched on window after an admin changes DefectDojo settings, so the chip reloads now. */
+export const DOJO_STATUS_CHANGED = 'dzieciol:dojo-status-changed';
 
 function ago(iso?: string): string {
   if (!iso) return '';
@@ -16,9 +21,22 @@ function ago(iso?: string): string {
   return `${Math.floor(sec / 86400)} d ago`;
 }
 
+function LoginRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
+      <span className={cn('min-w-0 flex-1 truncate select-all', mono ? 'font-mono' : 'font-medium')} title={value}>
+        {value}
+      </span>
+      <CopyButton text={value} label={`Copy ${label.toLowerCase()}`} className="size-6" />
+    </div>
+  );
+}
+
 /**
  * Header chip: is DefectDojo connected, when did the last automatic push run, how many
- * findings it holds, and a link to the DefectDojo test/product.
+ * findings it holds. Its popover links to the DefectDojo test/product and shows the
+ * DefectDojo login an admin set, ready to copy.
  */
 export function DojoStatusChip() {
   const [st, setSt] = useState<DefectDojoStatus | null>(null);
@@ -33,9 +51,11 @@ export function DojoStatusChip() {
         .catch(() => alive && setSt(null));
     load();
     const t = window.setInterval(load, 60000);
+    window.addEventListener(DOJO_STATUS_CHANGED, load);
     return () => {
       alive = false;
       window.clearInterval(t);
+      window.removeEventListener(DOJO_STATUS_CHANGED, load);
     };
   }, [dataVersion]);
 
@@ -56,9 +76,12 @@ export function DojoStatusChip() {
   const href = sync.test_url || sync.product_url || st.url;
   const auto = st.auto_push_findings || st.auto_push_nmap;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={<a href={href} target="_blank" rel="noreferrer" className={cn(base, failed && 'border-rose-500/50')} />}
+    <Popover>
+      <PopoverTrigger
+        openOnHover
+        delay={150}
+        closeDelay={200}
+        className={cn(base, 'data-popup-open:bg-muted', failed && 'border-rose-500/50')}
       >
         <span className={cn('size-1.5', failed ? 'bg-rose-500' : sync.last_sync_at ? 'bg-emerald-500' : 'bg-amber-500')} />
         <span className="font-semibold">DefectDojo</span>
@@ -66,10 +89,10 @@ export function DojoStatusChip() {
           {sync.last_sync_at ? `${sync.findings} findings · ${ago(sync.last_sync_at)}` : auto ? 'waiting for first run' : 'auto push off'}
         </span>
         <RiExternalLinkLine className="size-3 text-muted-foreground" />
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">
-        <div className="space-y-0.5 text-xs">
-          <div>{st.url}</div>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 gap-3 p-3 text-xs">
+        <div className="space-y-0.5">
+          <div className="break-all">{st.url}</div>
           <div>
             Automatic push after each completed run: {auto ? 'on' : 'off'}
             {st.auto_push_findings && st.auto_push_nmap ? ' (findings + nmap)' : st.auto_push_findings ? ' (findings)' : st.auto_push_nmap ? ' (nmap)' : ''}
@@ -80,9 +103,18 @@ export function DojoStatusChip() {
             </div>
           )}
           {sync.nmap_pushed_at && <div>Last nmap import {ago(sync.nmap_pushed_at)}</div>}
-          <div className="text-muted-foreground">Click to open {sync.test_url ? 'the "Dzięcioł changes" test' : 'DefectDojo'}</div>
         </div>
-      </TooltipContent>
-    </Tooltip>
+        <Button variant="outline" size="xs" nativeButton={false} render={<a href={href} target="_blank" rel="noreferrer" />}>
+          <RiExternalLinkLine /> {sync.test_url ? 'Open the Dzięcioł changes test' : 'Open DefectDojo'}
+        </Button>
+        {st.login && (
+          <div className="space-y-1 border-t pt-3">
+            <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">Log in</div>
+            <LoginRow label="Username" value={st.login.username} />
+            <LoginRow label="Password" value={st.login.password} mono />
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

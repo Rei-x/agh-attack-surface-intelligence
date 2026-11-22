@@ -8,6 +8,7 @@ import type {
   DashboardSummary,
   DefectDojoConfig,
   DefectDojoExport,
+  DefectDojoLogin,
   DemoAccount,
   GraphQuery,
   GraphResponse,
@@ -525,6 +526,13 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
+  saveDefectDojoLogin: (payload: DefectDojoLogin) =>
+    request<{ login: DefectDojoLogin | null }>('/api/v1/integrations/defectdojo/login', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  clearDefectDojoLogin: () =>
+    request<{ login: null }>('/api/v1/integrations/defectdojo/login', { method: 'DELETE' }),
   testDefectDojo: (payload?: Partial<DefectDojoConfig>) =>
     request<Record<string, unknown>>('/api/v1/integrations/defectdojo/test', {
       method: 'POST',

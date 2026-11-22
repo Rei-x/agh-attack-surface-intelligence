@@ -15,7 +15,8 @@ import (
 // DefectDojo sync status: header chip, per-service "in DefectDojo" status, "push now".
 
 // handleDefectDojoStatus returns what the header chip shows: configured or not, automatic
-// push switches, the last sync (time, result, findings, links) and the last export.
+// push switches, the last sync (time, result, findings, links), the last export and the
+// DefectDojo login set in Admin, if any.
 func (s *Server) handleDefectDojoStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	cfg, err := db.LoadDefectDojoConfig(ctx, s.store)
@@ -35,6 +36,10 @@ func (s *Server) handleDefectDojoStatus(w http.ResponseWriter, r *http.Request) 
 	}
 	if items, err := s.store.ListDefectDojoExports(ctx, 1); err == nil && len(items) > 0 {
 		out["last_export"] = items[0]
+	}
+	// Deliberately readable by everyone who sees the chip: the admin put it there for them.
+	if login, err := db.LoadDefectDojoLogin(ctx, s.store); err == nil && login != nil {
+		out["login"] = login
 	}
 	writeJSON(w, http.StatusOK, out)
 }

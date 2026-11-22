@@ -211,6 +211,8 @@ func (s *Server) registerRoutes() {
 
 	s.handle("GET /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermDefectDojoPush, s.handleGetDefectDojoConfig))
 	s.handle("PUT /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveDefectDojoConfig))
+	s.handle("PUT /api/v1/integrations/defectdojo/login", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveDefectDojoLogin))
+	s.handle("DELETE /api/v1/integrations/defectdojo/login", mw.RequirePerm(domain.PermAdminSettings, s.handleClearDefectDojoLogin))
 	s.handle("POST /api/v1/integrations/defectdojo/test", mw.RequirePerm(domain.PermDefectDojoPush, s.handleTestDefectDojo))
 	s.handle("POST /api/v1/integrations/defectdojo/push-findings", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoFindings))
 	s.handle("POST /api/v1/integrations/defectdojo/push-nmap", mw.RequirePerm(domain.PermDefectDojoPush, s.handlePushDefectDojoNmap))

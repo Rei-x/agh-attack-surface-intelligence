@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
@@ -10,7 +11,37 @@ import (
 const (
 	SettingDojoOptions = "defectdojo_options"
 	SettingDojoSync    = "defectdojo_sync"
+	SettingDojoLogin   = "defectdojo_login"
 )
+
+// LoadDefectDojoLogin returns the DefectDojo login shown in the header chip, nil when none
+// is set. Like every settings document it is encrypted at rest with the vault.
+func LoadDefectDojoLogin(ctx context.Context, store Store) (*domain.DefectDojoLogin, error) {
+	ss, ok := store.(SettingsStore)
+	if !ok {
+		return nil, nil
+	}
+	var l domain.DefectDojoLogin
+	if found, err := ss.GetSetting(ctx, SettingDojoLogin, &l); err != nil || !found {
+		return nil, err
+	}
+	if l.Username == "" {
+		return nil, nil
+	}
+	return &l, nil
+}
+
+// SaveDefectDojoLogin stores the login shown in the header chip; nil clears it.
+func SaveDefectDojoLogin(ctx context.Context, store Store, l *domain.DefectDojoLogin) error {
+	ss, ok := store.(SettingsStore)
+	if !ok {
+		return errors.New("store does not support settings")
+	}
+	if l == nil {
+		l = &domain.DefectDojoLogin{}
+	}
+	return ss.SaveSetting(ctx, SettingDojoLogin, l)
+}
 
 type dojoOptions struct {
 	AutoPushFindings bool `json:"auto_push_findings"`
