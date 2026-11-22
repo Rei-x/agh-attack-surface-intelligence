@@ -13,8 +13,8 @@ import (
 // Large encrypted payloads (per-run inventory snapshots, merged raw nmap XML) are gzipped
 // before the per-row AES-256-GCM envelope. Ciphertext does not compress, so without this the
 // file store's outer gzip cannot shrink them at all, while their plaintext (repetitive JSON
-// keys, XML tags) compresses 5 to 10 times. Payloads written before this change are plain
-// JSON or XML; they never start with the gzip magic, so both forms decrypt.
+// keys, XML tags) compresses 5 to 10 times. Older payloads are plain JSON or XML; they never
+// start with the gzip magic, so both forms decrypt.
 
 func isGzip(b []byte) bool { return len(b) >= 2 && b[0] == 0x1f && b[1] == 0x8b }
 

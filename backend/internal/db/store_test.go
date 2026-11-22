@@ -75,7 +75,7 @@ func TestOverridePreservationAcrossScansAndEncryptionAtRest(t *testing.T) {
 		t.Fatalf("PatchOverrides service: %v", err)
 	}
 
-	// Scan 2 arrives with DIFFERENT observed hostname, notes, and product
+	// Scan 2 arrives with different observed hostname, notes, and product
 	later := now.Add(time.Hour)
 	h2, err := store.UpsertObservedHost(ctx, &domain.Host{
 		IP:             "172.28.0.14",

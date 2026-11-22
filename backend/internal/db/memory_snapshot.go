@@ -14,7 +14,7 @@ import (
 const memorySnapshotVersion = 1
 
 // memoryState is the serialisable form of MemoryStore. Every sensitive field inside the
-// enc*Row types is ALREADY an AES-256-GCM envelope ciphertext (per-row DEK, AAD-bound),
+// enc*Row types is already an AES-256-GCM envelope ciphertext (per-row DEK, AAD-bound),
 // so this structure never holds plaintext IPs, hostnames, banners, e-mails or notes.
 // FileStore additionally seals the whole serialised state with a KEK-derived key.
 type memoryState struct {
@@ -98,7 +98,7 @@ func (m *MemoryStore) ImportState(raw []byte) (map[string]string, string, error)
 
 // stateWriter emits the memoryState JSON object field by field. Large collections are
 // written one entry at a time, so persisting the store never builds the whole encoding in
-// memory (json.Marshal of the state used to cost as much heap as the state itself).
+// memory.
 type stateWriter struct {
 	bw    *bufio.Writer
 	enc   *json.Encoder

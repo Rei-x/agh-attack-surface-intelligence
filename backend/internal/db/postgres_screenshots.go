@@ -7,8 +7,7 @@ import (
 )
 
 // The per-profile "Capture screenshots" switch lives in its own column
-// (scan_profiles.capture_screenshots, default true). Kept out of the main profile queries so
-// they stay unchanged.
+// (scan_profiles.capture_screenshots, default true), outside the main profile queries.
 
 func (s *PostgresStore) saveProfileScreenshots(ctx context.Context, p *domain.ScanProfile) error {
 	_, err := s.pool.Exec(ctx, `UPDATE scan_profiles SET capture_screenshots=$1 WHERE id=$2`, p.ScreenshotsEnabled(), p.ID)

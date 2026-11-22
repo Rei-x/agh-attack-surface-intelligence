@@ -48,7 +48,6 @@ func NewPostgresStore(ctx context.Context, databaseURL string, vault *crypto.Vau
 		return nil, err
 	}
 
-	// Restore existing wrapped DEKs or persist initial DEK
 	keys, activeKID, err := s.LoadCryptoKeys(ctx)
 	if err != nil {
 		pool.Close()
@@ -82,8 +81,6 @@ func (s *PostgresStore) migrate(ctx context.Context) error {
 func (s *PostgresStore) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 func (s *PostgresStore) Close()                         { s.pool.Close() }
 func (s *PostgresStore) BackendName() string            { return "postgres" }
-
-// --- Crypto Keys & Rotation ---
 
 func (s *PostgresStore) LoadCryptoKeys(ctx context.Context) (map[string]string, string, error) {
 	rows, err := s.pool.Query(ctx, `SELECT kid, wrapped_dek, is_active FROM crypto_keys`)
@@ -289,8 +286,6 @@ func (s *PostgresStore) GetCryptoProofSample(ctx context.Context) (*CryptoProofS
 		BlindIndexValue: s.vault.BlindIndex(sample),
 	}, nil
 }
-
-// --- Roles & Users ---
 
 func (s *PostgresStore) loadRolePermissions(ctx context.Context, roleID string) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `SELECT permission FROM role_permissions WHERE role_id = $1 ORDER BY permission`, roleID)
@@ -547,8 +542,6 @@ func (s *PostgresStore) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 
-// --- Targets & Exclusions ---
-
 func (s *PostgresStore) ListTargets(ctx context.Context) ([]domain.Target, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id, value, kind, label, tags, enabled, created_by, created_at FROM targets ORDER BY created_at DESC`)
 	if err != nil {
@@ -631,8 +624,6 @@ func (s *PostgresStore) DeleteExclusion(ctx context.Context, id string) error {
 	}
 	return nil
 }
-
-// --- Profiles ---
 
 func (s *PostgresStore) ListProfiles(ctx context.Context) ([]domain.ScanProfile, error) {
 	rows, err := s.pool.Query(ctx, `
@@ -741,8 +732,6 @@ func (s *PostgresStore) DeleteProfile(ctx context.Context, id string) error {
 	}
 	return nil
 }
-
-// --- Scan Runs & Chunks ---
 
 func (s *PostgresStore) ListScanRuns(ctx context.Context, limit int) ([]domain.ScanRun, error) {
 	if limit <= 0 {
@@ -951,8 +940,6 @@ func (s *PostgresStore) GetScanChunks(ctx context.Context, scanRunID string) ([]
 	}
 	return out, rows.Err()
 }
-
-// --- Hosts, Services, Observations & Overrides ---
 
 func (s *PostgresStore) GetOverrides(ctx context.Context, entityType, entityID string) (map[string]any, error) {
 	rows, err := s.pool.Query(ctx, `SELECT field, value_enc FROM asset_overrides WHERE entity_type=$1 AND entity_id=$2`, entityType, entityID)
@@ -1456,8 +1443,6 @@ func (s *PostgresStore) ListServiceObservations(ctx context.Context, serviceID s
 	return out, rows.Err()
 }
 
-// --- Changes & Snapshots ---
-
 func (s *PostgresStore) AddChangeEvent(ctx context.Context, ev *domain.ChangeEvent) error {
 	if ev.ID == "" {
 		ev.ID = NewID()
@@ -1583,8 +1568,6 @@ func (s *PostgresStore) GetScanSnapshot(ctx context.Context, scanRunID string) (
 	return hosts, nil
 }
 
-// --- Signatures ---
-
 func (s *PostgresStore) ListSignatures(ctx context.Context) ([]domain.Signature, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, name, description, category, match_mode, matchers, confidence_weight, interesting_points, tags, is_builtin, enabled, created_by, created_at, updated_at
@@ -1673,8 +1656,6 @@ func (s *PostgresStore) DeleteSignature(ctx context.Context, id string) error {
 	return nil
 }
 
-// --- DefectDojo ---
-
 func (s *PostgresStore) GetDefectDojoConfig(ctx context.Context) (*domain.DefectDojoConfig, error) {
 	var cfg domain.DefectDojoConfig
 	var tokEnc string
@@ -1749,8 +1730,6 @@ func (s *PostgresStore) ListDefectDojoExports(ctx context.Context, limit int) ([
 	}
 	return out, rows.Err()
 }
-
-// --- Audit Logs ---
 
 func (s *PostgresStore) AddAuditLog(ctx context.Context, entry *domain.AuditLog) error {
 	if entry.ID == "" {

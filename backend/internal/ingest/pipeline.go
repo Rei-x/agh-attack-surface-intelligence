@@ -39,9 +39,9 @@ type IngestResult struct {
 	Changes          []domain.ChangeEvent `json:"changes,omitempty"`
 }
 
-// Pipeline processes observations from every source through one consistent workflow:
-// Signature & Intelligence analysis -> Diffing & Change Events -> Host Lifecycle & Time-of-Day ->
-// Encrypted Persistence (never overwriting analyst overrides) -> Snapshot -> Live SSE.
+// Pipeline processes observations from every source through one workflow: analysis, diff
+// and change events, host lifecycle, encrypted persistence (never overwriting analyst
+// overrides), the scan snapshot and the live SSE stream.
 type Pipeline struct {
 	store    db.Store
 	analyzer Analyzer
@@ -131,7 +131,6 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		}
 	}
 
-	// Find previous completed scan run ID for change attribution
 	prevScanRunID := ""
 	if prevRuns, err := p.store.ListScanRuns(ctx, 10); err == nil {
 		for _, pr := range prevRuns {
@@ -158,7 +157,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 	servicesUpserted := 0
 	activeHostsCount := 0
 
-	// Owner from the CIDR tag rules travels with every change event ("kto tym zarządza?").
+	// Owner from the CIDR tag rules travels with every change event.
 	ownerByHost := map[string]string{}
 	recordChange := func(ev domain.ChangeEvent) {
 		if owner := ownerByHost[ev.HostID]; owner != "" {
@@ -331,7 +330,6 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			activeHostsCount++
 		}
 
-		// Map existing services by port/proto for diffing
 		prevSvcMap := make(map[string]domain.Service)
 		if prevHost != nil {
 			for _, ps := range prevHost.Services {
@@ -415,7 +413,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			servicesUpserted++
 			hostServices = append(hostServices, *savedSvc)
 
-			// Persist immutable raw Evidence Receipt
+			// Evidence receipt: the raw observation, never modified afterwards.
 			_ = p.store.AddObservation(ctx, &db.ServiceObservation{
 				ScanRunID:   run.ID,
 				HostID:      savedHost.ID,
@@ -431,7 +429,6 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 				ObservedAt:  obsAt,
 			})
 
-			// Emit service-level diff events
 			if !existed {
 				sev := "low"
 				evType := "NEW_SERVICE"
@@ -507,7 +504,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			}
 		}
 
-		// Detect closed services on an alive host when full service list was observed
+		// Services are closed only on an alive host whose service list was observed.
 		if isAlive && prevHost != nil && len(obs.Services) > 0 {
 			for k, ps := range prevSvcMap {
 				if !seenSvcKeys[k] && ps.State == "open" {
@@ -529,7 +526,6 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 			}
 		}
 
-		// Recompute host interestingness & infer environment from staging services
 		hostScore, hostFactors := p.analyzer.ScoreHost(host, hostServices)
 		host.Interestingness = hostScore
 		host.InterestingFactors = hostFactors
@@ -544,7 +540,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		_, _ = p.store.UpsertObservedHost(ctx, host)
 	}
 
-	// Mark missing hosts in scope if requested (e.g., completed active scan)
+	// A completed active scan counts a miss for every host in scope it did not see.
 	if req.MarkMissingHosts {
 		scopeSet := make(map[string]bool, len(req.ScopeIPs))
 		for _, ip := range req.ScopeIPs {
@@ -598,7 +594,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		}
 	}
 
-	// Save encrypted snapshot of current inventory for scan-to-scan diffing
+	// Encrypted snapshot of the inventory for scan-to-scan diffing.
 	allHostsNow, _, _ := p.store.ListHosts(ctx, db.HostFilter{})
 	_ = p.store.SaveScanSnapshot(ctx, run.ID, allHostsNow)
 
@@ -607,7 +603,8 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		recordChange(ev)
 	}
 
-	// Finalize ScanRun metrics (only auto-complete if we created it for ingest; active runner controls its own status if still running)
+	// Only a run the pipeline created is completed here; an active run's status belongs to
+	// its runner.
 	finished := time.Now().UTC()
 	if req.ScanRunID == "" {
 		run.Status = domain.ScanStatusCompleted
@@ -617,8 +614,7 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 		run.DurationMs = finished.Sub(run.StartedAt).Milliseconds()
 	}
 	// Host/service counters belong to whoever owns the run: for imports the pipeline created
-	// the run and sets them; for live scans the engine already accumulates them per chunk, and
-	// adding servicesUpserted here double-counted every service.
+	// the run and sets them; for live scans the engine already accumulates them per chunk.
 	if req.ScanRunID == "" {
 		run.ActiveHosts = activeHostsCount
 		run.ServicesFound = servicesUpserted

@@ -10,10 +10,10 @@ import (
 	"io"
 )
 
-// blobKeyLabel derives a dedicated 256-bit key (HMAC-SHA256 of the KEK) used to seal whole
-// files such as the local encrypted store snapshot. It is independent from the per-row DEKs
-// so the snapshot can carry the wrapped DEKs inside its own encrypted envelope.
-// KDF label predates the Dzięcioł rename; kept so existing encrypted data stays readable.
+// blobKeyLabel derives the 256-bit key (HMAC-SHA256 of the KEK) that seals whole files such
+// as the local store snapshot. It is independent of the per-row DEKs, so the snapshot can
+// carry the wrapped DEKs inside its own envelope. The label predates the Dzięcioł rename and
+// must not change, or existing encrypted data becomes unreadable.
 const blobKeyLabel = "aegis-asi:file-blob:v1"
 
 // Blob layout: nonce(BlobNonceSize) | ciphertext | tag(BlobTagSize).
@@ -22,8 +22,8 @@ const (
 	BlobTagSize   = 16
 )
 
-// SealBlob encrypts an arbitrary byte payload with AES-256-GCM under a KEK-derived key.
-// Output layout: nonce(12) | ciphertext | tag(16). aad binds the blob to its purpose/format.
+// SealBlob encrypts plaintext with AES-256-GCM under a KEK-derived key. aad binds the blob to
+// its purpose and format.
 func (v *Vault) SealBlob(plaintext []byte, aad string) ([]byte, error) {
 	return aesGCMEncrypt(deriveSubkey(v.kek, blobKeyLabel), plaintext, []byte(aad))
 }

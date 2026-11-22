@@ -2,8 +2,7 @@ package domain
 
 import "time"
 
-// Zone policies ("exposure policy as code"): a network zone (one or more CIDRs) declares
-// what may run there, and the inventory is checked against it after every ingest. A host
+// Zone policies: a network zone (one or more CIDRs) declares what may run there. A host
 // follows the most specific enabled zone that contains its IP.
 
 // Policy rule categories a zone can forbid.

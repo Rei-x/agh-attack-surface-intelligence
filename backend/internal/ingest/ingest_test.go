@@ -132,7 +132,7 @@ func TestUnifiedCSVIngestDiffOverridePreservationAndExport(t *testing.T) {
 }
 
 // A live scan's run counters are owned by the engine; ingesting a segment must not add the
-// pipeline's upsert count on top (that doubled services_found for every live scan).
+// pipeline's upsert count on top.
 func TestLiveRunCountersNotDoubleCounted(t *testing.T) {
 	ctx := context.Background()
 	vault, _ := crypto.NewVault("")

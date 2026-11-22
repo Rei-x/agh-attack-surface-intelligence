@@ -19,12 +19,13 @@ import (
 
 // File format of the local encrypted store:
 //
-//	"AEGISDB1" (8 bytes magic; with the AAD and the crypto KDF labels it predates the
-//	Dzięcioł rename and is kept so existing store files decrypt after a plain file rename) | nonce(12) | AES-256-GCM( gzip( JSON(memoryState) ) ) | tag(16)
+//	"AEGISDB1" (8-byte magic) | nonce(12) | AES-256-GCM( gzip( JSON(memoryState) ) ) | tag(16)
 //
 // The GCM key is derived from the master key (KEK) via HMAC-SHA256 and the magic is bound
-// as AAD. Inside, all sensitive fields are additionally envelope-encrypted per row with the
-// versioned DEKs (exactly like the PostgreSQL backend), so data is protected twice at rest.
+// as AAD. Inside, all sensitive fields are also envelope-encrypted per row with the
+// versioned DEKs (like the PostgreSQL backend), so data is protected twice at rest. The
+// magic, the AAD and the KDF labels predate the Dzięcioł rename and must not change, or
+// existing store files no longer decrypt.
 var fileStoreMagic = []byte("AEGISDB1")
 
 const fileStoreAAD = "aegis-asi:store-snapshot:v1"
@@ -158,8 +159,7 @@ func (f *FileStore) Path() string { return f.path }
 func (f *FileStore) BackendName() string { return "file-encrypted" }
 
 // load decrypts raw (the whole file) in place and streams the decompressed JSON into the
-// store, so loading holds the file bytes plus the decoded state and nothing in between (it
-// used to hold the file, the decrypted copy and the fully decompressed JSON at once).
+// store, so loading holds the file bytes plus the decoded state and nothing in between.
 func (f *FileStore) load(raw []byte) error {
 	if len(raw) < len(fileStoreMagic) || !bytes.Equal(raw[:len(fileStoreMagic)], fileStoreMagic) {
 		return fmt.Errorf("%s is not a Dzięcioł store file (bad magic)", f.path)
@@ -278,8 +278,7 @@ func (f *FileStore) Flush() error {
 
 // flushLocked streams the state through gzip into one buffer laid out as the final file
 // (magic | nonce room | compressed JSON), seals that buffer in place and writes it. Peak
-// extra memory is the compressed file size; it used to be the JSON encoding plus three
-// copies of the compressed file (gzip buffer, sealed blob, magic-prefixed output).
+// extra memory is the compressed file size.
 func (f *FileStore) flushLocked() error {
 	if f.Generation() == f.savedGen && !f.isNewUnsaved() {
 		return nil

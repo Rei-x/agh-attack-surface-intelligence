@@ -33,7 +33,7 @@ var AllowedServiceOverrideFields = map[string]bool{
 }
 
 // MergeHostWithOverrides overlays analyst-pinned fields onto a scanner-observed Host.
-// Subsequent scans NEVER overwrite analyst overrides; whenever the scanner observes a
+// Later scans never overwrite analyst overrides; whenever the scanner observes a
 // different value than the override, the observed value is exposed in ScannerObserved.
 func MergeHostWithOverrides(host *domain.Host, overrides map[string]any) {
 	if host == nil || len(overrides) == 0 {
