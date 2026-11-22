@@ -471,7 +471,6 @@ func versionShort(v string) string {
 	return strings.TrimSpace(v)
 }
 
-
 func tagSlug(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
