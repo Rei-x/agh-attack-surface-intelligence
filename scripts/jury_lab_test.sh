@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rehearsal of the jury lab template (docker-compose-modern.yml, -modern-proxy.yml,
-# -vulnerable.yml, -custom-network.yml, quickstart.sh) against Dziecioł.
+# -vulnerable.yml, -custom-network.yml, quickstart.sh) against Dzięcioł.
 #
 # Starts one stack at a time (as the lab README asks), scans it with `dzieciol scan`, checks
 # that every published port is found and identified, then runs the quickstart scenario
@@ -108,7 +108,7 @@ changes_of() { # changes_of JSON TYPE PORT : number of change events
   jq --arg t "$2" --argjson p "$3" '[.changes[] | select(.event_type == $t and .port == $p)] | length' "$1"
 }
 
-echo "Dziecioł jury lab rehearsal: lab=$LAB target=$TARGET binary=$(command -v "$BIN" || echo "$BIN")"
+echo "Dzięcioł jury lab rehearsal: lab=$LAB target=$TARGET binary=$(command -v "$BIN" || echo "$BIN")"
 "$BIN" version 2>/dev/null | tail -1
 [ -f "$LAB/.env" ] || cp "$LAB/.env.example" "$LAB/.env"
 
