@@ -307,6 +307,18 @@ func (s *Server) serveSPAFromFS(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "index.html"
 	}
+	if info, err := fs.Stat(fsys, name); err == nil && info.IsDir() && name != "." {
+		// Static sub-sites (e.g. /deck/) are served by their own index.html, not the SPA.
+		if _, err := fs.Stat(fsys, path.Join(name, "index.html")); err == nil {
+			if !strings.HasSuffix(r.URL.Path, "/") {
+				http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
+				return
+			}
+			w.Header().Set("Cache-Control", "no-cache")
+			http.ServeFileFS(w, r, fsys, path.Join(name, "index.html"))
+			return
+		}
+	}
 	if info, err := fs.Stat(fsys, name); err == nil && !info.IsDir() {
 		if strings.HasPrefix(name, "assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")

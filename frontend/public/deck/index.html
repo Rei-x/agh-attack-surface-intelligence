@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dzięcioł · CBI AGH · HackNation 2026</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="deck.css">
+<style>
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+#deck { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; margin: -540px 0 0 -960px; transform-origin: 50% 50%; }
+#deck > section { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; visibility: hidden; }
+#deck > section.on { visibility: visible; }
+#deck > section:not(.on) .in, #deck > section:not(.on) .mark, #deck > section:not(.on) .tag { animation: none; }
+#deck aside { display: none; }
+#deck a { color: inherit; text-decoration: none; }
+.film iframe { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; }
+#notes { position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; overflow: auto; box-sizing: border-box; padding: 18px 28px; background: rgba(10, 12, 11, 0.95); border-top: 1px solid #2a2f2c; color: #f2efe8; font: 19px/1.55 Inter, Arial, sans-serif; display: none; z-index: 10; }
+body.notes #notes { display: block; }
+#bar { position: fixed; right: 16px; bottom: 12px; font: 13px 'JetBrains Mono', monospace; color: #8d918c; opacity: 0; transition: opacity 0.3s; z-index: 11; user-select: none; }
+body:hover #bar { opacity: 0.85; }
+body.notes #bar { display: none; }
+@media print {
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { height: auto; overflow: visible; background: #0a0c0b; }
+  #deck { position: static; margin: 0; transform: none !important; height: auto; }
+  #deck > section { position: relative; visibility: visible; break-after: page; page-break-after: always; }
+  #deck .in, #deck .mark, #deck .tag { animation: none !important; opacity: 1 !important; }
+  #notes, #bar { display: none !important; }
+}
+</style>
+</head>
+<body>
+<div id="deck">
+<section id="cover" style="display:flex; flex-direction:column; justify-content:flex-end; gap:24px">
+<img class="bgimg" src="img/091b0ffec3f5.jpg" alt="Dzięcioł duży na pniu drzewa">
+<div class="shade"></div>
+<h1 class="in" style="font-size:240px; line-height:0.88; letter-spacing:-0.045em">Dzięcioł<span style="color:#e8392f">.</span></h1>
+<p class="say m in" style="--i:1; font-weight:500">Wy śpicie, on stuka.</p>
+<div class="foot"><span>CBI AGH · HackNation 2026</span><span>dzieciol.suzuya.dev</span></div>
+<aside>Dzień dobry. Jesteśmy zespołem Dzięcioła. Opowiemy jedną noc z życia sieci AGH: od wieczornego skanu, przez poranną różnicę, aż do zgłoszenia, które zamyka się samo, gdy kolejny skan potwierdzi, że problemu już nie ma. Wszystko, co pokażemy, to prawdziwe ekrany z działającej instancji i replika sieci /18 w labie.</aside>
+</section>
+<section id="problem" style="display:flex; flex-direction:column; justify-content:space-between">
+<img class="bgimg" src="img/87b3e1f3d9f6.jpg" alt="Siatka 16 384 adresów, jeden zaznaczony na czerwono">
+<div style="position:absolute; left:0; top:0; width:1920px; height:1080px; background:linear-gradient(180deg, rgba(10,12,11,0.96) 0%, rgba(10,12,11,0.85) 32%, rgba(10,12,11,0.05) 52%, rgba(10,12,11,0.05) 72%, rgba(10,12,11,0.92) 100%)"></div>
+<p class="say in" style="width:1600px; font-size:80px">W nocy jeden z nich zaczął serwować nginx, który <span class="red">od 2022 roku</span> nie dostaje poprawek.</p>
+<p class="sub in" style="--i:1; width:1400px; margin-bottom:24px">Rano nikt o tym nie wie. Wydziały stawiają usługi same, a sieć AGH to setki właścicieli.</p>
+<div class="foot"><span>10.66.2.246:80 · wydział EAIiIB · replika sieci /18 w labie</span><span class="n"></span></div>
+<aside>To jest sedno zadania CBI: sieć /18, czyli 16 384 adresy, setki właścicieli i usługi, które pojawiają się bez zgłoszenia. Pokażemy, jak Dzięcioł znajduje jedną taką usługę: nginx 1.20.1, który od maja 2022 nie dostaje poprawek bezpieczeństwa, na 10.66.2.246, w sieci wydziału EAIiIB. Cała prezentacja idzie śladem tego jednego adresu.</aside>
+</section>
+<section id="noc" class="alt night-on" style="display:flex; flex-direction:column; gap:36px">
+<div class="night"><span class="now">22:00 skan</span><span>06:00</span><span>06:01</span><span>06:02</span><span>06:03</span><span>noc 2</span></div>
+<div style="display:flex; align-items:flex-end; gap:56px">
+<div class="in" style="display:flex; align-items:baseline; gap:24px">
+<p class="clock" style="font-size:220px">9</p><p class="clock" style="font-size:92px; margin-right:32px">min</p><p class="clock" style="font-size:220px">48</p><p class="clock" style="font-size:92px">s</p>
+</div>
+<p class="log in" style="--i:1; margin-bottom:30px">start 22:00<br>okno do 06:00</p>
+</div>
+<p class="say m in" style="--i:1">Cała sieć /18, 16 384 adresy, w niecałe 10 minut.</p>
+<p class="log in" style="--i:1; margin-top:-12px">znalezione: 1 497 hostów → <span class="r">3 970 usług</span></p>
+<div class="in" style="--i:2; display:flex; gap:96px; align-items:flex-start">
+<div style="display:grid; grid-template-columns:170px 1fr; row-gap:4px; width:760px">
+<p class="log k">limit</p><p class="log">1 500 pkt/s na całą sieć</p>
+<p class="log k">backoff</p><p class="log">timeouty, 429, RST → wolniej</p>
+<p class="log k">zapytania</p><p class="log">tylko GET i HEAD</p>
+<p class="log k">nmap</p><p class="log">bez --script, -A, -O</p>
+</div>
+<div style="display:grid; grid-template-columns:auto auto; column-gap:36px; row-gap:4px">
+<p class="log k">hosty</p><p class="log g">100%</p>
+<p class="log k">porty</p><p class="log g">3 961 / 3 961</p>
+<p class="log k">usługa · produkt</p><p class="log">97,5% · 94,5%</p>
+<p class="log k">wersja</p><p class="log">96,7%</p>
+</div>
+</div>
+<div class="foot"><span>pomiar: replika /18 w labie z prawdą znaną z góry · 28 portów TCP + wersje · 4 vCPU</span><span class="n"></span></div>
+<aside>Noc zaczyna się o 22:00. Najpierw bezpieczeństwo, bo to sieć produkcyjna uczelni: jeden globalny budżet pakietów na sekundę dzielony między wszystkie procesy, adaptacyjne zwalnianie przy timeoutach, odpowiedziach 429 i resetach, wyłącznie zapytania GET i HEAD, zablokowane niebezpieczne flagi nmap. Agent stoi w sieci AGH i łączy się z serwerem tylko wychodząco. Skala, czyli najważniejsze kryterium, 30 procent: cała /18 w niecałe dziesięć minut, mierzone w labie na replice sieci z prawdą znaną z góry. Wszystkie żywe hosty znalezione, w tym 215 bez odpowiedzi na ICMP i 206 za firewallem. Dla uczciwości: przez agenta na naszej infrastrukturze demo ten sam profil trwa od 12 do 16 minut, nadal z dużym zapasem w oknie.</aside>
+</section>
+<section id="roznica" class="alt night-on" style="display:flex; flex-direction:column; gap:44px">
+<div class="night"><span>22:00</span><span class="now">06:00 różnica</span><span>06:01</span><span>06:02</span><span>06:03</span><span>noc 2</span></div>
+<p class="say m in" style="width:1500px">Rano jedna strona mówi, co się pojawiło, co zniknęło i co się zmieniło.</p>
+<div class="frame in" style="--i:1; width:1664px; height:300px">
+<img class="shot" style="width:1664px; height:239px" src="img/427bd5d2b415.jpg" alt="Zrzut ekranu: kafelki Scan Diff, 49 nowych usług, 46 zamkniętych, 122 zmienione">
+<div class="mark" style="--i:0; left:553px; top:12px; width:270px; height:124px"></div>
+<p class="tag" style="--i:0; left:553px; top:250px">pojawiło się</p>
+<div class="mark" style="--i:1; left:823px; top:12px; width:270px; height:124px"></div>
+<p class="tag" style="--i:1; left:823px; top:250px">zniknęło</p>
+<div class="mark" style="--i:2; left:1093px; top:12px; width:270px; height:124px"></div>
+<p class="tag" style="--i:2; left:1093px; top:250px">zmieniło się</p>
+</div>
+<p class="log in" style="--i:2"><span class="g">100%</span> nowych i znikających hostów i portów (lab) · zmiany usług: F1 89,7%</p>
+<div class="foot"><span>kryterium 2 · wykrywanie zmian · 15%</span><span class="n"></span></div>
+<aside>Rano operator otwiera jeden ekran: różnicę między ostatnimi dwoma skanami. W teście z prawdą labu wszystkie nowe i znikające hosty i porty były trafione. Zmiany usług mają F1 około 90 procent, bo nmap czasem raz podaje wersję, raz nie, i to mówimy wprost. Hosty, które znikają i wracają, mają osobne stany cyklu życia, żeby nie zalewać zespołu alarmami.</aside>
+</section>
+<section id="rozpoznanie" class="night-on" style="display:flex; gap:80px; align-items:flex-start">
+<div class="night"><span>22:00</span><span>06:00</span><span class="now">06:01 rozpoznanie</span><span>06:02</span><span>06:03</span><span>noc 2</span></div>
+<div class="frame in" style="width:760px; height:640px">
+<img class="shot" style="width:760px; height:618px" src="img/c4f409667684.jpg" alt="Zrzut ekranu: usługi hosta 10.66.2.246, OpenSSH z Debiana bez CVE, nginx z licznikiem 3 suppressed">
+<div class="mark g" style="--i:0; left:0px; top:0px; width:760px; height:66px"></div>
+<p class="tag g" style="--i:0; left:0px; top:-52px">Debian: bez fałszywych CVE</p>
+<div class="mark" style="--i:1; left:236px; top:410px; width:108px; height:40px"></div>
+<p class="tag" style="--i:1; left:236px; top:462px">3 CVE odrzucone sondą HTTP/2</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:40px; width:824px">
+<p class="say m in">Wersja z banera to dopiero hipoteza.</p>
+<div class="in" style="--i:2; display:grid; grid-template-columns:250px 1fr; row-gap:18px">
+<p class="log k">sonda HTTP/2</p><p class="log" style="white-space:normal">port 80 odpowiada HTTP/1.1, więc 3 z 32 CVE dla nginx odpadają</p>
+<p class="log k g">pakiet</p><p class="log" style="white-space:normal">OpenSSH 2+deb12u3 z Debiana: poprawki przeniesione, bez fałszywego KEV</p>
+<p class="log k">w labie</p><p class="log" style="white-space:normal">hosty z KEV: 1 176 → 419</p>
+<p class="log k">sygnatury</p><p class="log" style="white-space:normal">66 wbudowanych, 15 typów dopasowań, własne z walidatorem</p>
+</div>
+</div>
+<div class="foot"><span>kryteria 1 i 5 · identyfikacja usług 30% · fingerprinting 10%</span><span class="n"></span></div>
+<aside>Samo dopasowanie wersji do bazy CVE daje dużo fałszywych alarmów i jury z CBI dobrze o tym wie. Dlatego Dzięcioł sprawdza, czy luka w ogóle może dotyczyć usługi. Sonda HTTP/2, tylko do odczytu, odrzuca CVE zależne od HTTP/2, gdy serwer go nie obsługuje. Dla bannerów z pakietów Debiana i Ubuntu zakładamy, że poprawki mogły być przeniesione, i nie podnosimy alarmu KEV, chyba że znamy konkretną wersję poprawki z biuletynu DSA lub USN, jak dla regreSSHion. Na zrzucie: OpenSSH z Debiana nie ma już czerwonego licznika CVE, a przy nginx widać trzy odrzucone CVE.</aside>
+</section>
+<section id="wlasciciel" class="alt night-on" style="display:flex; gap:80px; align-items:flex-start">
+<div class="night"><span>22:00</span><span>06:00</span><span>06:01</span><span class="now">06:02 właściciel</span><span>06:03</span><span>noc 2</span></div>
+<div class="in" style="width:900px; background:#efebe2; color:#16191a; border-radius:14px; padding:40px 48px; box-sizing:border-box; display:flex; flex-direction:column; gap:18px; transform:rotate(-1deg)">
+<p style="font-size:24px; color:#4a4f4c; margin:0; font-family:'JetBrains Mono', 'Courier New', monospace">Temat: [CBI AGH] Wymagane działanie: nginx 1.20.1 bez wsparcia (EOL) od 2022-05-24</p>
+<p style="font-size:26px; line-height:1.45; margin:0">Szanowni Państwo,</p>
+<p style="font-size:26px; line-height:1.45; margin:0">Nasz system monitorowania sieci wykrył problem na hoście, którym Państwo administrują (w naszej ewidencji: eaiib.agh.edu.pl).</p>
+<p style="font-size:26px; line-height:1.45; margin:0">Problem: nginx 1.20.1 bez wsparcia (EOL) od 2022-05-24<br>Adres: 10.66.2.246:80/tcp</p>
+<p style="font-size:26px; line-height:1.45; margin:0">Zalecenie: Zaktualizować nginx do wersji 1.30 (stable) lub nowszej albo wyłączyć usługę, jeśli nie jest potrzebna.</p>
+<p style="font-size:26px; line-height:1.45; margin:0">Prosimy o aktualizację w terminie do <b>2027-02-19</b> i o odpowiedź na tę wiadomość po zakończeniu prac.</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:40px; width:684px">
+<p class="say m in" style="--i:1">Jedno kliknięcie i właściciel dostaje zgłoszenie po polsku.</p>
+<div class="in" style="--i:2; display:grid; grid-template-columns:210px 1fr; row-gap:18px">
+<p class="log k">właściciel</p><p class="log" style="white-space:normal">reguła 10.66.2.0/24 → EAIiIB</p>
+<p class="log k">termin</p><p class="log" style="white-space:normal">ten sam dzień co SLA w DefectDojo</p>
+<p class="log k">kanał</p><p class="log" style="white-space:normal">e-mail albo webhook Teams lub Slack</p>
+</div>
+</div>
+<div class="foot"><span>treść wysłana przez instancję 22.11, fragment</span><span class="n"></span></div>
+<aside>Znalezisko bez właściciela to tylko szum. Reguły CIDR przypisują każdy adres do jednostki AGH. Jednym kliknięciem analityk wysyła gotowe zgłoszenie po polsku, z dowodem, zaleceniem i terminem liczonym tak samo jak SLA w DefectDojo. Na slajdzie fragment prawdziwej wiadomości, którą instancja wysłała w nocy z 21 na 22 listopada. Kanał to e-mail albo webhook w formacie karty Teams lub Slacka.</aside>
+</section>
+<section id="dojo" class="night-on" style="display:flex; flex-direction:column; gap:40px">
+<div class="night"><span>22:00</span><span>06:00</span><span>06:01</span><span>06:02</span><span class="now">06:03 DefectDojo</span><span>noc 2</span></div>
+<p class="say m in">Samo trafia do DefectDojo. I tylko raz.</p>
+<div class="frame in" style="--i:1; width:1664px; height:104px">
+<img class="shot light" style="width:1664px; height:102px" src="img/72160d810a17.jpg" alt="Zrzut ekranu: tytuł findingu nginx 1.20.1 EOL z tagiem właściciela w DefectDojo">
+<div class="mark" style="--i:0; left:112px; top:58px; width:214px; height:40px"></div>
+<p class="tag" style="--i:0; left:330px; top:54px">właściciel w tagu</p>
+</div>
+<div class="in" style="--i:2; display:flex; gap:48px; align-items:flex-start">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p class="log k">finding #20616 po pierwszym skanie</p>
+<img class="shot light" style="width:770px; height:137px" src="img/5c872b478663.jpg" alt="Zrzut ekranu: finding 20616, Medium, SLA 90, Active">
+</div>
+<div style="display:flex; flex-direction:column; gap:12px">
+<p class="log k">kolejny skan tej samej sieci</p>
+<img class="shot light" style="width:846px; height:151px" src="img/f68360a51e37.jpg" alt="Zrzut ekranu: historia importów, 4 closed, 5 created, 6099 untouched">
+</div>
+</div>
+<p class="log in" style="--i:3"><span class="g">6 099 bez zmian</span> · 5 nowych · 4 zamknięte · jeden test dla całego inwentarza</p>
+<div class="foot"><span>kryterium 3 · integracja z DefectDojo · 20%</span><span class="n"></span></div>
+<aside>Integracja z DefectDojo działa sama po każdym skanie, bez klikania. Reimport porównuje znaleziska po stabilnym identyfikatorze, więc kolejny skan niezmienionej sieci zostawił 6 099 findingów bez zmian; pięć nowych i cztery zamknięte to prawdziwe wahania w labie, nie kopie. Profile, które się nakładają, trafiają do jednego testu, więc ta sama usługa nie pojawi się dwa razy. Decyzje z DefectDojo, jak false positive, wracają do Dzięcioła, a notatki analityka są przenoszone.</aside>
+</section>
+<section id="naprawa" class="alt night-on" style="display:flex; flex-direction:column; gap:28px">
+<div class="night"><span>22:00</span><span>06:00</span><span>06:01</span><span>06:02</span><span>06:03</span><span class="now">noc 2 · weryfikacja</span></div>
+<p class="say m in" style="width:1500px">Następny skan sprawdza i mówi uczciwie, co zobaczył.</p>
+<p class="log in" style="--i:1">noc 1 · zgłoszenie wysłane</p>
+<img class="shot in" style="--i:1; width:1400px; height:98px" src="img/f87c1311c83e.jpg" alt="Zrzut ekranu: zgłoszenie dla 10.66.2.246:80 w stanie NOTIFIED">
+<p class="log in" style="--i:2"><span class="g">noc 2 · CLOSED: NOT REACHABLE</span> · port 80/tcp zamknięty, może być za firewallem</p>
+<img class="shot in" style="--i:2; width:1400px; height:268px" src="img/bd9597d03e58.jpg" alt="Zrzut ekranu: to samo zgłoszenie zamknięte jako niedostępne ze skanera">
+<div class="foot"><span>nowsza wersja zamyka zgłoszenie jako Fixed: upgraded · DefectDojo oznacza finding jako mitigated</span><span class="n"></span></div>
+<aside>To jest moment, którego zwykle brakuje: kto sprawdza, czy właściciel naprawił. U nas robi to kolejny skan. Jesteśmy przy tym uczciwi: jeśli port zniknął, piszemy, że usługa jest nieosiągalna ze skanera i może być tylko zablokowana firewallem, a nie że ją załatano. Jeśli usługa odpowiada nowszą, wspieraną wersją, zgłoszenie zamyka się jako aktualizacja. W obu przypadkach DefectDojo oznacza finding jako mitigated i dostaje notatkę, co dokładnie zobaczył skan.</aside>
+</section>
+<section id="kryteria" style="display:flex; flex-direction:column; gap:44px">
+<p class="say m in">Każde kryterium ma dowód.</p>
+<table class="in" style="--i:1; font-size:28px; color:#c9c6bd; width:1664px; font-family:'JetBrains Mono', 'Courier New', monospace">
+<tr><th style="width:36%">kryterium</th><th style="width:8%">waga</th><th>dowód</th></tr>
+<tr><td>wykrywanie i identyfikacja</td><td>30%</td><td>/18 w 9:48, hosty 100%, wersje 96,7%</td></tr>
+<tr><td>jakość i integracja</td><td>20%</td><td>DefectDojo bez duplikatów, jeden plik, lab jury: 0 nieudanych</td></tr>
+<tr><td>wykrywanie zmian</td><td>15%</td><td>diff 100% dla hostów i portów, cykl życia hostów</td></tr>
+<tr><td>bezpieczeństwo skanu</td><td>15%</td><td>limit pakietów, okno, backoff, tylko GET i HEAD</td></tr>
+<tr><td>fingerprinting</td><td>10%</td><td>66 sygnatur, sonda HTTP/2, pakiety dystrybucji</td></tr>
+<tr><td>role i ochrona danych</td><td>10%</td><td>4 role i własne, AES-256-GCM na każdym polu, audyt</td></tr>
+</table>
+<div class="foot"><span>wagi: treść zadania konkursowego, rozdział 8 · wyniki labu jury: docs/JURY_TEST.md</span><span class="n"></span></div>
+<aside>Mapowanie na kryteria z treści zadania, z wagami. Role: cztery dokładnie według zadania (administracja; dodawanie, usuwanie i modyfikacja; modyfikacja i odczyt; odczyt) plus własne role z 18 uprawnień, sprawdzone sondami na żywej instancji. Każde wrażliwe pole, od adresu IP po token DefectDojo, jest szyfrowane osobno AES-256-GCM z rotacją klucza i ślepym indeksem, każda operacja trafia do dziennika audytu. Wdrożenie: jeden plik binarny albo docker compose, agent w sieci uczelni łączy się tylko wychodząco, test na szablonie labu jury przeszedł bez nieudanych sprawdzeń w siedmiu obszarach. Na żywej instancji dane zajmują około 21 MB, serwer około 156 MiB pamięci, a nocny skan przetrwał restart serwera, bo agent buforuje wyniki na dysku.</aside>
+</section>
+<section id="koniec" class="alt">
+<a class="film in" href="https://youtu.be/Z3tiFuGlTd8" target="_blank" rel="noreferrer" data-yt="Z3tiFuGlTd8" style="position:absolute; left:128px; top:190px; width:980px; height:551px; display:block; border-radius:16px; overflow:hidden; border:2px solid #2a2f2c">
+<img src="img/b2e306832d6b.jpg" alt="Kadr z filmu: Dzięcioł, Wy śpicie, on stuka" style="width:980px; height:551px; display:block; object-fit:cover">
+<span style="position:absolute; left:820px; top:392px; width:112px; height:112px; border-radius:50%; background:#e8392f; box-shadow:0 0 48px rgba(232,57,47,0.55)"></span>
+<span style="position:absolute; left:864px; top:424px; width:0; height:0; border-left:40px solid #fbf8f2; border-top:24px solid transparent; border-bottom:24px solid transparent"></span>
+</a>
+<p class="log k in" style="position:absolute; left:128px; top:768px">film · 60 s · youtu.be/Z3tiFuGlTd8</p>
+<div style="position:absolute; left:1188px; top:190px; width:604px; display:flex; flex-direction:column; gap:36px">
+<p class="say m in" style="--i:1; font-size:64px">Sprawdźcie sami.</p>
+<div class="in" style="--i:2; display:grid; grid-template-columns:52px 1fr; column-gap:20px; row-gap:32px">
+<p class="clock" style="font-size:56px; line-height:1">1</p>
+<p class="log" style="font-size:30px; white-space:normal; line-height:1.45"><span class="r">dzieciol.suzuya.dev</span><br>login: admin / Admin123!</p>
+<p class="clock" style="font-size:56px; line-height:1">2</p>
+<p class="log" style="font-size:30px; white-space:normal; line-height:1.45">Scans → Quick scan<br>nasz lab: jedno kliknięcie<br><span style="color:#8d918c">albo jedna komenda u Was</span></p>
+</div>
+<div class="in" style="--i:3; display:flex; align-items:center; gap:28px">
+<div style="background:#f2efe8; padding:16px; border-radius:12px"><img src="img/d6f7f304784e.svg" alt="Kod QR z adresem https://dzieciol.suzuya.dev" style="width:168px; height:168px; display:block"></div>
+<p class="log k" style="font-size:24px; white-space:normal">zeskanujcie,<br>żeby otworzyć demo</p>
+</div>
+</div>
+<div class="foot"><span>Dzięcioł · Wy śpicie, on stuka.</span><span>CBI AGH · HackNation 2026</span></div>
+<aside>Na koniec sześćdziesiąt sekund filmu, a potem możecie to sprawdzić sami. Krok pierwszy: adres dzieciol.suzuya.dev, na stronie logowania wystarczy kliknąć konto admin, hasło wpisze się samo. Krok drugi: w zakładce Scans przycisk Quick scan. Jedno kliknięcie skanuje nasz lab i widać na żywo, jak pojawiają się hosty i usługi. Kto woli własną sieć, kopiuje jedną komendę, uruchamia ją u siebie i agent łączy się z naszą instancją tylko wychodząco. Login do DefectDojo jest w okienku nad chipem DefectDojo w nagłówku.</aside>
+</section>
+</div>
+<div id="notes"></div>
+<div id="bar"><span id="pos"></span> · ← → · F pełny ekran · N notatki</div>
+<script>
+(function () {
+  var deck = document.getElementById('deck');
+  var slides = Array.prototype.slice.call(deck.children);
+  var notes = document.getElementById('notes');
+  var pos = document.getElementById('pos');
+  var cur = -1;
+
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    deck.style.transform = 'scale(' + s + ')';
+  }
+
+  function stopFilm(slide) {
+    var film = slide && slide.querySelector('.film');
+    if (film && film.dataset.poster) {
+      film.innerHTML = film.dataset.poster;
+      delete film.dataset.poster;
+    }
+  }
+
+  function go(n) {
+    n = Math.max(0, Math.min(slides.length - 1, n));
+    if (n === cur) return;
+    if (cur >= 0) {
+      slides[cur].classList.remove('on');
+      stopFilm(slides[cur]);
+    }
+    cur = n;
+    slides[cur].classList.add('on');
+    var aside = slides[cur].querySelector('aside');
+    notes.textContent = aside ? aside.textContent : '';
+    pos.textContent = (cur + 1) + ' / ' + slides.length;
+    if (location.hash !== '#' + (cur + 1)) history.replaceState(null, '', '#' + (cur + 1));
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'Enter') { e.preventDefault(); go(cur + 1); }
+    else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'Backspace') { e.preventDefault(); go(cur - 1); }
+    else if (k === 'Home') go(0);
+    else if (k === 'End') go(slides.length - 1);
+    else if (k === 'f' || k === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen();
+    }
+    else if (k === 'n' || k === 'N') document.body.classList.toggle('notes');
+  });
+
+  deck.addEventListener('click', function (e) {
+    var film = e.target.closest('.film');
+    if (film) {
+      e.preventDefault();
+      if (!film.dataset.poster) {
+        film.dataset.poster = film.innerHTML;
+        film.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + film.dataset.yt +
+          '?autoplay=1&rel=0&modestbranding=1" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';
+      }
+      return;
+    }
+    if (e.target.closest('a, iframe')) return;
+    go(e.clientX < window.innerWidth / 3 ? cur - 1 : cur + 1);
+  });
+
+  var tx = null;
+  document.addEventListener('touchstart', function (e) { tx = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    if (tx === null) return;
+    var dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) go(dx < 0 ? cur + 1 : cur - 1);
+    tx = null;
+  });
+
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', function () { go((parseInt(location.hash.slice(1), 10) || 1) - 1); });
+  fit();
+  go((parseInt(location.hash.slice(1), 10) || 1) - 1);
+})();
+</script>
+</body>
+</html>

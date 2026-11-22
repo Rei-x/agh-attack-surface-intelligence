@@ -1,0 +1,69 @@
+:root {
+  --bg: #0a0c0b;
+  --bg2: #131715;
+  --ink: #f2efe8;
+  --soft: #c9c6bd;
+  --muted: #8d918c;
+  --red: #e8392f;
+  --green: #3fb27f;
+  --line: #2a2f2c;
+  --paper: #efebe2;
+  --paper-ink: #16191a;
+  --paper-soft: #4a4f4c;
+}
+
+body { font-family: 'Inter', Arial, sans-serif; color: var(--ink); }
+
+section {
+  padding: 128px;
+  background: var(--bg);
+  color: var(--ink);
+  box-sizing: border-box;
+  counter-increment: page;
+}
+section.night-on { padding-top: 176px; }
+section.alt { background: var(--bg2); }
+section.paper { background: var(--paper); color: var(--paper-ink); }
+
+h1, h2, h3 { font-family: 'Space Grotesk', Arial, sans-serif; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+
+/* The night: one timeline pinned at the top of every story slide, the current moment in red. */
+.night { position: absolute; left: 128px; top: 64px; width: 1664px; display: flex; justify-content: space-between; border-top: 2px solid var(--line); padding-top: 14px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; color: var(--muted); }
+.night .now { color: var(--red); font-weight: 700; }
+section.paper .night { border-top-color: #cfcac0; color: #7a7d79; }
+
+/* One sentence carries each slide. */
+.say { font-family: 'Space Grotesk', Arial, sans-serif; font-weight: 700; font-size: 88px; line-height: 1.02; letter-spacing: -0.03em; margin: 0; }
+.say.m { font-size: 72px; }
+.say .red { color: var(--red); }
+.sub { font-size: 32px; line-height: 1.4; color: var(--soft); margin: 0; }
+section.paper .sub { color: var(--paper-soft); }
+
+/* Evidence lines, written like a log or a config. */
+.log { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 28px; line-height: 1.55; color: var(--soft); margin: 0; white-space: nowrap; }
+.log .k { color: var(--muted); }
+.log .r { color: var(--red); }
+.log .g { color: var(--green); }
+section.paper .log { color: var(--paper-soft); }
+
+.clock { font-family: 'JetBrains Mono', 'Courier New', monospace; font-weight: 700; font-size: 300px; line-height: 0.9; letter-spacing: -0.04em; color: var(--red); margin: 0; }
+
+.shot { display: block; border-radius: 14px; border: 2px solid var(--line); object-fit: contain; background: #0d100f; }
+.shot.light { border-color: #d8d4ca; background: #faf8f3; }
+.frame { position: relative; }
+.mark { position: absolute; border: 5px solid var(--red); border-radius: 10px; box-shadow: 0 0 24px rgba(232,57,47,0.55); }
+.mark.g { border-color: var(--green); box-shadow: 0 0 24px rgba(63,178,127,0.5); }
+.tag { position: absolute; background: var(--red); color: #fbf8f2; font-family: 'Space Grotesk', Arial, sans-serif; font-weight: 700; font-size: 28px; padding: 6px 14px; border-radius: 8px; margin: 0; white-space: nowrap; }
+.tag.g { background: #2b8a60; }
+
+.foot { position: absolute; left: 128px; bottom: 56px; width: 1664px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; color: var(--muted); }
+.foot .n::after { content: counter(page); }
+section.paper .foot { color: #7a7d79; }
+
+.bgimg { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+.shade { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: linear-gradient(0deg, rgba(10,12,11,0.96) 0%, rgba(10,12,11,0.55) 50%, rgba(10,12,11,0.15) 100%); }
+
+@keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes draw { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: scale(1); } }
+.in { animation: rise 600ms cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 140ms); }
+.mark, .tag { animation: draw 420ms cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(400ms + var(--i, 0) * 260ms); }
