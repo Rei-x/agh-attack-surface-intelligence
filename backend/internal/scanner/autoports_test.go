@@ -95,3 +95,12 @@ func TestJoinPortsCollapsesRanges(t *testing.T) {
 		t.Fatalf("top-1000 list renders to %d bytes", n)
 	}
 }
+
+func TestLocalAddressUsesConnectScan(t *testing.T) {
+	if !isLocalAddress("127.0.0.1") || !anyLocalAddress([]string{"192.0.2.1", "127.0.0.1"}) {
+		t.Fatal("loopback must count as local")
+	}
+	if isLocalAddress("192.0.2.1") || isLocalAddress("not-an-ip") {
+		t.Fatal("TEST-NET address is not local")
+	}
+}

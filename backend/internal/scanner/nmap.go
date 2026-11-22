@@ -258,7 +258,7 @@ func (r *NmapRunner) ScanServicesDetailed(ctx context.Context, activeIPs []strin
 }
 
 func (r *NmapRunner) scanWithNmap(ctx context.Context, activeIPs []string, ports []int, maxRatePPS int) (map[string][]domain.ObservedService, string, string, error) {
-	priv := r.Privileged()
+	priv := r.Privileged() && !anyLocalAddress(activeIPs)
 	xmlBytes, cmdLine, stderr, err := r.runNmap(ctx, r.options().BuildServiceArgsPriv(activeIPs, ports, maxRatePPS, priv))
 	if err != nil && ctx.Err() == nil && priv && isRawSocketDenied(stderr) {
 		atomic.StoreInt32(&r.priv, privNo)

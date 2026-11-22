@@ -110,7 +110,7 @@ func (r *NmapRunner) SweepDetailed(ctx context.Context, ips []string, ports []in
 	sweep := func(priv bool) ([]byte, string, string, error) {
 		return r.runNmap(ctx, opts.BuildSweepArgs(ips, ports, ratePPS, priv))
 	}
-	priv := r.Privileged()
+	priv := r.Privileged() && !anyLocalAddress(ips)
 	out, cmdLine, stderr, err := sweep(priv)
 	if err != nil && ctx.Err() == nil && priv && isRawSocketDenied(stderr) {
 		atomic.StoreInt32(&r.priv, privNo)
