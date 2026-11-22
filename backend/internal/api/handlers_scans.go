@@ -11,8 +11,6 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
 )
 
-// --- Targets & Exclusions ---
-
 func (s *Server) handleListTargets(w http.ResponseWriter, r *http.Request) {
 	items, err := s.store.ListTargets(r.Context())
 	if err != nil {
@@ -144,8 +142,6 @@ func (s *Server) handleDeleteExclusion(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Profiles ---
-
 func (s *Server) handleListProfiles(w http.ResponseWriter, r *http.Request) {
 	items, err := s.store.ListProfiles(r.Context())
 	if err != nil {
@@ -219,8 +215,6 @@ func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- Scan Runs ---
 
 func (s *Server) handleListScans(w http.ResponseWriter, r *http.Request) {
 	items, err := s.store.ListScanRuns(r.Context(), queryInt(r, "limit", 100))
@@ -322,7 +316,7 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Persist ad-hoc profile when windowing or save_profile is enabled so Pause/Resume works seamlessly.
+	// Pause/Resume needs a stored profile: persist the ad-hoc one when windowing or save_profile is on.
 	if req.SaveProfile || req.WindowEnabled {
 		_ = s.store.CreateProfile(r.Context(), profile)
 	}
@@ -347,8 +341,8 @@ func (s *Server) handleStartScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bgCtx := context.Background()
-	// The runner mutates the run it is given while this handler encodes the response: give the
-	// background goroutine its own copy (was a data race).
+	// The runner mutates the run it is given while this handler encodes the response, so the
+	// background goroutine gets its own copy.
 	bgRun := *run
 	go func() {
 		if err := s.runner.StartScan(bgCtx, &bgRun, profile, exclusions); err != nil {

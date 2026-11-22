@@ -42,7 +42,7 @@ func TestSlash16ExpansionAndStrictExclusionGate(t *testing.T) {
 	start := time.Now()
 	res, err := ParseAndNormalizeTargets(context.Background(), []string{
 		"10.10.0.0/16",
-		"10.10.0.1-10.10.0.20", // overlaps /16, must deduplicate!
+		"10.10.0.1-10.10.0.20", // overlaps /16, must deduplicate
 		"portal.agh.edu.pl",    // maps to 10.10.0.5 (excluded) and 10.10.1.10 (excluded)
 	}, exclusions, resolver)
 	elapsed := time.Since(start)
@@ -196,7 +196,7 @@ func TestExactOvernightWindowPauseAndResume(t *testing.T) {
 	}
 
 	var mu sync.Mutex
-	curTime := time.Date(2026, 5, 11, 5, 58, 0, 0, loc) // 2 minutes before 06:00 close!
+	curTime := time.Date(2026, 5, 11, 5, 58, 0, 0, loc) // 2 minutes before the 06:00 close
 	nowFn := func() time.Time {
 		mu.Lock()
 		defer mu.Unlock()
@@ -217,7 +217,7 @@ func TestExactOvernightWindowPauseAndResume(t *testing.T) {
 		MaxChunkWorkers:         1,
 		DisableAdaptiveChunking: true,
 		CustomDiscoveryFn: func(ctx context.Context, ips []string) ([]string, error) {
-			// Simulate chunk taking 3 minutes -> after chunk 0 finishes, clock is 06:01 (window CLOSED!).
+			// Simulate a chunk taking 3 minutes: after chunk 0 finishes the clock is 06:01 (window closed).
 			advanceTime(3 * time.Minute)
 			return ips[:1], nil
 		},
@@ -267,7 +267,7 @@ func TestExactOvernightWindowPauseAndResume(t *testing.T) {
 		},
 	}
 
-	// Pass 1: runs chunk 0 (05:58 -> 06:01), then pauses cleanly at chunk 1 boundary!
+	// Pass 1: runs chunk 0 (05:58 -> 06:01), then pauses at the chunk 1 boundary.
 	r1, err := eng.Execute(context.Background(), run, profile, res, cb)
 	if err != nil {
 		t.Fatalf("Execute pass 1: %v", err)
@@ -282,7 +282,7 @@ func TestExactOvernightWindowPauseAndResume(t *testing.T) {
 		t.Fatalf("expected 1 scan.paused_window event, got %d", pausedEvents)
 	}
 
-	// Pass 2: clock jumps to next night window (22:05) -> resumes from chunk 1, skips chunk 0!
+	// Pass 2: the clock jumps to the next night window (22:05), resumes from chunk 1, skips chunk 0.
 	mu.Lock()
 	curTime = time.Date(2026, 5, 11, 22, 5, 0, 0, loc)
 	mu.Unlock()
@@ -312,7 +312,7 @@ func TestEngineEndToEndWithLocalHTTPServerAndUnstableReprobe(t *testing.T) {
 	host, portStr, _ := net.SplitHostPort(srv.Listener.Addr().String())
 	port, _ := strconv.Atoi(portStr)
 
-	// Test Stage 4 unstable re-probe: simulate host failing Stage 1 once, then responding on re-probe!
+	// Stage 4 unstable re-probe: the host fails Stage 1 once, then answers the re-probe.
 	var discoverCalls atomic.Int32
 	eng := NewEngine(EngineConfig{
 		UseNmap:       false,
@@ -320,9 +320,9 @@ func TestEngineEndToEndWithLocalHTTPServerAndUnstableReprobe(t *testing.T) {
 		CustomDiscoveryFn: func(ctx context.Context, ips []string) ([]string, error) {
 			n := discoverCalls.Add(1)
 			if n == 1 {
-				return nil, nil // missed on initial Stage 1!
+				return nil, nil // missed on initial Stage 1
 			}
-			return ips, nil // recovered on Stage 4 re-probe!
+			return ips, nil // recovered on Stage 4 re-probe
 		},
 	})
 

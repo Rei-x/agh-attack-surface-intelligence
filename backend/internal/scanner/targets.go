@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	// DefaultMaxExpandedIPs prevents accidental /0 or /8 memory exhaustion while easily supporting /16 (65,536) and /14 (262,144).
+	// DefaultMaxExpandedIPs caps target expansion so an accidental /0 or /8 cannot exhaust
+	// memory, while /16 (65,536) and /14 (262,144) still fit.
 	DefaultMaxExpandedIPs = 262144
 )
 
@@ -73,7 +74,6 @@ func ParseAndNormalizeTargetsWithLimit(ctx context.Context, targets []string, ex
 	var inc4 []ip4Range
 	inc6 := make(map[netip.Addr]struct{})
 
-	// Parse targets.
 	for _, raw := range targets {
 		entry := cleanTargetString(raw)
 		if entry == "" {
@@ -89,7 +89,6 @@ func ParseAndNormalizeTargetsWithLimit(ctx context.Context, targets []string, ex
 			}
 			continue
 		}
-		// Treat as domain and safely resolve.
 		if isLikelyDomain(entry) {
 			ips, err := resolver.LookupHost(ctx, entry)
 			if err != nil || len(ips) == 0 {
@@ -194,7 +193,7 @@ func ParseAndNormalizeTargetsWithLimit(ctx context.Context, targets []string, ex
 	res.TotalCount = int(total4) + len(inc6)
 	res.ExcludedCount = int(total4-effCount4) + excluded6
 
-	// Pre-allocate exact slice for blazing-fast /16 (65,536 IP) expansion!
+	// Pre-allocate the exact size (a /16 expands to 65,536 IPs).
 	ips := make([]string, 0, int(effCount4)+len(effective6))
 	for _, r := range effective4 {
 		for v := uint64(r.start); v <= uint64(r.end); v++ {

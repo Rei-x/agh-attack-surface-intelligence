@@ -50,7 +50,7 @@ type Runner interface {
 	StartScan(ctx context.Context, run *domain.ScanRun, profile *domain.ScanProfile, exclusions []domain.TargetExclusion) error
 }
 
-// Optional runner extensions.
+// interruptedRecoverer and eventPublisher are optional Runner extensions.
 type interruptedRecoverer interface {
 	RecoverInterrupted(ctx context.Context) (int, error)
 }

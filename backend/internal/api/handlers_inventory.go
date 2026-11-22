@@ -341,7 +341,7 @@ func ipv4Span(t string) (uint64, uint64, bool) {
 	}
 }
 
-/* ---------- light host list projection (GET /api/v1/hosts?fields=summary) ---------- */
+// Light host list projection for GET /api/v1/hosts?fields=summary.
 
 type summaryTLS struct {
 	IsExpired    bool `json:"is_expired"`

@@ -90,7 +90,7 @@ func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter
 	}
 	blockPrefix := chooseBlockPrefix(hosts, maxBlocks)
 
-	// 1. Filter hosts and compute subnet summaries across all matched hosts.
+	// Filter hosts and compute subnet summaries across all matched hosts.
 	matched := make([]domain.Host, 0, len(hosts))
 	subnetMap := make(map[string]*SubnetSummary)
 
@@ -472,7 +472,7 @@ func buildClusteredGraph(
 		}
 	}
 
-	// Emit up to top 3 service clusters per subnet (keeps total nodes ~50-110 even at 10,000+ hosts!).
+	// Emit at most 3 service clusters per subnet: about 50-110 nodes in total even at 10,000+ hosts.
 	for i := 0; i < maxSubnets; i++ {
 		sub := subnets[i].Subnet
 		subNodeID := "host:cluster:" + sub

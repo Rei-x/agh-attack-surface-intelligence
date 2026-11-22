@@ -106,8 +106,6 @@ func isBodyTooLarge(err error) bool {
 	return errors.As(err, &mbe)
 }
 
-// --- Login throttling ------------------------------------------------------------------
-
 // loginLimiter blocks brute force: after loginMaxFailures failed logins for the same
 // username (loginMaxIPFailures from the same client address) within loginWindow, further attempts get
 // 429 until the window has passed. A successful login clears the username's counter.

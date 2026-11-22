@@ -19,8 +19,6 @@ import (
 // Daily-operations endpoints: triage decisions with expiry, host timeline, CIDR tag rules
 // and the alert webhook.
 
-// ---------- Triage (accepted risk / false positive with expiry) ----------
-
 const maxTriageReason = 2000
 
 // applyTriagePatch interprets the "triage" (and legacy "triage_status") keys of an overrides
@@ -101,8 +99,6 @@ func parseExpiry(s string) (time.Time, error) {
 	}
 	return time.Time{}, errors.New("expires_at must be RFC3339 or YYYY-MM-DD")
 }
-
-// ---------- Host timeline ----------
 
 // rollupTimelineEntry turns the summary of retention-removed change events into one row:
 // "42 older change events summarized by history retention: 30 HOST_MISSING, 12 ...".
@@ -268,8 +264,6 @@ func (s *Server) handleHostTimeline(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ---------- CIDR tag rules (ownership) ----------
-
 func (s *Server) settingsStore(w http.ResponseWriter) (db.SettingsStore, bool) {
 	ss, ok := s.store.(db.SettingsStore)
 	if !ok {
@@ -307,8 +301,8 @@ func (s *Server) handleSaveTagRules(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid rule")
 			return
 		}
-		// A rule sent without "enabled" is meant to be active; silently storing it disabled
-		// made API-created rules look broken.
+		// A rule sent without "enabled" is meant to be active; storing it disabled would make
+		// API-created rules look broken.
 		if _, set := fields["enabled"]; !set {
 			rule.Enabled = true
 		}
@@ -422,8 +416,6 @@ func observedView(h *domain.Host) {
 		}
 	}
 }
-
-// ---------- Alert webhook ----------
 
 func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
 	cfg, err := notify.LoadConfig(r.Context(), s.store)

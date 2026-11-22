@@ -7,7 +7,7 @@ import "testing"
 func mysqlGreeting(version, plugin string, threadID byte) string {
 	p := []byte{10}
 	p = append(p, version...)
-	p = append(p, 0, threadID, 0x31, 0, 0) // NUL + thread id (0x31 is a printable digit!)
+	p = append(p, 0, threadID, 0x31, 0, 0) // NUL + thread id (0x31 is a printable digit)
 	p = append(p, "abcdefgh"...)
 	p = append(p, 0, 0xff, 0xf7, 0xff, 0x02, 0x00, 0xff, 0xdf, 21)
 	p = append(p, make([]byte, 10)...)

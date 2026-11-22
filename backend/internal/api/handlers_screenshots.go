@@ -273,7 +273,7 @@ func shotContains(list []string, v string) bool {
 	return false
 }
 
-// ipLess orders dotted IPv4 addresses numerically (falls back to string order).
+// shotIPLess orders dotted IPv4 addresses numerically (falls back to string order).
 func shotIPLess(a, b string) bool {
 	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
 	if len(pa) == 4 && len(pb) == 4 {

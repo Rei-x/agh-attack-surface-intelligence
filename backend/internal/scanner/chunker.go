@@ -125,7 +125,7 @@ func EstimateTargets(ctx context.Context, req EstimateRequest) (*domain.TargetEs
 	return est, resolution, nil
 }
 
-// estimateThroughput computes realistic hosts/sec accounting for host discovery + port scan + HTTP fingerprinting.
+// estimateThroughput estimates hosts/sec, accounting for host discovery, port scan and HTTP fingerprinting.
 func estimateThroughput(maxRatePPS, concurrency, portCount int, httpFP bool) float64 {
 	// Stage 1: ~2 probes per IP for host discovery.
 	// Stage 2: ~10% assumed active hosts * portCount * 2 packets.

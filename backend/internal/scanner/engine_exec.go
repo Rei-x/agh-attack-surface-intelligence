@@ -122,7 +122,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		chunkTargetSec = DefaultChunkTargetSec
 	}
 
-	// One honest global budget of maxRate probes/s, split into
+	// One global budget of maxRate probes/s, split into
 	//   - httpShare: HTTP fingerprinting requests (1 request = 1 new TCP connection, the
 	//     same unit nmap -sT counts), paced by the Governor;
 	//   - nmapPool: shared by every concurrently running nmap process via rateBudget.
@@ -205,8 +205,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	segStart := e.cfg.Now()
 
 	// Pipeline shape: `workers` discovery workers (one nmap sweep each), svcWorkers service
-	// workers (-sV runs are wait-bound, so several run side by side on small shares), and a
-	// global pool of `concurrency` HTTP fingerprint slots.
+	// workers, and a global pool of `concurrency` HTTP fingerprint slots.
 	// Discovery is planned on the pool minus one service share, so a -sV process can always
 	// start even while every discovery worker holds its share (otherwise chunks waiting for
 	// Stage 2 could never finish and the pipeline would stall).
@@ -405,7 +404,7 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 		chunkSnapshot := *ch
 		// Adaptive re-chunking from measured per-worker discovery throughput. Only the
 		// discovery stage scales with chunk size; -sV and HTTP run pipelined and their latency
-		// is set by the slowest service, so feeding whole-chunk time back here used to shrink
+		// is set by the slowest service, so feeding whole-chunk time back here would shrink
 		// chunks (512 -> 96 IPs) and multiply that fixed latency.
 		if ch.Status == domain.ChunkStatusDone && !e.cfg.DisableAdaptiveChunking {
 			discMs := sm.Discovery
@@ -450,12 +449,11 @@ func (e *Engine) Execute(ctx context.Context, run *domain.ScanRun, profile domai
 	}
 
 	// Pipeline: discovery workers -> svcCh -> service workers -> HTTP fingerprint goroutines
-	// (bounded by fpSem). A chunk is checkpointed (finish) only when every stage is done, so
-	// the ledger semantics are unchanged: an interrupted chunk goes back to PENDING whatever
-	// stage it was in. inflight bounds how far discovery may run ahead of the later stages.
-	// A waiting chunk costs a few KB, so discovery may run up to 32 chunks ahead of the
-	// later stages: slow HTTP fingerprinting must not stall the rate-bound sweep (on the
-	// Hetzner run a 3*workers bound idled every sweep while chunks queued for HTTP).
+	// (bounded by fpSem). A chunk is checkpointed (finish) only when every stage is done, so an
+	// interrupted chunk goes back to PENDING whatever stage it was in. inflight bounds how far
+	// discovery may run ahead of the later stages: a waiting chunk costs a few KB, so up to 32
+	// chunks ahead is fine, and slow HTTP fingerprinting must not stall the rate-bound sweep
+	// (on the Hetzner run a 3*workers bound idled every sweep while chunks queued for HTTP).
 	inflight := make(chan struct{}, workers+svcWorkers+32)
 	svcCh := make(chan *chunkWork, svcWorkers)
 	complete := func(w *chunkWork, err error) {

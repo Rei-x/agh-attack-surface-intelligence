@@ -16,8 +16,8 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 )
 
-// TestScale10kHostsGraphPaginationClustersAndDashboard verifies that 10,240 encrypted hosts
-// across 40 /24 subnets are handled cleanly without bloating API responses or freezing the UI.
+// TestScale10kHostsGraphPaginationClustersAndDashboard checks that 10,240 encrypted hosts
+// across 40 /24 subnets keep the hosts, graph, cluster and dashboard responses small.
 func TestScale10kHostsGraphPaginationClustersAndDashboard(t *testing.T) {
 	ctx := context.Background()
 	vault, err := crypto.NewVault("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
@@ -39,7 +39,7 @@ func TestScale10kHostsGraphPaginationClustersAndDashboard(t *testing.T) {
 		SeedDemo:  true,
 	}, store, vault, pipeline, runner, hub)
 
-	const totalHosts = 10240 // 40 x /24 subnets (>10,000 IPs!)
+	const totalHosts = 10240 // 40 x /24 subnets
 	now := time.Now().UTC()
 
 	templates := []struct {
@@ -130,7 +130,6 @@ func TestScale10kHostsGraphPaginationClustersAndDashboard(t *testing.T) {
 	}
 	t.Logf("Populated %d encrypted hosts + services in %v", totalHosts, time.Since(t0))
 
-	// Authenticate as admin
 	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "Admin123!"})
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(loginBody))
 	loginReq.Header.Set("Content-Type", "application/json")
@@ -173,7 +172,7 @@ func TestScale10kHostsGraphPaginationClustersAndDashboard(t *testing.T) {
 	}
 	t.Logf("GET /api/v1/hosts?page=1&limit=50 (10,240 hosts) took %v", time.Since(t1))
 
-	// 2. Graph API must auto-cluster 10,240 hosts into a crisp UI-safe node count (<= 160 nodes!)
+	// 2. Graph API must auto-cluster 10,240 hosts into at most 160 nodes.
 	t2 := time.Now()
 	recGraph := doGet("/api/v1/graph")
 	var graphResp GraphResponse

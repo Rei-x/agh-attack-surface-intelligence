@@ -134,9 +134,6 @@ func (c *Coordinator) publish(ev domain.LiveEvent) {
 	}
 }
 
-// ---------------------------------------------------------------------------------------
-// Persistence
-
 func (c *Coordinator) ensureLoadedLocked(ctx context.Context) {
 	if c.loaded {
 		return
@@ -235,9 +232,6 @@ func (c *Coordinator) runLock(runID string) *sync.Mutex {
 	return l
 }
 
-// ---------------------------------------------------------------------------------------
-// Secrets
-
 func randomSecret(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
@@ -252,9 +246,6 @@ func hashSecret(s string) string {
 func hashEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
-
-// ---------------------------------------------------------------------------------------
-// Enrollment tokens (admin)
 
 // CreateEnrollToken creates a one-time token valid for ttl. The token is returned once; only
 // its SHA-256 is stored.
@@ -332,9 +323,6 @@ func (c *Coordinator) RevokeEnrollToken(ctx context.Context, id string) error {
 	}
 	return db.ErrNotFound
 }
-
-// ---------------------------------------------------------------------------------------
-// Agents registry
 
 // Enroll exchanges a one-time token for a new agent identity and its long-lived credential.
 func (c *Coordinator) Enroll(ctx context.Context, req EnrollRequest, remoteIP string) (*EnrollResponse, error) {

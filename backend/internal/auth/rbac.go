@@ -114,7 +114,7 @@ var DemoAccounts = []DemoAccount{
 	},
 }
 
-// HasPermission returns true if perms grants required (either directly or via "*").
+// HasPermission reports whether perms grants required, directly or via "*".
 func HasPermission(perms []string, required string) bool {
 	if required == "" {
 		return true

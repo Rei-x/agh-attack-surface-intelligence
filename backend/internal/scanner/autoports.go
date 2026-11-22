@@ -10,7 +10,7 @@ import (
 //
 //	1..AutoFullRangeMaxIPs IPs         every TCP port (1-65535)
 //	..AutoTopPortsMaxIPs IPs           nmap's top 1000 TCP ports + AutoExtraPorts
-//	larger scopes                      AutoWidePorts (unchanged campus default)
+//	larger scopes                      AutoWidePorts (campus default)
 
 // AutoPortsKeyword selects automatic port selection in a port list field.
 const AutoPortsKeyword = "auto"

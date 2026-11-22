@@ -96,8 +96,8 @@ func (ts *testServer) waitRun(runID string, timeout time.Duration, ok func(*doma
 	}
 }
 
-// fakeNetwork: hosts .1-.5 of every /24 are alive with port 80. gate (optional) is called
-// before each discovery call and may block.
+// fakeNetwork simulates hosts .1-.5 of every /24 as alive with port 80. gate (optional) is
+// called before each discovery call and may block.
 func fakeNetwork(gate func(ctx context.Context, ips []string) error) func(scanner.EngineConfig) scanner.EngineConfig {
 	return func(cfg scanner.EngineConfig) scanner.EngineConfig {
 		cfg.UseNmap = false

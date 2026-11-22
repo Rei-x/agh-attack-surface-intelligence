@@ -68,8 +68,8 @@ var (
 	defaultPingACKPorts = []int{80, 443}
 )
 
-// maxPingSYNPorts bounds -PS in ping mode. It was 24, which silently dropped the highest profile
-// ports (8443, 9090, 9100, 9200 on the 28-port scale lab) from discovery.
+// maxPingSYNPorts bounds -PS in ping mode. A bound of 24 drops the highest profile ports
+// (8443, 9090, 9100, 9200 on the 28-port scale lab) from discovery.
 const maxPingSYNPorts = 64
 
 // DefaultNmapOptions returns conservative defaults for large, partially hostile networks.

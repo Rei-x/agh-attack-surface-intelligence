@@ -1,8 +1,8 @@
 // Package webui embeds the built React SOC dashboard into the dzieciol binary.
 //
-// `make ui` (or scripts in the Makefile) copies frontend/dist/* into ./ui before `go build`.
-// The directory is git-ignored except for .gitkeep, so a plain `go build ./...` always works:
-// without a frontend build the server serves a small placeholder page instead.
+// `make ui` copies frontend/dist/* into ./ui before `go build`. The directory is git-ignored
+// except for .gitkeep, so a plain `go build ./...` works without a frontend build; the server
+// then serves a placeholder page.
 package webui
 
 import (

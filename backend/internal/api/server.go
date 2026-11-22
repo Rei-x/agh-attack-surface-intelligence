@@ -138,20 +138,17 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) registerRoutes() {
 	mw := s.authMW
 
-	// Public Health & Auth
 	s.handle("GET /api/v1/health", s.handleHealth)
 	s.handle("GET /api/v1/auth/demo-accounts", s.handleDemoAccounts)
 	s.handle("POST /api/v1/auth/login", s.handleLogin)
 	s.handle("GET /api/v1/auth/me", mw.Authenticate(s.handleMe))
 
-	// Dashboard, Graph, Clusters, SSE
 	s.handle("GET /api/v1/dashboard/summary", mw.RequirePerm(domain.PermDashboardRead, s.handleDashboardSummary))
 	s.handle("GET /api/v1/graph", mw.RequirePerm(domain.PermAssetsRead, s.handleGraph))
 	s.handle("GET /api/v1/clusters", mw.RequirePerm(domain.PermAssetsRead, s.handleClusters))
 	s.handle("GET /api/v1/inventory", mw.RequirePerm(domain.PermAssetsRead, s.handleInventory))
 	s.handle("GET /api/v1/events/stream", mw.Authenticate(s.hub.ServeHTTP))
 
-	// Targets, Exclusions, Profiles
 	s.handle("GET /api/v1/targets", mw.RequirePerm(domain.PermScansRead, s.handleListTargets))
 	s.handle("POST /api/v1/targets", mw.RequirePerm(domain.PermScansWrite, s.handleCreateTarget))
 	s.handle("DELETE /api/v1/targets/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteTarget))
@@ -168,7 +165,6 @@ func (s *Server) registerRoutes() {
 	s.handle("POST /api/v1/profiles/{id}/run", mw.RequirePerm(domain.PermScansRun, s.handleRunProfileNow))
 	s.handle("DELETE /api/v1/profiles/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteProfile))
 
-	// Scan Runs & Diff
 	s.handle("GET /api/v1/scans", mw.RequirePerm(domain.PermScansRead, s.handleListScans))
 	s.handle("POST /api/v1/scans", mw.RequirePerm(domain.PermScansRun, s.handleStartScan))
 	s.handle("GET /api/v1/scans/diff", mw.RequirePerm(domain.PermScansRead, s.handleScanDiff))
@@ -180,7 +176,6 @@ func (s *Server) registerRoutes() {
 	s.handle("POST /api/v1/scans/{id}/stop", mw.RequirePerm(domain.PermScansRun, s.handleStopScan))
 	s.handle("DELETE /api/v1/scans/{id}", mw.RequirePerm(domain.PermScansDelete, s.handleDeleteScan))
 
-	// Hosts, Services & Preserved Overrides
 	s.handle("GET /api/v1/hosts", mw.RequirePerm(domain.PermAssetsRead, s.handleListHosts))
 	s.handle("GET /api/v1/hosts/{id}", mw.RequirePerm(domain.PermAssetsRead, s.handleGetHost))
 	s.handle("PATCH /api/v1/hosts/{id}/overrides", mw.RequirePerm(domain.PermAssetsWrite, s.handlePatchHostOverrides))
@@ -190,11 +185,9 @@ func (s *Server) registerRoutes() {
 	s.handle("PATCH /api/v1/services/{id}/overrides", mw.RequirePerm(domain.PermAssetsWrite, s.handlePatchServiceOverrides))
 	s.handle("GET /api/v1/services/{id}/observations", mw.RequirePerm(domain.PermAssetsRead, s.handleServiceObservations))
 
-	// Changes
 	s.handle("GET /api/v1/changes", mw.RequirePerm(domain.PermAssetsRead, s.handleListChanges))
 	s.handle("POST /api/v1/changes/{id}/acknowledge", mw.RequirePerm(domain.PermAssetsWrite, s.handleAcknowledgeChange))
 
-	// Daily ops: host timeline, CIDR tag rules (ownership), alert webhook (handlers_ops.go)
 	s.handle("GET /api/v1/hosts/{id}/timeline", mw.RequirePerm(domain.PermAssetsRead, s.handleHostTimeline))
 	s.handle("GET /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsRead, s.handleListTagRules))
 	s.handle("PUT /api/v1/tag-rules", mw.RequirePerm(domain.PermAssetsWrite, s.handleSaveTagRules))
@@ -203,12 +196,10 @@ func (s *Server) registerRoutes() {
 	s.handle("PUT /api/v1/integrations/webhook", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveWebhook))
 	s.handle("POST /api/v1/integrations/webhook/test", mw.RequirePerm(domain.PermAdminSettings, s.handleTestWebhook))
 
-	// Unified Manual Entry, Import & Export
 	s.handle("POST /api/v1/ingest/manual", mw.RequirePerm(domain.PermAssetsWrite, s.handleIngestManual))
 	s.handle("POST /api/v1/ingest/import", mw.RequirePerm(domain.PermImportWrite, s.handleIngestImport))
 	s.handle("GET /api/v1/export", mw.RequirePerm(domain.PermExportRead, s.handleExport))
 
-	// Signatures Studio
 	s.handle("GET /api/v1/signatures", mw.RequirePerm(domain.PermSignaturesRead, s.handleListSignatures))
 	s.handle("POST /api/v1/signatures", mw.RequirePerm(domain.PermSignaturesWrite, s.handleCreateSignature))
 	s.handle("POST /api/v1/signatures/validate", mw.RequirePerm(domain.PermSignaturesRead, s.handleValidateSignature))
@@ -218,7 +209,6 @@ func (s *Server) registerRoutes() {
 	s.handle("PUT /api/v1/signatures/{id}", mw.RequirePerm(domain.PermSignaturesWrite, s.handleUpdateSignature))
 	s.handle("DELETE /api/v1/signatures/{id}", mw.RequirePerm(domain.PermSignaturesDelete, s.handleDeleteSignature))
 
-	// DefectDojo v2 Integration
 	s.handle("GET /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermDefectDojoPush, s.handleGetDefectDojoConfig))
 	s.handle("PUT /api/v1/integrations/defectdojo", mw.RequirePerm(domain.PermAdminSettings, s.handleSaveDefectDojoConfig))
 	s.handle("POST /api/v1/integrations/defectdojo/test", mw.RequirePerm(domain.PermDefectDojoPush, s.handleTestDefectDojo))
@@ -229,7 +219,6 @@ func (s *Server) registerRoutes() {
 	s.handle("GET /api/v1/integrations/defectdojo/services", mw.RequirePerm(domain.PermAssetsRead, s.handleDefectDojoServiceStatus))
 	s.handle("POST /api/v1/integrations/defectdojo/sync", mw.RequirePerm(domain.PermDefectDojoPush, s.handleDefectDojoSyncNow))
 
-	// Admin: Users, Dynamic Roles, Permissions, Crypto Proof & Rotation, Audit
 	s.handle("GET /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleListUsers))
 	s.handle("POST /api/v1/admin/users", mw.RequirePerm(domain.PermAdminUsers, s.handleCreateUser))
 	s.handle("PUT /api/v1/admin/users/{id}", mw.RequirePerm(domain.PermAdminUsers, s.handleUpdateUser))
@@ -245,8 +234,8 @@ func (s *Server) registerRoutes() {
 	s.handle("POST /api/v1/admin/crypto/rotate", mw.RequirePerm(domain.PermAdminSettings, s.handleCryptoRotate))
 	s.handle("GET /api/v1/admin/audit", mw.RequirePerm(domain.PermAdminAudit, s.handleListAudit))
 
-	// Remote scanning agents: management (users) and the agent protocol (agent credentials
-	// only, see internal/agenthub). The two credential kinds never open each other's routes.
+	// Remote scanning agents: management routes take user credentials, the agent protocol
+	// (internal/agenthub) takes agent credentials only. Neither opens the other's routes.
 	s.handle("GET /api/v1/agents", mw.RequirePerm(domain.PermScansRead, s.handleListAgents))
 	s.handle("PUT /api/v1/agents/{id}", mw.RequirePerm(domain.PermAdminSettings, s.handleUpdateAgent))
 	s.handle("DELETE /api/v1/agents/{id}", mw.RequirePerm(domain.PermAdminSettings, s.handleDeleteAgent))
@@ -257,15 +246,11 @@ func (s *Server) registerRoutes() {
 		s.handle(rt.Pattern, rt.Handler)
 	}
 
-	// Web screenshot gallery
 	s.registerScreenshotRoutes()
 	s.registerPolicyRoutes()
-	// Remediation tickets and morning digest (handlers_remediation.go)
 	s.registerRemediationRoutes()
-	// Vulnerability intelligence and safe verification (handlers_verify.go)
 	s.registerVerifyRoutes()
 
-	// Static SPA fallback
 	s.handle("/", s.handleSPA)
 }
 

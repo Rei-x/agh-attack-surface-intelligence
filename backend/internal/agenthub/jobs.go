@@ -197,9 +197,6 @@ func (c *Coordinator) holdLeaseLocked(j *Job, instance string, now time.Time) er
 	return nil
 }
 
-// ---------------------------------------------------------------------------------------
-// Job queue
-
 // NextJob hands the agent its next job, waiting up to wait for one to appear (long-poll).
 // Priority: a run this agent was already executing (resume after restart or network loss),
 // then a window-paused run whose window is open again, then the oldest queued run. An agent
@@ -869,9 +866,6 @@ func (c *Coordinator) Heartbeat(ctx context.Context, agentID, instance string, r
 	return &HeartbeatResponse{ServerTime: now, HeartbeatSec: int(c.opts.HeartbeatInterval / time.Second), Control: control}, nil
 }
 
-// ---------------------------------------------------------------------------------------
-// User actions on agent runs (called by the dispatching scan runner)
-
 // Pause marks an agent run paused; a connected agent receives the pause control on its next heartbeat.
 func (c *Coordinator) Pause(ctx context.Context, runID string) error {
 	l := c.runLock(runID)
@@ -971,9 +965,6 @@ func (c *Coordinator) Stop(ctx context.Context, runID string) error {
 	run.RawNmapXML = ""
 	return c.store.UpdateScanRun(ctx, run)
 }
-
-// ---------------------------------------------------------------------------------------
-// Offline detection
 
 // StartSweeper marks silent agents offline and parks their running runs.
 func (c *Coordinator) StartSweeper(ctx context.Context) {

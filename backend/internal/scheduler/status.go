@@ -31,10 +31,10 @@ type Status struct {
 	NextSlotAt       *time.Time `json:"next_slot_at,omitempty"`
 	NextRunAt        *time.Time `json:"next_run_at,omitempty"`
 	DeferredByWindow bool       `json:"deferred_by_window"`
-	// PendingCatchUp: a slot is already due (e.g. missed during downtime, or waiting for the
-	// window) and will fire once at NextRunAt.
+	// PendingCatchUp is set when a slot is already due (missed during downtime, or waiting
+	// for the window); it fires once at NextRunAt.
 	PendingCatchUp bool `json:"pending_catch_up"`
-	// WillSkip: an active run exists, so the next due slot will be skipped unless it finishes.
+	// WillSkip is set when an active run exists: the next due slot is skipped unless it finishes.
 	WillSkip       bool       `json:"will_skip"`
 	LastFireAt     *time.Time `json:"last_fire_at,omitempty"`
 	LastSkipAt     *time.Time `json:"last_skip_at,omitempty"`

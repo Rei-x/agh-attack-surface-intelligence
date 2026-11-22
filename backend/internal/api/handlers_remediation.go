@@ -381,8 +381,6 @@ func (s *Server) handleTestChannels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// ---------- digest ----------
-
 type digestSummary struct {
 	ID        string        `json:"id"`
 	CreatedAt time.Time     `json:"created_at"`

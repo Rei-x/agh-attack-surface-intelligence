@@ -214,7 +214,7 @@ func (r *NmapRunner) discoverPureGo(ctx context.Context, ips []string, probePort
 						break
 					}
 					// Deliberately no classifyDialErr here: discovery probes mostly hit dead
-					// IPs, which always time out. Counting that as target noise halved the
+					// IPs, which always time out. Counting that as target noise would halve the
 					// global rate again and again on an empty range (down to MinRate). Noise
 					// is only recorded for hosts already known alive (service stage, HTTP).
 				}
@@ -486,8 +486,6 @@ func classifyDialErr(gov *Governor, host string, err error) {
 	}
 }
 
-// ==================== Pure-Go Nmap XML Parser & Aggregator ====================
-
 type nmapRunXML struct {
 	XMLName   xml.Name      `xml:"nmaprun"`
 	Scanner   string        `xml:"scanner,attr"`
@@ -506,7 +504,7 @@ type nmapHostXML struct {
 	Hostnames nmapHostnamesXML `xml:"hostnames"`
 	Ports     nmapPortsXML     `xml:"ports"`
 	OS        *nmapOSXML       `xml:"os,omitempty"`
-	// HostScripts holds <hostscript><script/></hostscript> (e.g. smb-protocols) from imported XML.
+	// HostScript holds <hostscript><script/></hostscript> (e.g. smb-protocols) from imported XML.
 	HostScript *nmapHostScriptXML `xml:"hostscript,omitempty"`
 }
 
@@ -788,7 +786,6 @@ func MergeNmapXML(xmlDocs []string) string {
 				continue
 			}
 			if idx, exists := seenHostIdx[ip]; exists {
-				// Replace if new entry has more ports.
 				if len(h.Ports.Ports) > len(merged.Hosts[idx].Ports.Ports) {
 					merged.Hosts[idx] = h
 				}

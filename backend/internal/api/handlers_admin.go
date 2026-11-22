@@ -9,8 +9,6 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// --- Users ---
-
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.store.ListUsers(r.Context())
 	if err != nil {
@@ -184,8 +182,6 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// --- Dynamic RBAC Roles & Permissions ---
-
 func (s *Server) handleListRoles(w http.ResponseWriter, r *http.Request) {
 	roles, err := s.store.ListRoles(r.Context())
 	if err != nil {
@@ -278,8 +274,6 @@ func (s *Server) handleListPermissions(w http.ResponseWriter, _ *http.Request) {
 		"permissions": domain.AllPermissions,
 	})
 }
-
-// --- Encryption At Rest Proof & Key Rotation ---
 
 func (s *Server) handleCryptoStatus(w http.ResponseWriter, r *http.Request) {
 	st := s.vault.Status()

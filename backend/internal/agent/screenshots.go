@@ -7,7 +7,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// gzipMinBytes: request bodies above this are sent gzip-compressed (Content-Encoding: gzip).
+// gzipMinBytes is the request body size above which bodies are sent gzip-compressed.
 const gzipMinBytes = 64 << 10
 
 // gzipBody compresses a large JSON body. ok=false leaves it as is (small, or no gain).

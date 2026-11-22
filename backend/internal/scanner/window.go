@@ -74,7 +74,7 @@ func parseHHMM(s string) (int, error) {
 	return h*60 + m, nil
 }
 
-// IsOpen returns true when scanning is permitted at the given instant.
+// IsOpen reports whether scanning is permitted at the given instant.
 func (w *WindowGuard) IsOpen(now time.Time) bool {
 	if w == nil || !w.Enabled {
 		return true
