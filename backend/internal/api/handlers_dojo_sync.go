@@ -108,11 +108,10 @@ func atoiSafe(s string) int {
 	return n
 }
 
-// handleDefectDojoSyncNow pushes every profile's change findings and syncs triage right away
-// (the automatic push does the same after each completed run).
+// handleDefectDojoSyncNow pushes the change findings of the whole inventory and syncs triage
+// right away (the automatic push does the same after each completed run).
 func (s *Server) handleDefectDojoSyncNow(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	cfg, err := db.LoadDefectDojoConfig(ctx, s.store)
+	cfg, err := db.LoadDefectDojoConfig(r.Context(), s.store)
 	if err != nil {
 		writeStoreErr(w, err)
 		return
@@ -121,7 +120,12 @@ func (s *Server) handleDefectDojoSyncNow(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusBadRequest, "DefectDojo integration is not configured")
 		return
 	}
-	results, err := defectdojo.SyncAllProfiles(ctx, s.store, s.dojo, cfg, currentUsername(r))
+	// A sync can outlive the request (the first one after an upgrade retires the old
+	// per-profile tests): finish it even when the browser or a proxy gives up waiting.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 20*time.Minute)
+	defer cancel()
+	res, err := defectdojo.SyncNow(ctx, s.store, s.dojo, cfg, currentUsername(r))
+	results := []*defectdojo.ChangeSyncResult{res}
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "results": results})
 		return
@@ -138,13 +142,13 @@ func (s *Server) queueDojoSync() {
 		s.dojoSyncTimer.Stop()
 	}
 	s.dojoSyncTimer = time.AfterFunc(5*time.Second, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 		defer cancel()
 		cfg, err := db.LoadDefectDojoConfig(ctx, s.store)
 		if err != nil || cfg == nil || strings.TrimSpace(cfg.URL) == "" || !cfg.HasAPIToken || !cfg.AutoPushFindings {
 			return
 		}
-		if _, err := defectdojo.SyncAllProfiles(ctx, s.store, s.dojo, cfg, "triage-sync"); err != nil {
+		if _, err := defectdojo.SyncNow(ctx, s.store, s.dojo, cfg, "triage-sync"); err != nil {
 			log.Printf("[WARN] DefectDojo triage sync failed: %v", err)
 		}
 	})

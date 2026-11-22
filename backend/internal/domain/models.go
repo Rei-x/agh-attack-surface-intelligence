@@ -627,27 +627,47 @@ type DefectDojoConfig struct {
 	EngagementID int    `json:"engagement_id"`
 	VerifyTLS    bool   `json:"verify_tls"`
 	AutoPushNmap bool   `json:"auto_push_nmap"`
-	// AutoPushFindings reimports the "Dzięcioł changes" findings and syncs analyst triage
-	// after every completed run (local or agent). Stored as a setting; defaults to on.
+	// AutoPushFindings reimports the "Dzięcioł changes" findings (whole inventory, one test)
+	// and syncs analyst triage after every completed run (local or agent). Stored as a
+	// setting; defaults to on.
 	AutoPushFindings bool `json:"auto_push_findings"`
 }
 
 // DefectDojoSyncState is the last automatic DefectDojo sync, shown in the header chip and
 // used for the per-service "in DefectDojo" status.
 type DefectDojoSyncState struct {
-	LastSyncAt    *time.Time                        `json:"last_sync_at,omitempty"`
-	LastStatus    string                            `json:"last_status,omitempty"` // success, failed
-	LastError     string                            `json:"last_error,omitempty"`
-	LastRunID     string                            `json:"last_run_id,omitempty"`
-	TestID        int                               `json:"test_id,omitempty"`
-	TestURL       string                            `json:"test_url,omitempty"`
-	ProductID     int                               `json:"product_id,omitempty"`
-	ProductURL    string                            `json:"product_url,omitempty"`
-	Findings      int                               `json:"findings"`
-	TriageSynced  int                               `json:"triage_synced"`
-	NmapTestURL   string                            `json:"nmap_test_url,omitempty"`
-	NmapPushedAt  *time.Time                        `json:"nmap_pushed_at,omitempty"`
-	FindingsByKey map[string][]DefectDojoFindingRef `json:"findings_by_key,omitempty"` // "service:<id>" / "host:<id>"
+	LastSyncAt *time.Time `json:"last_sync_at,omitempty"`
+	LastStatus string     `json:"last_status,omitempty"` // success, failed
+	LastError  string     `json:"last_error,omitempty"`
+	LastRunID  string     `json:"last_run_id,omitempty"`
+	TestID     int        `json:"test_id,omitempty"` // the one "Dzięcioł changes" test
+	TestURL    string     `json:"test_url,omitempty"`
+	// ChangesContext is the product type / product / engagement TestID lives in. Empty in
+	// the state of versions with one change test per profile, which makes the next sync
+	// look for those tests and retire them.
+	ChangesContext string                            `json:"changes_context,omitempty"`
+	ProductID      int                               `json:"product_id,omitempty"`
+	ProductURL     string                            `json:"product_url,omitempty"`
+	Findings       int                               `json:"findings"`
+	TriageSynced   int                               `json:"triage_synced"`
+	NmapTestURL    string                            `json:"nmap_test_url,omitempty"`
+	NmapPushedAt   *time.Time                        `json:"nmap_pushed_at,omitempty"`
+	FindingsByKey  map[string][]DefectDojoFindingRef `json:"findings_by_key,omitempty"` // "service:<id>" / "host:<id>"
+	// LegacyTests are the per-profile change tests of older versions the syncs closed,
+	// newest last.
+	LegacyTests []DefectDojoLegacyTest `json:"legacy_tests,omitempty"`
+}
+
+// DefectDojoLegacyTest is a change test of an older version ("Dzięcioł changes: <profile>")
+// that a sync closed because the one "Dzięcioł changes" test superseded it.
+type DefectDojoLegacyTest struct {
+	TestID        int       `json:"test_id"`
+	Title         string    `json:"title"`
+	URL           string    `json:"url"`
+	Closed        int       `json:"closed"`         // active findings closed
+	NotesCarried  int       `json:"notes_carried"`  // analyst notes copied to the change test
+	TriageCarried int       `json:"triage_carried"` // DefectDojo-side FP / risk accepted copied
+	RetiredAt     time.Time `json:"retired_at"`
 }
 
 // DefectDojoFindingRef links a Dzięcioł change finding to its DefectDojo finding.

@@ -12,15 +12,17 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scanner"
 )
 
-// Actionable change findings ("Dzięcioł changes: <profile>").
+// Actionable change findings: the one "Dzięcioł changes" test.
 //
 // The raw Nmap test lists every open port. This second test answers the questions an
 // operator actually asks after a periodic scan: what risky thing is exposed, who put it up
 // (owner from the CIDR rules), is it running something past end of life, what is new, what
-// disappeared. It is a snapshot of the profile's current actionable state, reimported after
-// every completed run with close_old_findings=true:
+// disappeared. It is a snapshot of the current actionable state of the whole inventory,
+// reimported after every completed run, triage change and verified fix with
+// close_old_findings=true:
 //
 //   - a condition that still holds produces the same finding again (same title, description
 //     and unique_id_from_tool), so DefectDojo leaves it untouched: no duplicates, and an
@@ -28,6 +30,13 @@ import (
 //   - a condition that is gone (port closed, nginx upgraded, host back) is absent from the
 //     next reimport, so DefectDojo mitigates it with the date: the audit trail of "it was
 //     fixed on ...".
+//
+// There is one such test per DefectDojo engagement, not one per scan profile: profiles
+// overlap (a quick /22 inside the nightly /18) and get renamed, and a test per profile then
+// holds the same finding twice, or keeps a renamed profile's findings open forever. Every
+// host of the inventory therefore lands in this test exactly once, whichever profiles cover
+// it; profiles only set the baseline of what counts as "new" (InventoryChangeFindings). The
+// per-profile tests of older versions are retired by the sync (legacy_tests.go).
 //
 // Items an analyst triaged in Dzięcioł (accepted risk / false positive) stay in the payload
 // with their Triage attached; after the reimport SyncTriage sets the matching DefectDojo
@@ -41,8 +50,9 @@ import (
 // stable, for instances configured to deduplicate by it.
 
 const (
-	// ChangesTestPrefix titles the per-profile change test.
-	ChangesTestPrefix = "Dzięcioł changes"
+	// ChangesTest titles the change test. Older versions used it as the prefix of one test
+	// per scan profile ("Dzięcioł changes: <profile>").
+	ChangesTest = "Dzięcioł changes"
 	// newServiceWindow: a service first seen this recently (after the baseline) is "new".
 	newServiceWindow = 7 * 24 * time.Hour
 	// goneHostWindow: hosts gone longer than this drop out (decommissioned long ago).
@@ -61,15 +71,6 @@ const (
 	KindVerified  = "verified"
 )
 
-// ChangesTestTitle is the stable DefectDojo test title for a profile's change findings.
-func ChangesTestTitle(profileName string) string {
-	profileName = strings.TrimSpace(profileName)
-	if profileName == "" {
-		return ChangesTestPrefix
-	}
-	return ChangesTestPrefix + ": " + profileName
-}
-
 // ChangeFinding is one actionable finding of the change test.
 type ChangeFinding struct {
 	Kind      string `json:"-"`
@@ -82,20 +83,124 @@ type ChangeFinding struct {
 	genericFinding
 }
 
-// BuildChangeFindings derives the actionable findings for hosts (already limited to the
-// profile scope, services loaded) at now. Hosts or services with an active accepted-risk /
-// false-positive decision keep their findings with Triage set (a host decision covers its
-// services). The result is sorted by unique id (stable payload).
+// BuildChangeFindings derives the actionable findings for hosts (services loaded) at now,
+// treating them as one scope: the first scan of these hosts is the baseline for "new".
+// Hosts or services with an active accepted-risk / false-positive decision keep their
+// findings with Triage set (a host decision covers its services). The result is sorted by
+// unique id (stable payload).
 func BuildChangeFindings(hosts []domain.Host, now time.Time) []ChangeFinding {
-	baseline := time.Time{}
-	for _, h := range hosts {
-		if !h.FirstSeen.IsZero() && (baseline.IsZero() || h.FirstSeen.Before(baseline)) {
-			baseline = h.FirstSeen
+	all := make([]int, len(hosts))
+	for i := range all {
+		all[i] = i
+	}
+	baseline := earliestFirstSeen(hosts, all)
+	baselines := make([]time.Time, len(hosts))
+	for i := range baselines {
+		baselines[i] = baseline
+	}
+	return buildChangeFindings(hosts, baselines, now)
+}
+
+// InventoryChangeFindings derives the change findings of the whole inventory: one finding
+// per condition, however many scan profiles cover the host. Profiles only decide what
+// counts as new: a service is new when it appeared after the first scan of a profile that
+// covers its host (the earliest such profile wins), so the first scan of a freshly added
+// profile is its baseline and not a flood of "new service" findings. Hosts no profile
+// covers (imports, manual entries) share the baseline of the other such hosts.
+func InventoryChangeFindings(ctx context.Context, hosts []domain.Host, profiles []domain.ScanProfile, now time.Time) []ChangeFinding {
+	return dedupeFindings(buildChangeFindings(hosts, inventoryBaselines(ctx, hosts, profiles), now))
+}
+
+// inventoryBaselines returns, per host, the "new service" baseline described at
+// InventoryChangeFindings.
+func inventoryBaselines(ctx context.Context, hosts []domain.Host, profiles []domain.ScanProfile) []time.Time {
+	out := make([]time.Time, len(hosts))
+	covered := make([]bool, len(hosts))
+	for _, p := range profiles {
+		in := targetIPs(ctx, p.Targets)
+		if len(in) == 0 {
+			continue
+		}
+		var members []int
+		for i := range hosts {
+			if _, ok := in[strings.TrimSpace(hosts[i].IP)]; ok {
+				members = append(members, i)
+			}
+		}
+		b := earliestFirstSeen(hosts, members)
+		for _, i := range members {
+			covered[i] = true
+			if !b.IsZero() && (out[i].IsZero() || b.Before(out[i])) {
+				out[i] = b
+			}
 		}
 	}
+	var rest []int
+	for i := range hosts {
+		if !covered[i] {
+			rest = append(rest, i)
+		}
+	}
+	b := earliestFirstSeen(hosts, rest)
+	for _, i := range rest {
+		out[i] = b
+	}
+	return out
+}
+
+// targetIPs expands profile targets (IPs, CIDRs, ranges, names) to a set of IPs; empty when
+// there are none or they do not parse (such a profile then covers no host).
+func targetIPs(ctx context.Context, targets []string) map[string]struct{} {
+	if len(targets) == 0 {
+		return nil
+	}
+	res, err := scanner.ParseAndNormalizeTargets(ctx, targets, nil, nil)
+	if err != nil || res == nil {
+		return nil
+	}
+	in := make(map[string]struct{}, len(res.IPs))
+	for _, ip := range res.IPs {
+		in[strings.TrimSpace(ip)] = struct{}{}
+	}
+	return in
+}
+
+// earliestFirstSeen is the earliest FirstSeen of the hosts at the given indexes.
+func earliestFirstSeen(hosts []domain.Host, idx []int) time.Time {
+	var b time.Time
+	for _, i := range idx {
+		if t := hosts[i].FirstSeen; !t.IsZero() && (b.IsZero() || t.Before(b)) {
+			b = t
+		}
+	}
+	return b
+}
+
+// dedupeFindings drops repeats of an identical finding (same unique id, title and
+// description), e.g. one IP held by two host records. DefectDojo drops a unique id that
+// repeats inside one report and would keep both copies as separate findings.
+func dedupeFindings(in []ChangeFinding) []ChangeFinding {
+	type key struct{ uid, title, desc string }
+	seen := make(map[key]bool, len(in))
+	out := in[:0]
+	for _, f := range in {
+		k := key{f.UniqueIDFromTool, f.Title, f.Description}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, f)
+	}
+	return out
+}
+
+// buildChangeFindings is BuildChangeFindings with a baseline per host (baselines[i] for
+// hosts[i]).
+func buildChangeFindings(hosts []domain.Host, baselines []time.Time, now time.Time) []ChangeFinding {
 	var out []ChangeFinding
 	for i := range hosts {
 		h := &hosts[i]
+		baseline := baselines[i]
 		var hostTriage *domain.TriageInfo
 		if h.Triage.IsSuppressing(now) {
 			hostTriage = h.Triage
