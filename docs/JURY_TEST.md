@@ -131,7 +131,7 @@ Options: `--only "vulnerable"`, `--skip-latency`, `--target <host IP>`, `--bin .
 ## Rehearsal result
 
 `scripts/jury_lab_test.sh --lab ./agh-lab` on the rehearsal VM (Ubuntu 24.04, 4 vCPU, Docker
-29.1, nmap 7.94, root), commit 82a54c6: **48 passed, 0 failed**.
+29.1, nmap 7.94, root), commit 82a54c6: **0 failed**. The table lists the passed checks per area; the repeat-scan checks are shown in their own row, and the run's printed total was not kept, so rerun the script for an exact count.
 
 | Area | Checks | Notes |
 |---|---|---|
