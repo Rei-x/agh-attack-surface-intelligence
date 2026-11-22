@@ -424,7 +424,7 @@ export function RemediationPage() {
                         {isActive(t.status) ? (
                           formatDay(t.due_at)
                         ) : (
-                          <span className="text-muted-foreground">{formatDay(t.fixed_at || t.updated_at)}</span>
+                          <span className="text-muted-foreground">{t.status === 'fixed' ? 'fixed ' : 'closed '}{formatDay(t.fixed_at || t.updated_at)}</span>
                         )}
                       </TableCell>
                       <TableCell className="pr-4 text-right">
