@@ -50,7 +50,11 @@ func TestVulnAndVerifiedFields(t *testing.T) {
 	for i := range findings {
 		switch findings[i].Kind {
 		case KindKnownVuln:
-			vuln = &findings[i]
+			// Hand-written passive hints (eol package) can add other known-vuln findings for the
+			// same product; pick the one that comes from the snapshot fixture.
+			if findings[i].CVE == "CVE-2016-10033" {
+				vuln = &findings[i]
+			}
 		case KindVerified:
 			ver = &findings[i]
 		}
