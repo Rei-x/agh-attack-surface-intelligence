@@ -793,7 +793,7 @@ func (s *PostgresStore) GetScanRun(ctx context.Context, id string) (*domain.Scan
 	if err != nil {
 		return nil, err
 	}
-	r.RawNmapXML, err = s.vault.Decrypt(xmlEnc, "scan_runs:"+r.ID+":raw_nmap_xml")
+	r.RawNmapXML, err = decryptLargeString(s.vault, xmlEnc, "scan_runs:"+r.ID+":raw_nmap_xml")
 	if err != nil {
 		return nil, err
 	}
@@ -812,7 +812,7 @@ func (s *PostgresStore) CreateScanRun(ctx context.Context, run *domain.ScanRun) 
 	if err != nil {
 		return err
 	}
-	xmlEnc, err := s.vault.Encrypt(run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
+	xmlEnc, err := encryptLargeString(s.vault, run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
 	if err != nil {
 		return err
 	}
@@ -834,7 +834,7 @@ func (s *PostgresStore) UpdateScanRun(ctx context.Context, run *domain.ScanRun) 
 		return err
 	}
 	if run.RawNmapXML != "" {
-		xmlEnc, err := s.vault.Encrypt(run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
+		xmlEnc, err := encryptLargeString(s.vault, run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
 		if err != nil {
 			return err
 		}
@@ -1556,7 +1556,7 @@ func (s *PostgresStore) AcknowledgeChange(ctx context.Context, id, username stri
 }
 
 func (s *PostgresStore) SaveScanSnapshot(ctx context.Context, scanRunID string, hosts []domain.Host) error {
-	enc, err := s.vault.EncryptJSON(hosts, "scan_snapshots:"+scanRunID+":payload")
+	enc, err := encryptLargeJSON(s.vault, SlimSnapshotHosts(hosts), "scan_snapshots:"+scanRunID+":payload")
 	if err != nil {
 		return err
 	}
@@ -1576,7 +1576,7 @@ func (s *PostgresStore) GetScanSnapshot(ctx context.Context, scanRunID string) (
 		return nil, err
 	}
 	var hosts []domain.Host
-	if err := s.vault.DecryptJSON(enc, "scan_snapshots:"+scanRunID+":payload", &hosts); err != nil {
+	if err := decryptLargeJSON(s.vault, enc, "scan_snapshots:"+scanRunID+":payload", &hosts); err != nil {
 		return nil, err
 	}
 	return hosts, nil

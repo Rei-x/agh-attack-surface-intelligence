@@ -769,14 +769,19 @@ func (m *MemoryStore) DeleteProfile(_ context.Context, id string) error {
 
 // --- Scan Runs & Chunks ---
 
-func (m *MemoryStore) decryptScanRunLocked(r encScanRunRow) (*domain.ScanRun, error) {
+// decryptScanRunLocked decrypts a run row. The raw nmap XML (megabytes for a large range) is
+// only decrypted when withXML is set: run lists never return it (json:"-") and the scheduler,
+// window watcher and dashboard list runs every few seconds.
+func (m *MemoryStore) decryptScanRunLocked(r encScanRunRow, withXML bool) (*domain.ScanRun, error) {
 	notes, err := m.vault.Decrypt(r.NotesEnc, "scan_runs:"+r.ID+":notes")
 	if err != nil {
 		return nil, err
 	}
-	xmlData, err := m.vault.Decrypt(r.RawNmapXMLEnc, "scan_runs:"+r.ID+":raw_nmap_xml")
-	if err != nil {
-		return nil, err
+	xmlData := ""
+	if withXML {
+		if xmlData, err = decryptLargeString(m.vault, r.RawNmapXMLEnc, "scan_runs:"+r.ID+":raw_nmap_xml"); err != nil {
+			return nil, err
+		}
 	}
 	return &domain.ScanRun{
 		ID:                r.ID,
@@ -797,7 +802,7 @@ func (m *MemoryStore) decryptScanRunLocked(r encScanRunRow) (*domain.ScanRun, er
 		DurationMs:        r.DurationMs,
 		WindowPausedCount: r.WindowPausedCount,
 		RawNmapXML:        xmlData,
-		HasRawNmapXML:     r.HasRawNmapXML || xmlData != "",
+		HasRawNmapXML:     r.HasRawNmapXML || r.RawNmapXMLEnc != "",
 		TriggeredBy:       r.TriggeredBy,
 		StartedAt:         r.StartedAt,
 		FinishedAt:        r.FinishedAt,
@@ -807,17 +812,22 @@ func (m *MemoryStore) decryptScanRunLocked(r encScanRunRow) (*domain.ScanRun, er
 func (m *MemoryStore) ListScanRuns(_ context.Context, limit int) ([]domain.ScanRun, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]domain.ScanRun, 0, len(m.scanRuns))
-	for _, r := range m.scanRuns {
-		dec, err := m.decryptScanRunLocked(r)
+	rows := make([]*encScanRunRow, 0, len(m.scanRuns))
+	for id := range m.scanRuns {
+		r := m.scanRuns[id]
+		rows = append(rows, &r)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].StartedAt.After(rows[j].StartedAt) })
+	if limit > 0 && len(rows) > limit {
+		rows = rows[:limit]
+	}
+	out := make([]domain.ScanRun, 0, len(rows))
+	for _, r := range rows {
+		dec, err := m.decryptScanRunLocked(*r, false)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, *dec)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.After(out[j].StartedAt) })
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
 	}
 	return out, nil
 }
@@ -829,7 +839,7 @@ func (m *MemoryStore) GetScanRun(_ context.Context, id string) (*domain.ScanRun,
 	if !ok {
 		return nil, ErrNotFound
 	}
-	dec, err := m.decryptScanRunLocked(r)
+	dec, err := m.decryptScanRunLocked(r, true)
 	if err != nil {
 		return nil, err
 	}
@@ -853,7 +863,7 @@ func (m *MemoryStore) CreateScanRun(_ context.Context, run *domain.ScanRun) erro
 	if err != nil {
 		return err
 	}
-	xmlEnc, err := m.vault.Encrypt(run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
+	xmlEnc, err := encryptLargeString(m.vault, run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
 	if err != nil {
 		return err
 	}
@@ -898,7 +908,7 @@ func (m *MemoryStore) UpdateScanRun(_ context.Context, run *domain.ScanRun) erro
 	xmlEnc := existing.RawNmapXMLEnc
 	hasXML := existing.HasRawNmapXML
 	if run.RawNmapXML != "" {
-		xmlEnc, err = m.vault.Encrypt(run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
+		xmlEnc, err = encryptLargeString(m.vault, run.RawNmapXML, "scan_runs:"+run.ID+":raw_nmap_xml")
 		if err != nil {
 			return err
 		}
@@ -947,7 +957,7 @@ func (m *MemoryStore) UpdateScanRunMeta(_ context.Context, id, name, notes strin
 	}
 	row.NotesEnc = enc
 	m.scanRuns[id] = row
-	return m.decryptScanRunLocked(row)
+	return m.decryptScanRunLocked(row, false)
 }
 
 func (m *MemoryStore) DeleteScanRun(_ context.Context, id string) error {
@@ -1620,8 +1630,14 @@ func (m *MemoryStore) decryptChangeLocked(r encChangeRow) (*domain.ChangeEvent, 
 func (m *MemoryStore) ListChangeEvents(_ context.Context, filter ChangeFilter) ([]domain.ChangeEvent, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]domain.ChangeEvent, 0, len(m.changes))
-	for _, r := range m.changes {
+	// Filter and order on the plaintext columns first and decrypt only the page that is
+	// returned: the dashboard asks for 25 of possibly tens of thousands of events.
+	type ref struct {
+		id string
+		at time.Time
+	}
+	rows := make([]ref, 0, min(len(m.changes), 1024))
+	for id, r := range m.changes {
 		if filter.ScanRunID != "" && r.ScanRunID != filter.ScanRunID {
 			continue
 		}
@@ -1637,15 +1653,19 @@ func (m *MemoryStore) ListChangeEvents(_ context.Context, filter ChangeFilter) (
 		if filter.AnomalyOnly && !r.IsTimeAnomaly {
 			continue
 		}
-		dec, err := m.decryptChangeLocked(r)
+		rows = append(rows, ref{id: id, at: r.CreatedAt})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].at.After(rows[j].at) })
+	if filter.Limit > 0 && len(rows) > filter.Limit {
+		rows = rows[:filter.Limit]
+	}
+	out := make([]domain.ChangeEvent, 0, len(rows))
+	for _, r := range rows {
+		dec, err := m.decryptChangeLocked(m.changes[r.id])
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, *dec)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
-	if filter.Limit > 0 && len(out) > filter.Limit {
-		out = out[:filter.Limit]
 	}
 	return out, nil
 }
@@ -1665,12 +1685,13 @@ func (m *MemoryStore) AcknowledgeChange(_ context.Context, id, username string) 
 }
 
 func (m *MemoryStore) SaveScanSnapshot(_ context.Context, scanRunID string, hosts []domain.Host) error {
-	m.mu.Lock()
-	defer m.unlockDirty()
-	enc, err := m.vault.EncryptJSON(hosts, "scan_snapshots:"+scanRunID+":payload")
+	// Encrypt outside the lock: the whole inventory is marshalled here.
+	enc, err := encryptLargeJSON(m.vault, SlimSnapshotHosts(hosts), "scan_snapshots:"+scanRunID+":payload")
 	if err != nil {
 		return err
 	}
+	m.mu.Lock()
+	defer m.unlockDirty()
 	m.snapshots[scanRunID] = enc
 	return nil
 }
@@ -1683,7 +1704,7 @@ func (m *MemoryStore) GetScanSnapshot(_ context.Context, scanRunID string) ([]do
 		return nil, ErrNotFound
 	}
 	var hosts []domain.Host
-	if err := m.vault.DecryptJSON(enc, "scan_snapshots:"+scanRunID+":payload", &hosts); err != nil {
+	if err := decryptLargeJSON(m.vault, enc, "scan_snapshots:"+scanRunID+":payload", &hosts); err != nil {
 		return nil, err
 	}
 	return hosts, nil
