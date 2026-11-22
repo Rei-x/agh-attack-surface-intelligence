@@ -128,8 +128,8 @@ func TestSyncTriagePagesThroughLargeTests(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/findings/":
 			q := r.URL.Query()
 			queries = append(queries, r.URL.RawQuery)
-			if q.Get("is_mitigated") != "false" {
-				t.Errorf("listing must skip mitigated findings: %s", r.URL.RawQuery)
+			if q.Has("is_mitigated") || q.Has("active") {
+				t.Errorf("listing must include mitigated findings (a false positive is one): %s", r.URL.RawQuery)
 			}
 			limit, offset := atoiQ(q.Get("limit")), atoiQ(q.Get("offset"))
 			var res []map[string]any

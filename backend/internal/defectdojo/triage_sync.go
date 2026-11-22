@@ -41,6 +41,7 @@ type FindingRef = domain.DefectDojoFindingRef
 type dojoFinding struct {
 	ID               int        `json:"id"`
 	Test             int        `json:"test"`
+	Title            string     `json:"title"`
 	UniqueIDFromTool string     `json:"unique_id_from_tool"`
 	Active           bool       `json:"active"`
 	FalseP           bool       `json:"false_p"`
@@ -64,19 +65,41 @@ type dojoNote struct {
 const findingsPageSize = 1000
 
 // listFindings returns every finding of a test matching the extra query (for example
-// "&is_mitigated=false"), following DefectDojo's limit/offset pagination.
+// "&active=true"), following DefectDojo's limit/offset pagination.
 func (c *Client) listFindings(ctx context.Context, cfg *domain.DefectDojoConfig, testID int, query string) ([]dojoFinding, error) {
 	return listPaged[dojoFinding](ctx, c, cfg, fmt.Sprintf("/api/v2/findings/?test=%d%s", testID, query), findingsPageSize)
 }
 
-// indexByUID maps unique_id_from_tool to the finding Dzięcioł should look at: an open one
-// (active, false positive, risk accepted) over a mitigated one with the same id, which is
-// what an older wording of the same condition leaves behind.
-func indexByUID(findings []dojoFinding) map[string]dojoFinding {
+// indexByUID maps unique_id_from_tool to the DefectDojo finding of each change finding. A
+// unique id can have several: an older wording of the same condition (another owner in the
+// title) leaves a mitigated finding behind. The current one is open, or false positive /
+// risk accepted (DefectDojo also marks a false positive mitigated, and a reimport leaves it
+// alone), then the one whose title matches the payload (DefectDojo title-cases titles),
+// then the newest.
+func indexByUID(findings []dojoFinding, payload []ChangeFinding) map[string]dojoFinding {
+	titles := make(map[string]string, len(payload))
+	for _, f := range payload {
+		titles[f.UniqueIDFromTool] = strings.ToLower(f.Title)
+	}
+	score := func(f dojoFinding) int {
+		s := 0
+		switch {
+		case !f.IsMitigated:
+			s = 4
+		case f.FalseP || f.RiskAccepted:
+			s = 2
+		}
+		if strings.ToLower(f.Title) == titles[f.UniqueIDFromTool] {
+			s++
+		}
+		return s
+	}
 	out := make(map[string]dojoFinding, len(findings))
 	for _, f := range findings {
-		if prev, ok := out[f.UniqueIDFromTool]; ok && !prev.IsMitigated && f.IsMitigated {
-			continue
+		if prev, ok := out[f.UniqueIDFromTool]; ok {
+			if ps, fs := score(prev), score(f); ps > fs || (ps == fs && prev.ID > f.ID) {
+				continue
+			}
 		}
 		out[f.UniqueIDFromTool] = f
 	}
@@ -164,20 +187,19 @@ func (c *Client) SyncTriage(ctx context.Context, cfg *domain.DefectDojoConfig, t
 		}
 		return refs, 0, nil
 	}
-	// Only open findings: after the reimport every finding of the payload is open, and the
-	// mitigated rest of a big test would only slow the listing down.
-	existing, err := c.listFindings(ctx, cfg, testID, "&is_mitigated=false")
+	// All findings, mitigated ones included: DefectDojo marks a false positive mitigated too.
+	existing, err := c.listFindings(ctx, cfg, testID, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("list findings of test %d: %w", testID, err)
 	}
 	return c.syncTriage(ctx, cfg, testID, productID, findings, existing)
 }
 
-// syncTriage is SyncTriage over an already listed test (existing).
+// syncTriage is SyncTriage over an already listed test (existing: all its findings).
 func (c *Client) syncTriage(ctx context.Context, cfg *domain.DefectDojoConfig, testID, productID int, findings []ChangeFinding, existing []dojoFinding) ([]FindingRef, int, error) {
 	now := time.Now().UTC()
 	refs := make([]FindingRef, 0, len(findings))
-	byUID := indexByUID(existing)
+	byUID := indexByUID(existing, findings)
 	base := baseURL(cfg.URL)
 	changed := 0
 	var firstErr error

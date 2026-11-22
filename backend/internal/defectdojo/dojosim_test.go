@@ -25,11 +25,13 @@ import (
 //     engagement with the name, the last test with the title and scan type), or by test id
 //     alone (an unknown id is 400 {"test": ["Invalid pk ..."]});
 //   - Generic Findings reimport matching by hash_code (title + description) inside the test:
-//     a match is left untouched (reactivated when mitigated), the rest is created, and with
+//     a match is left untouched (reactivated when mitigated, unless false positive or risk
+//     accepted, which DefectDojo skips), the rest is created, and with
 //     close_old_findings every open finding the report lacks is mitigated, false positives
 //     and risk accepted ones included; a brand new test never closes anything;
 //   - finding lists with test / is_mitigated / active filters and limit/offset pages capped
-//     at pageCap, PATCH of findings and tests, notes on findings and tests.
+//     at pageCap, PATCH of findings and tests (a false positive is also mitigated, setting
+//     active clears both), notes on findings and tests.
 type dojoSim struct {
 	t       *testing.T
 	mu      sync.Mutex
@@ -277,6 +279,14 @@ func (s *dojoSim) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				f.Verif = v
 			}
 		}
+		// DefectDojo's update_finding_status: active clears false_p and the mitigation,
+		// false_p implies mitigated and inactive.
+		if body["active"] {
+			f.FalseP, f.IsMitigated = false, false
+		}
+		if f.FalseP {
+			f.IsMitigated, f.Active = true, false
+		}
 		_, _ = io.WriteString(w, `{}`)
 	case kind == "findings" && r.Method == http.MethodPost && sub == "notes":
 		f := s.finding(id)
@@ -399,6 +409,8 @@ func (s *dojoSim) reimport(w http.ResponseWriter, r *http.Request) {
 			if hit == nil {
 				hit = &simFinding{ID: s.id(), Test: test.ID, Title: item.Title, Description: item.Description, UID: item.UID, Active: true}
 				s.findings = append(s.findings, hit)
+			} else if hit.FalseP || hit.RiskAccepted {
+				// special status: left as it is
 			} else if hit.IsMitigated {
 				hit.IsMitigated, hit.Active = false, true
 				s.addNote(hit, "Re-activated by Generic Findings Import re-upload.")

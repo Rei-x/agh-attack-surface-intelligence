@@ -178,9 +178,8 @@ func (c *Client) changesTestsOf(ctx context.Context, cfg *domain.DefectDojoConfi
 // unique id; a tie goes to a test already titled "Dzięcioł changes", then to the newest).
 // It renames it "Dzięcioł changes" (a plain "Dzięcioł changes" that loses is renamed out of
 // the way) and returns its id, or 0 when there is no old change test (a fresh install: the
-// title creates the test). open holds the open findings listed per test, for the
-// retirement.
-func (c *Client) adoptChangesTest(ctx context.Context, cfg *domain.DefectDojoConfig, ic importContext, findings []ChangeFinding) (id int, open map[int][]dojoFinding, warnings []string, err error) {
+// title creates the test). listed holds every finding listed per test, for the retirement.
+func (c *Client) adoptChangesTest(ctx context.Context, cfg *domain.DefectDojoConfig, ic importContext, findings []ChangeFinding) (id int, listed map[int][]dojoFinding, warnings []string, err error) {
 	engID, err := c.changesEngagement(ctx, cfg, ic)
 	if err != nil || engID == 0 {
 		return 0, nil, nil, err
@@ -193,17 +192,17 @@ func (c *Client) adoptChangesTest(ctx context.Context, cfg *domain.DefectDojoCon
 	for _, f := range findings {
 		want[f.UniqueIDFromTool] = true
 	}
-	open = make(map[int][]dojoFinding, len(cands))
+	listed = make(map[int][]dojoFinding, len(cands))
 	best, bestScore := dojoTest{}, -1
 	for _, t := range cands {
-		fs, lerr := c.listFindings(ctx, cfg, t.ID, "&is_mitigated=false")
+		fs, lerr := c.listFindings(ctx, cfg, t.ID, "")
 		if lerr != nil {
 			return 0, nil, nil, fmt.Errorf("list findings of test %d: %w", t.ID, lerr)
 		}
-		open[t.ID] = fs
+		listed[t.ID] = fs
 		seen := map[string]bool{}
 		for _, f := range fs {
-			if want[f.UniqueIDFromTool] {
+			if want[f.UniqueIDFromTool] && (!f.IsMitigated || f.FalseP || f.RiskAccepted) {
 				seen[f.UniqueIDFromTool] = true
 			}
 		}
@@ -228,14 +227,14 @@ func (c *Client) adoptChangesTest(ctx context.Context, cfg *domain.DefectDojoCon
 			warnings = append(warnings, fmt.Sprintf("rename test #%d to %q: %v", best.ID, ChangesTest, perr))
 		}
 	}
-	return best.ID, open, warnings, nil
+	return best.ID, listed, warnings, nil
 }
 
 // retireLegacyTests closes the change tests of the product other than the change test (see
 // the file comment) and returns what it retired. findings and refs are the payload just
 // pushed and its links (refs[i] for findings[i]; carried triage updates refs in place),
-// existing the open findings of the change test, open the findings the adoption listed.
-func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoConfig, imp *ImportResult, findings []ChangeFinding, refs []FindingRef, existing []dojoFinding, open map[int][]dojoFinding) ([]domain.DefectDojoLegacyTest, []string) {
+// existing the findings of the change test, listed the findings the adoption listed.
+func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoConfig, imp *ImportResult, findings []ChangeFinding, refs []FindingRef, existing []dojoFinding, listed map[int][]dojoFinding) ([]domain.DefectDojoLegacyTest, []string) {
 	var warnings []string
 	engs, err := listPaged[dojoEngagement](ctx, c, cfg, fmt.Sprintf("/api/v2/engagements/?product=%d", imp.ProductID), 100)
 	if err != nil {
@@ -263,7 +262,10 @@ func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoCo
 	base := baseURL(cfg.URL)
 	var out []domain.DefectDojoLegacyTest
 	for _, t := range legacy {
-		fs, cached := open[t.ID]
+		// Only tests with open findings: once closed (every finding mitigated) a test costs one
+		// small request per sync. Carrying looks at all findings, since DefectDojo marks a
+		// false positive mitigated too.
+		fs, cached := listed[t.ID]
 		if !cached {
 			n, cerr := c.countFindings(ctx, cfg, t.ID, "&is_mitigated=false")
 			if cerr != nil {
@@ -273,12 +275,18 @@ func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoCo
 			if n == 0 {
 				continue // retired earlier
 			}
-			if fs, err = c.listFindings(ctx, cfg, t.ID, "&is_mitigated=false"); err != nil {
+			if fs, err = c.listFindings(ctx, cfg, t.ID, ""); err != nil {
 				warnings = append(warnings, fmt.Sprintf("list findings of test #%d: %v", t.ID, err))
 				continue
 			}
 		}
-		if len(fs) == 0 {
+		openFindings := 0
+		for _, f := range fs {
+			if !f.IsMitigated {
+				openFindings++
+			}
+		}
+		if openFindings == 0 {
 			continue
 		}
 		rec := domain.DefectDojoLegacyTest{TestID: t.ID, Title: t.Title, URL: fmt.Sprintf("%s/test/%d", base, t.ID), RetiredAt: time.Now().UTC()}

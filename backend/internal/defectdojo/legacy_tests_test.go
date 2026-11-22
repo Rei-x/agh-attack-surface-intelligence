@@ -2,6 +2,8 @@ package defectdojo
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -72,7 +74,7 @@ func seedLegacyLayout(t *testing.T, sim *dojoSim, hosts []domain.Host, profiles 
 			sim.addNote(sf, "INC-42: owner upgrades nginx in December")
 			l.eolNoteOn = sf
 		case l.jenkinsUID:
-			sf.FalseP, sf.Active = true, false
+			sf.FalseP, sf.Active, sf.IsMitigated = true, false, true // DefectDojo marks a false positive mitigated
 			sim.addNote(sf, "VPN only, the scanner reaches it through the jump host")
 			l.jenkinsFP = sf
 		}
@@ -109,7 +111,7 @@ func activeIn(sim *dojoSim, tt *simTest) int {
 
 func findingByUID(sim *dojoSim, tt *simTest, uid string) *simFinding {
 	for _, f := range sim.findingsOf(tt.ID) {
-		if f.UID == uid && !f.IsMitigated {
+		if f.UID == uid && (!f.IsMitigated || f.FalseP || f.RiskAccepted) {
 			return f
 		}
 	}
@@ -243,6 +245,141 @@ func TestSyncChangesRetiresPerProfileTests(t *testing.T) {
 	if j := findingByUID(sim, l.t18, l.jenkinsUID); !j.FalseP {
 		t.Error("triage sync reverted a false positive set in DefectDojo")
 	}
+}
+
+// TestRealDefectDojoMigration runs the upgrade path against a live (throwaway!) instance:
+//
+//	DZIECIOL_DD_URL=http://localhost:18081 DZIECIOL_DD_TOKEN=... go test ./internal/defectdojo -run RealDefectDojoMigration -v
+//
+// It works in a product of its own ("Dzięcioł migration <timestamp>").
+func TestRealDefectDojoMigration(t *testing.T) {
+	url, token := os.Getenv("DZIECIOL_DD_URL"), os.Getenv("DZIECIOL_DD_TOKEN")
+	if url == "" || token == "" {
+		t.Skip("DZIECIOL_DD_URL/DZIECIOL_DD_TOKEN not set")
+	}
+	t.Setenv("DZIECIOL_DEFECTDOJO_PRODUCT_NAME", "Dzięcioł migration "+time.Now().UTC().Format("20060102-150405"))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	cfg := &domain.DefectDojoConfig{URL: url, APIToken: token}
+	c := NewClient()
+	hosts, profiles := inventoryHosts(), overlappingProfiles()
+	all := InventoryChangeFindings(ctx, hosts, profiles, time.Now().UTC())
+	pick := func(keep func(ChangeFinding) bool) []ChangeFinding {
+		var out []ChangeFinding
+		for _, f := range all {
+			if keep(f) {
+				out = append(out, f)
+			}
+		}
+		return out
+	}
+	in22 := func(f ChangeFinding) bool { return strings.Contains(f.Title, "10.66.0.") }
+	in18 := func(f ChangeFinding) bool { return in22(f) || strings.Contains(f.Title, "10.66.9.20") }
+
+	// The old layout, written the way the old version did (by title).
+	seed := func(title string, fs []ChangeFinding) *ImportResult {
+		imp, err := c.ImportChangeFindings(ctx, cfg, 0, title, "old version", fs)
+		if err != nil || imp.TestID == 0 {
+			t.Fatalf("seed %q: %+v %v", title, imp, err)
+		}
+		return imp
+	}
+	old18 := seed("Dzięcioł changes: Lab AGH — cała sieć /18", pick(in22))
+	cur18 := seed("Dzięcioł changes: Lab AGH · cała sieć /18", pick(in18))
+	cur22 := seed("Dzięcioł changes: Lab AGH · szybki test /22", pick(in22))
+	var eolUID, jenkinsUID string
+	listed, err := c.listFindings(ctx, cfg, cur22.TestID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range all {
+		switch {
+		case strings.HasPrefix(f.Title, "nginx"):
+			eolUID = f.UniqueIDFromTool
+		case strings.Contains(f.Title, "Jenkins"):
+			jenkinsUID = f.UniqueIDFromTool
+		}
+	}
+	ra := false
+	for _, f := range listed {
+		switch f.UniqueIDFromTool {
+		case eolUID:
+			if err := c.postJSON(ctx, cfg, fmt.Sprintf("/api/v2/findings/%d/notes/", f.ID), map[string]any{"entry": "INC-42: owner upgrades nginx in December"}); err != nil {
+				t.Fatal(err)
+			}
+		case jenkinsUID:
+			if err := c.setFindingState(ctx, cfg, f.ID, cur22.ProductID, DojoStateFalsePos, &ra); err != nil {
+				t.Fatal(err)
+			}
+			_ = c.postJSON(ctx, cfg, fmt.Sprintf("/api/v2/findings/%d/notes/", f.ID), map[string]any{"entry": "VPN only"})
+		}
+	}
+
+	store := newFixtureStore(t, hosts, profiles)
+	res, err := SyncChanges(ctx, store, c, cfg, "upgrade", "", "it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("change test %s, retired %+v, warnings %v, triage error %q", res.Import.ExternalURL, res.Retired, res.Warnings, res.TriageError)
+	if res.Import.TestID != cur18.TestID || len(res.Retired) != 2 || len(res.Warnings) != 0 || res.TriageError != "" {
+		t.Fatalf("want test %d adopted and 2 retired, got %+v", cur18.TestID, res)
+	}
+	var test dojoTest
+	if err := c.getJSON(ctx, cfg, fmt.Sprintf("/api/v2/tests/%d/", cur18.TestID), &test); err != nil || test.Title != ChangesTest {
+		t.Fatalf("adopted test not renamed: %+v %v", test, err)
+	}
+	for _, id := range []int{old18.TestID, cur22.TestID} {
+		if n, err := c.countFindings(ctx, cfg, id, "&active=true"); err != nil || n != 0 {
+			t.Fatalf("superseded test %d: %d active (%v)", id, n, err)
+		}
+	}
+	// Current findings: open, or false positive / risk accepted (DefectDojo marks a false
+	// positive mitigated too).
+	current := func() map[string]dojoFinding {
+		listed, err := c.listFindings(ctx, cfg, cur18.TestID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]dojoFinding{}
+		for _, f := range listed {
+			if !f.IsMitigated || f.FalseP || f.RiskAccepted {
+				if _, dup := out[f.UniqueIDFromTool]; dup {
+					t.Errorf("unique id %s current twice", f.UniqueIDFromTool)
+				}
+				out[f.UniqueIDFromTool] = f
+			}
+		}
+		return out
+	}
+	canon := current()
+	if len(canon) != len(all) {
+		t.Fatalf("change test holds %d current findings, want %d", len(canon), len(all))
+	}
+	for _, f := range canon {
+		switch f.UniqueIDFromTool {
+		case eolUID:
+			found := false
+			for _, n := range f.Notes {
+				found = found || strings.Contains(n.Entry, "INC-42")
+			}
+			if !found {
+				t.Errorf("note not carried to finding %d: %+v", f.ID, f.Notes)
+			}
+		case jenkinsUID:
+			if !f.FalseP {
+				t.Errorf("DefectDojo-side false positive not carried to finding %d", f.ID)
+			}
+		}
+	}
+	// Again: nothing to retire, the false positive stays.
+	res2, err := SyncChanges(ctx, store, c, cfg, "next", "", "it")
+	if err != nil || len(res2.Retired) != 0 || res2.Import.TestID != cur18.TestID {
+		t.Fatalf("second sync: %+v %v", res2, err)
+	}
+	if f := current()[jenkinsUID]; !f.FalseP {
+		t.Errorf("second sync reverted the false positive: %+v", f)
+	}
+	t.Logf("change test %s: %d findings, %d tests retired", res.Import.ExternalURL, len(all), len(res.Retired))
 }
 
 // A per-profile test written again by an older binary after the upgrade (or an integration

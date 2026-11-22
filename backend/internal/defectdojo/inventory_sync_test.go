@@ -186,7 +186,7 @@ func TestSyncChangesOneTestForOverlappingProfiles(t *testing.T) {
 	syncOnce(t, store, cfg, "3")
 	mitigated := 0
 	for _, f := range sim.findingsOf(ct.ID) {
-		if f.IsMitigated {
+		if f.IsMitigated && !f.FalseP { // a false positive is mitigated too
 			mitigated++
 			if !strings.Contains(f.Title, "RDP") {
 				t.Errorf("unexpected mitigation: %s", f.Title)

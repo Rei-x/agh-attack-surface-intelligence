@@ -132,17 +132,17 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 	}
 	out := &changesPush{Context: ic.key()}
 	target := reimportTarget{Context: ic, Title: ChangesTest}
-	var open map[int][]dojoFinding // open findings of the old change tests, from the adoption
+	var listed map[int][]dojoFinding // findings of the old change tests, from the adoption
 	adopting := knownTestID <= 0 || knownContext != out.Context
 	if adopting {
 		// First sync of this version (or of a new context): reuse the old change test that
 		// already holds most of today's findings (legacy_tests.go).
-		id, listed, warns, aerr := c.adoptChangesTest(ctx, cfg, ic, findings)
+		id, found, warns, aerr := c.adoptChangesTest(ctx, cfg, ic, findings)
 		out.Warnings = append(out.Warnings, warns...)
 		if aerr != nil {
 			out.Warnings = append(out.Warnings, "looking for the change tests of older versions: "+aerr.Error())
 		}
-		target.TestID, open = id, listed
+		target.TestID, listed = id, found
 	} else {
 		target.TestID = knownTestID
 	}
@@ -165,8 +165,8 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 			out.Warnings = append(out.Warnings, fmt.Sprintf("describe change test #%d: %v", imp.TestID, perr))
 		}
 	}
-	// Open findings only: after the reimport every finding of the payload is open.
-	existing, lerr := c.listFindings(ctx, cfg, imp.TestID, "&is_mitigated=false")
+	// All findings, mitigated ones included: DefectDojo marks a false positive mitigated too.
+	existing, lerr := c.listFindings(ctx, cfg, imp.TestID, "")
 	if lerr != nil {
 		out.TriageErr = fmt.Errorf("list findings of test %d: %w", imp.TestID, lerr)
 		return out, nil
@@ -175,7 +175,7 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 	// Close the other change tests of the product (the per-profile ones of older versions),
 	// carrying analyst notes and DefectDojo-side triage over first. Needs the links above.
 	if imp.ProductID > 0 {
-		retired, warns := c.retireLegacyTests(ctx, cfg, imp, findings, out.Refs, existing, open)
+		retired, warns := c.retireLegacyTests(ctx, cfg, imp, findings, out.Refs, existing, listed)
 		out.Retired = retired
 		out.Warnings = append(out.Warnings, warns...)
 	}
