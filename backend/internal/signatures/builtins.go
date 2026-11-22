@@ -9,7 +9,6 @@ import (
 // staging/dev/debug indicators, admin panels, and interesting headers/cookies.
 func BuiltinSignatures() []domain.Signature {
 	sigs := []domain.Signature{
-		// ==================== CMS (8) ====================
 		{
 			ID:               "builtin-cms-wordpress",
 			Name:             "WordPress",
@@ -131,7 +130,6 @@ func BuiltinSignatures() []domain.Signature {
 			},
 		},
 
-		// ==================== FRAMEWORKS (11) ====================
 		{
 			ID:               "builtin-fw-nextjs",
 			Name:             "Next.js",
@@ -291,7 +289,6 @@ func BuiltinSignatures() []domain.Signature {
 			},
 		},
 
-		// ==================== SERVERS & TOOLS (16) ====================
 		{
 			ID:               "builtin-srv-nginx",
 			Name:             "Nginx",
@@ -562,7 +559,6 @@ func BuiltinSignatures() []domain.Signature {
 			},
 		},
 
-		// ==================== IoT & NETWORK / BMC (7) ====================
 		{
 			ID:               "builtin-iot-hp-printer",
 			Name:             "HP Printer / Embedded Web Server",
@@ -667,7 +663,6 @@ func BuiltinSignatures() []domain.Signature {
 			},
 		},
 
-		// ==================== STAGING / DEV / TEST / DEBUG (4) ====================
 		{
 			ID:               "builtin-env-staging-dev",
 			Name:             "Staging / Dev / Test Environment",
@@ -728,7 +723,6 @@ func BuiltinSignatures() []domain.Signature {
 			},
 		},
 
-		// ==================== ADMIN PANELS (4) ====================
 		{
 			ID:               "builtin-admin-generic",
 			Name:             "Admin Panel / Management Console",
@@ -787,7 +781,6 @@ func BuiltinSignatures() []domain.Signature {
 			},
 		},
 
-		// ==================== INTERESTING HEADERS & COOKIES (5) ====================
 		{
 			ID:               "builtin-hdr-powered-by",
 			Name:             "Technology Disclosure Header (X-Powered-By)",
@@ -857,7 +850,6 @@ func BuiltinSignatures() []domain.Signature {
 			},
 		},
 
-		// ==================== LAB / SELF-HOSTED TOOLS ====================
 		{
 			ID:               "builtin-installer-exposed",
 			Name:             "Unfinished Web Installer",

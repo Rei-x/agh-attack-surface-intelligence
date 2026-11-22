@@ -183,8 +183,6 @@ func (s *Service) AfterScan(ctx context.Context, run *domain.ScanRun) {
 	}
 }
 
-// ---- process-wide activation -----------------------------------------------------------
-
 var (
 	activeMu     sync.RWMutex
 	active       *Service
@@ -210,8 +208,6 @@ func annotateActive(svc *domain.Service, now time.Time) []domain.Interestingness
 	}
 	return s.Annotator(svc, now)
 }
-
-// ---- read-time annotation --------------------------------------------------------------
 
 // Standalone weight of a verified finding in the service interestingness, by severity
 // (domain.CombineFactors). A confirmed critical exposure is the strongest signal there is.

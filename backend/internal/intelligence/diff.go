@@ -99,7 +99,6 @@ func ComputeDiff(scanRunID, prevScanRunID string, prevHosts, currHosts []domain.
 		prev, hadPrev := prevByIP[ip]
 		curr, hasCurr := currByIP[ip]
 
-		// 1. New host appeared.
 		if !hadPrev && hasCurr {
 			ev := makeEvent(curr, "", 0, "host_new", "medium",
 				fmt.Sprintf("New host discovered: %s (%d services)", curr.IP, len(curr.Services)),
@@ -118,7 +117,6 @@ func ComputeDiff(scanRunID, prevScanRunID string, prevHosts, currHosts []domain.
 			continue
 		}
 
-		// 2. Host disappeared or went MISSING/INACTIVE.
 		if hadPrev && !hasCurr {
 			expected, anomaly := ClassifyTimeAvailability(prev.TimeOfDayStats, slot, false)
 			sev := "low"
@@ -138,7 +136,6 @@ func ComputeDiff(scanRunID, prevScanRunID string, prevHosts, currHosts []domain.
 			continue
 		}
 
-		// 3. Host exists in both snapshots -> check lifecycle transitions & services.
 		if prev.LifecycleState != curr.LifecycleState {
 			switch curr.LifecycleState {
 			case domain.HostStateReactivated:
@@ -204,7 +201,6 @@ func ComputeDiff(scanRunID, prevScanRunID string, prevHosts, currHosts []domain.
 				continue
 			}
 
-			// Both exist -> check version/product, HTTP title/status, TLS cert SHA256, technologies.
 			// An empty new product/version means "not observed this time", not a change.
 			if (ps.Product != cs.Product && cs.Product != "") || (ps.Version != cs.Version && cs.Version != "") {
 				ev := makeEvent(curr, cs.ID, cs.Port, "service_version_changed", "medium",
@@ -297,9 +293,8 @@ func isMeaningfulJARM(h string) bool {
 	return len(h) == 62 && strings.Trim(h, "0") != ""
 }
 
-// ComputeClusters groups similar services across 4 primary dimensions:
-// favicon MMH3, tech stack, HTTP title, and TLS issuer (plus service product fallback).
-// Returns clusters with at least 2 services.
+// ComputeClusters groups similar services by favicon MMH3, HTTP title, TLS issuer, JARM
+// and tech stack (or product when no technology is known), keeping clusters of at least 2.
 func ComputeClusters(services []domain.Service) []domain.ServiceCluster {
 	return ComputeClustersWithMinSize(services, 2)
 }

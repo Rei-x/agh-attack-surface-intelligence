@@ -199,8 +199,6 @@ func (e *Engine) wait(ctx context.Context, host string) error {
 	return e.Limiter.Wait(ctx, host)
 }
 
-// ---- applicability ---------------------------------------------------------------------
-
 func isHTTP(s *domain.Service) bool {
 	if s.HTTP != nil {
 		return true
@@ -284,8 +282,8 @@ func applies(c *Check, s *domain.Service) bool {
 	return false
 }
 
-// probeHTTP: a port nmap could not identify (no product, banner or HTTP evidence, e.g.
-// "tcpwrapped" or a bare port-table guess) gets one GET / over http, then https. When it
+// probeHTTP sends one GET / over http, then https, to a port nmap could not identify (no
+// product, banner or HTTP evidence, e.g. "tcpwrapped" or a bare port-table guess). When it
 // answers HTTP, the target is treated as a web service for this run (its Server header and
 // title join the technology names checks are gated on).
 func (e *Engine) probeHTTP(ctx context.Context, t *Target) {
@@ -327,8 +325,6 @@ func (e *Engine) probeHTTP(ctx context.Context, t *Target) {
 }
 
 var reTitle = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-
-// ---- http ------------------------------------------------------------------------------
 
 func baseURL(t *Target) (string, string) {
 	scheme := "http"
@@ -486,8 +482,6 @@ func headerText(resp *http.Response) string {
 	return b.String()
 }
 
-// ---- matchers --------------------------------------------------------------------------
-
 // evaluate applies the matchers (Nuclei semantics: matchers-condition or by default) and
 // returns whether they matched plus the body offset of the first positive word/regex hit.
 func evaluate(cond string, ms []Matcher, status int, header, body string) (bool, int) {
@@ -611,8 +605,6 @@ func appendUniq(list []string, v string) []string {
 	}
 	return append(list, v)
 }
-
-// ---- network ---------------------------------------------------------------------------
 
 func (e *Engine) runNetwork(ctx context.Context, c *Check, t *Target) (bool, string, string, error) {
 	_, hostPort := baseURL(t)

@@ -14,8 +14,8 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/outbound"
 )
 
-// The reviewer's example: nginx 1.20.1 on a faculty host, first seen at 00:39 Warsaw time
-// on 22 November (23:39 UTC on the 21st), drafted the same morning.
+// nginx 1.20.1 on a faculty host, first seen at 00:39 Warsaw time on 22 November (23:39 UTC
+// on the 21st), drafted the same morning.
 var (
 	nginxSeen = time.Date(2026, 11, 21, 23, 39, 0, 0, time.UTC)
 	nginxNow  = time.Date(2026, 11, 22, 7, 15, 0, 0, time.UTC)
@@ -118,8 +118,7 @@ func TestPolishIssueTexts(t *testing.T) {
 	if is[0].Title != "Logowanie bez szyfrowania (Telnet) na 10.0.0.9:23/tcp" || is[0].Advice != "Wyłączyć Telnet i korzystać z szyfrowanej alternatywy (SSH, SFTP)." {
 		t.Fatalf("telnet: %+v", is[0])
 	}
-	// A passive hint the vulnerability database did not cover (the embedded database
-	// covers the shipped ones, so the hint is built directly).
+	// A passive hint outside the embedded vulnerability database, built by hand.
 	hint := domain.VulnHint{ID: "CVE-2024-6387", Name: "regreSSHion (unauthenticated RCE in the sshd SIGALRM handler)", Product: "OpenSSH",
 		Version: "8.9p1 Ubuntu-3ubuntu0.6", Affected: ">= 8.5p1, < 9.8p1", DistroPackaged: true}
 	vi := vulnIssue(textPL, hint)
@@ -188,8 +187,7 @@ func TestNoticeDatesUseTheInstanceTimezone(t *testing.T) {
 		t.Fatalf("legacy due:\n%s", d.Body)
 	}
 
-	// The due day the analyst types is the end of that day in Warsaw, and the history
-	// note shows the same day.
+	// A typed due day ends at 23:59 Warsaw time and the history note shows the same day.
 	ctx := context.Background()
 	s, host, svc := nginxService(t)
 	res, err := s.Create(ctx, CreateRequest{HostID: host.ID, ServiceID: svc.ID, DueDate: "2026-12-22", Channel: "none"}, "ana")
@@ -257,8 +255,7 @@ func TestSLATableMatchesDefectDojo(t *testing.T) {
 		t.Fatal("DefectDojo severity mapping changed: update the SLA test")
 	}
 
-	// The due day is the DefectDojo finding date (UTC first-seen day) plus the SLA days,
-	// i.e. DefectDojo's own SLA expiry; without a DefectDojo finding it counts from today.
+	// Due day is DefectDojo's SLA expiry (UTC first-seen day plus SLA days), else today plus SLA days.
 	due, info := DueFor(DefaultSLA, "medium", "2026-11-21", nginxNow, warsaw)
 	if info.Expires != "2027-02-19" || info.Due != "2027-02-19" || !info.FromDefectDojo || info.Expired || locale.Date(due, warsaw) != "2027-02-19" {
 		t.Fatalf("medium: %+v", info)
@@ -267,8 +264,7 @@ func TestSLATableMatchesDefectDojo(t *testing.T) {
 	if info.Start != "2026-11-22" || info.Due != "2026-12-22" || info.FromDefectDojo {
 		t.Fatalf("no finding: %+v", info)
 	}
-	// A finding older than its SLA: DefectDojo already shows it breached, the owner gets
-	// the full SLA from today and the dialog says why.
+	// A finding already past its DefectDojo SLA: the owner gets the full SLA from today.
 	_, info = DueFor(DefaultSLA, "critical", "2026-10-01", nginxNow, warsaw)
 	if !info.Expired || info.Expires != "2026-10-08" || info.Due != "2026-11-29" {
 		t.Fatalf("expired: %+v", info)
@@ -293,8 +289,7 @@ func TestSLATableMatchesDefectDojo(t *testing.T) {
 		t.Fatalf("configured SLA: %+v %s", d.SLA, d.DueDate)
 	}
 
-	// Existing tickets keep their due dates: a ticket of an older version due 23:59 UTC on
-	// 2026-12-20 is drafted (and re-sent) with that day, not a recomputed one.
+	// An existing ticket due 23:59 UTC on 2026-12-20 is drafted and re-sent with that day.
 	legacyDue := time.Date(2026, 12, 20, 23, 59, 0, 0, time.UTC)
 	if err := s.Repo.Update(ctx, func(ts []Ticket) ([]Ticket, error) {
 		return append(ts, Ticket{ID: "old", HostID: host.ID, ServiceID: svc.ID, IssueKey: d.IssueKey, Kind: KindEOL, Status: StatusNotified, DueAt: &legacyDue, CreatedAt: nginxNow.Add(-time.Hour)}), nil
@@ -364,8 +359,7 @@ func TestVerificationOutcomeTypes(t *testing.T) {
 		t.Fatalf("labels: %v", labels)
 	}
 
-	// Verification records the outcome on the ticket and in its history; a manual fix
-	// says so; a reopen clears it.
+	// Verify records the outcome on the ticket and in history; a manual fix says so; reopen clears it.
 	ts := []Ticket{eolTicket()}
 	hosts := map[string]*domain.Host{"h1": eolHost("1.14.0", "closed")}
 	out := Verify(ts, func(id string) (*domain.Host, bool) { return hosts[id], true }, "scan-9", t0, warsaw)

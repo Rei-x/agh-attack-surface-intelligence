@@ -60,7 +60,7 @@ func TestDistroApplicability(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("%s: %s (%s), want %s", tc.name, got, note, tc.want)
 		}
-		if strings.ContainsAny(note, "–—") {
+		if strings.ContainsAny(note, "\u2013\u2014") {
 			t.Errorf("%s: dash in %q", tc.name, note)
 		}
 	}
@@ -100,9 +100,8 @@ func sshService(version string) *domain.Service {
 	return &domain.Service{Port: 22, ServiceName: "ssh", Product: "OpenSSH", Version: version, VersionSource: "nmap", Banner: "protocol 2.0"}
 }
 
-// The juror's false positive: a patched Debian 12 sshd showed "33 CVE | 9.8" and a KEV badge.
-// Now every match is listed under Backported (regreSSHion and Terrapin as fixed by the
-// distribution) and nothing reaches the counts, the KEV badge, the CVE ids or the score.
+// Patched Debian 12 sshd: every match goes to Backported (regreSSHion and Terrapin as fixed
+// by the distribution) and none reaches the counts, the KEV badge, the CVE ids or the score.
 func TestDebianPackageMatchesAreBackported(t *testing.T) {
 	vs := openSSHSnapshot().Assess(sshService("9.2p1 Debian 2+deb12u3"))
 	if len(vs) != 1 {
@@ -136,9 +135,8 @@ func TestDebianPackageMatchesAreBackported(t *testing.T) {
 	}
 }
 
-// One stable update short of the regreSSHion fix: that CVE is confirmed and counted (with
-// its CVSS and EPSS), the rest stays backported. The KEV entry is not in the table, so it
-// does not come back.
+// One stable update short of the regreSSHion fix: that CVE is counted, the rest stays
+// backported, and the KEV entry (not in the fix table) stays out.
 func TestDebianPackageBelowTheFixCounts(t *testing.T) {
 	vs := openSSHSnapshot().Assess(sshService("9.2p1 Debian 2+deb12u2"))
 	v := vs[0]

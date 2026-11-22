@@ -107,8 +107,6 @@ func (b *Builder) Enrich(ctx context.Context, s *Snapshot) error {
 	return nil
 }
 
-// ---- NVD -------------------------------------------------------------------------------
-
 type nvdPage struct {
 	ResultsPerPage  int `json:"resultsPerPage"`
 	StartIndex      int `json:"startIndex"`
@@ -379,8 +377,6 @@ func shorten(s string, n int) string {
 	return s[:cut] + "..."
 }
 
-// ---- KEV -------------------------------------------------------------------------------
-
 type kevCatalog struct {
 	CatalogVersion  string `json:"catalogVersion"`
 	Count           int    `json:"count"`
@@ -438,8 +434,6 @@ func ApplyKEV(s *Snapshot, version, source string, each func(yield func(id, adde
 	})
 	s.Sources.KEV, s.Sources.KEVVersion = source, version
 }
-
-// ---- EPSS ------------------------------------------------------------------------------
 
 func (b *Builder) joinEPSS(ctx context.Context, s *Snapshot) error {
 	resp, err := b.get(ctx, EPSSURL, nil)

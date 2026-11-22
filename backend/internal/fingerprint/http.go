@@ -23,7 +23,7 @@ const (
 	DefaultUserAgent    = "Dzieciol-Discovery/1.0 (+CBI-AGH; safe-readonly)"
 	DefaultTimeout      = 8 * time.Second
 	DefaultMaxRedirects = 5
-	DefaultMaxBodyBytes = 256 * 1024 // 256 KB
+	DefaultMaxBodyBytes = 256 * 1024
 	maxBodySnippetBytes = 4096
 )
 
@@ -334,17 +334,14 @@ func (f *Fingerprinter) probeWithScheme(ctx context.Context, scheme, ip string, 
 		ResponseTimeMs:     elapsedMs,
 	}
 
-	// JARM TLS server fingerprint (jarm.go); rate-limited, bounded budget.
 	f.attachJARM(ctx, fp, scheme, ip, port, serverName, opts)
 
 	// HTTP/2 (and advertised HTTP/3) support of this port, so protocol-specific CVEs can be
 	// ruled out (protocols.go); one or two short, rate-limited connections.
 	f.probeProtocols(ctx, fp, scheme, ip, port, serverName, hostHeader, resp.Header, opts)
 
-	// Fetch favicon via safe GET.
 	f.fetchFavicon(ctx, client, finalURL, bodyStr, ip, opts, fp)
 
-	// Probe safe read-only paths if enabled.
 	if opts.ProbeSafePaths && len(opts.SafePaths) > 0 {
 		po := opts
 		po.SafePaths = append(append([]string(nil), opts.SafePaths...), followupPaths(fp, opts.SafePaths)...)
@@ -492,8 +489,9 @@ func medianMs(samples []int64) int64 {
 	return s[len(s)/2]
 }
 
-// probeSafePaths also returns the duration of every completed request (rate-limit waits
-// excluded), the samples for the service's median response time.
+// probeSafePaths returns the path hits, whether the server answers any path (catch-all), and
+// the duration of every completed request (rate-limit waits excluded) as samples for the
+// service's median response time.
 func (f *Fingerprinter) probeSafePaths(ctx context.Context, client *http.Client, rootURL, ip string, opts Options) ([]domain.SafePathHit, bool, []int64) {
 	// Do not follow redirects automatically for safe path checks so we observe 301/302/401/403/200 cleanly.
 	noRedirectClient := *client

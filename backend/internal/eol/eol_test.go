@@ -209,9 +209,8 @@ func TestCompareVersionsAndAge(t *testing.T) {
 	}
 }
 
-// nginx: even minor branches are stable, odd ones mainline. The upgrade target is the
-// newest supported stable branch (1.30), not the newer mainline (1.31); with no stable branch
-// supported the mainline one is still named.
+// The nginx upgrade target is the newest supported stable branch (1.30), not the newer
+// mainline (1.31); mainline is named only when no stable branch is supported.
 func TestSupportedBranchPrefersStable(t *testing.T) {
 	nginx := Table().LookupProduct("nginx")
 	if nginx.StableRule != StableEvenMinor {

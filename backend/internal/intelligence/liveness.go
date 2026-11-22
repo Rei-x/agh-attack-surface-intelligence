@@ -19,7 +19,7 @@ package intelligence
 //
 // The host is reported INACTIVE when P(alive | outage) < threshold (default 5%)
 // AND the operator's minimum guards hold (profile missing_threshold and
-// grace_period_hours). Consequences, all explainable on one slide:
+// grace_period_hours). Consequences:
 //   - a rock-solid host (always answered) is INACTIVE after ~2-3 misses;
 //   - a flapping host (answers 50%) needs ~10+ misses, because misses are normal for it;
 //   - a lab PC that is always off at night never becomes INACTIVE from night misses
@@ -64,8 +64,8 @@ func decayFactor(from, to time.Time, halfLifeHours float64) float64 {
 	return math.Exp2(-to.Sub(from).Hours() / halfLifeHours)
 }
 
-// ensurePosterior lazily initialises the posterior of a slot. Hosts stored before
-// the Bayesian model existed are seeded from their Seen/Total counters.
+// ensurePosterior lazily initialises the posterior of a slot. A host without a stored
+// posterior is seeded from its Seen/Total counters.
 func ensurePosterior(s *domain.TimeSlotStat, cfg LifecycleConfig) {
 	if s.Alpha > 0 && s.Beta > 0 {
 		return

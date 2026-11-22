@@ -33,14 +33,14 @@ func TestNoisyORConfidenceAndConflictDetection(t *testing.T) {
 		t.Fatalf("expected conflict dampening (%d < %d)", conflictConf, baseConf)
 	}
 
-	// DetectTechnologies merging banner + HTTP + signatures and detecting version conflict.
+	// A banner version that disagrees with the Server header yields conflict evidence.
 	eng := signatures.NewEngine(nil)
 	obs := domain.ObservedService{
 		Port:        80,
 		Protocol:    "tcp",
 		ServiceName: "http",
 		Product:     "nginx",
-		Version:     "1.22.0", // conflicts with Server header 1.24.0!
+		Version:     "1.22.0",
 		HTTP: &domain.HTTPFingerprint{
 			StatusCode:   200,
 			ServerHeader: "nginx/1.24.0",
@@ -131,7 +131,7 @@ func TestHostLifecycleTransitionsAndGracePeriod(t *testing.T) {
 		t.Fatalf("step 2 state = %s, want ACTIVE", r2.NewState)
 	}
 
-	// 3. Miss #1, #2, #3 within 24h (< 72h grace period!) -> MUST remain MISSING, not INACTIVE!
+	// 3. Three misses inside the 72h grace period stay MISSING, not INACTIVE.
 	for i := 1; i <= 3; i++ {
 		r := EvaluateHostLifecycle(host, false, t0.Add(time.Duration(2+i*4)*time.Hour), cfg)
 		if r.NewState != domain.HostStateMissing {
@@ -139,19 +139,19 @@ func TestHostLifecycleTransitionsAndGracePeriod(t *testing.T) {
 		}
 	}
 
-	// 4. Miss #4 after 75h (> 72h grace period AND >= 3 misses) -> INACTIVE!
+	// 4. A fourth miss past the grace period, with >= 3 misses, is INACTIVE.
 	rInactive := EvaluateHostLifecycle(host, false, t0.Add(76*time.Hour), cfg)
 	if rInactive.NewState != domain.HostStateInactive {
 		t.Fatalf("after grace period: state = %s, want INACTIVE", rInactive.NewState)
 	}
 
-	// 5. Comes back online -> REACTIVATED!
+	// 5. Back online -> REACTIVATED
 	rReact := EvaluateHostLifecycle(host, true, t0.Add(80*time.Hour), cfg)
 	if rReact.NewState != domain.HostStateReactivated {
 		t.Fatalf("after recovery from INACTIVE: state = %s, want REACTIVATED", rReact.NewState)
 	}
 
-	// 6. Test INTERMITTENT flapping host.
+	// 6. A flapping host becomes INTERMITTENT.
 	flapper := &domain.Host{ID: "h-2", IP: "10.0.0.6"}
 	EvaluateHostLifecycle(flapper, true, t0, cfg)                   // NEW
 	EvaluateHostLifecycle(flapper, true, t0.Add(time.Hour), cfg)    // ACTIVE
@@ -169,7 +169,7 @@ func TestTimeOfDayExpectedOffHoursVsTimeAnomaly(t *testing.T) {
 	cfg := DefaultLifecycleConfig()
 	host := &domain.Host{ID: "h-lab", IP: "10.10.5.20"}
 
-	// Simulate 4 days where host is ON during 06-12 (morning) and OFF during 00-06 (night).
+	// Four days ON in the morning slot (06-12) and OFF at night (00-06).
 	baseDay := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	for d := 0; d < 4; d++ {
 		day := baseDay.AddDate(0, 0, d)
@@ -177,21 +177,21 @@ func TestTimeOfDayExpectedOffHoursVsTimeAnomaly(t *testing.T) {
 		EvaluateHostLifecycle(host, false, day.Add(2*time.Hour), cfg) // 02:00 -> OFF
 	}
 
-	// Day 5 at 02:00 OFF -> should be EXPECTED_OFF_HOURS (not an anomaly!).
+	// Day 5, 02:00 OFF: expected off-hours, not an anomaly.
 	day5 := baseDay.AddDate(0, 0, 5)
 	rExpected := EvaluateHostLifecycle(host, false, day5.Add(2*time.Hour), cfg)
 	if !rExpected.IsExpectedSchedule || rExpected.IsTimeAnomaly {
 		t.Fatalf("expected off-hours schedule at 02:00 OFF, got expected=%v anomaly=%v", rExpected.IsExpectedSchedule, rExpected.IsTimeAnomaly)
 	}
 
-	// Day 6 at 02:00 suddenly ON -> TIME_ANOMALY!
+	// Day 6, 02:00 ON: time anomaly.
 	day6 := baseDay.AddDate(0, 0, 6)
 	rAnomaly := EvaluateHostLifecycle(host, true, day6.Add(2*time.Hour), cfg)
 	if !rAnomaly.IsTimeAnomaly {
 		t.Fatalf("expected TIME_ANOMALY when night-offline host turns ON at 02:00, got %+v", rAnomaly)
 	}
 
-	// Day 6 at 09:00 suddenly OFF -> TIME_ANOMALY!
+	// Day 6, 09:00 OFF: time anomaly.
 	rDayAnomaly := EvaluateHostLifecycle(host, false, day6.Add(9*time.Hour), cfg)
 	if !rDayAnomaly.IsTimeAnomaly {
 		t.Fatalf("expected TIME_ANOMALY when daytime-online host goes OFF at 09:00, got %+v", rDayAnomaly)
@@ -225,17 +225,17 @@ func TestScanDiffAndServiceClustering(t *testing.T) {
 			Services: []domain.Service{
 				{
 					ID: "s1", HostID: "h1", HostIP: "10.0.0.1", Port: 80, Protocol: "tcp",
-					ServiceName: "http", Product: "nginx", Version: "1.24.0", // changed!
-					HTTP: &domain.HTTPFingerprint{Title: "New Portal", StatusCode: 200, TLS: &domain.TLSInfo{SHA256: "bbb"}}, // title + TLS changed!
+					ServiceName: "http", Product: "nginx", Version: "1.24.0", // changed
+					HTTP: &domain.HTTPFingerprint{Title: "New Portal", StatusCode: 200, TLS: &domain.TLSInfo{SHA256: "bbb"}}, // title and TLS changed
 				},
 				{
 					ID: "s3", HostID: "h1", HostIP: "10.0.0.1", Port: 8443, Protocol: "tcp",
-					ServiceName: "https", IsAdminPanel: true, // new service!
+					ServiceName: "https", IsAdminPanel: true, // new service
 				},
 			},
 		},
 		{
-			ID: "h3", IP: "10.0.0.3", LifecycleState: domain.HostStateNew, // new host!
+			ID: "h3", IP: "10.0.0.3", LifecycleState: domain.HostStateNew, // new host
 		},
 	}
 
@@ -253,7 +253,7 @@ func TestScanDiffAndServiceClustering(t *testing.T) {
 		t.Fatalf("expected >= 3 changed service events (version, title, tls), got %d", report.Summary.ChangedServices)
 	}
 
-	// Test Service Clustering across favicon, tech_stack, http_title, tls_issuer.
+	// Clustering by favicon, tech_stack, http_title and tls_issuer.
 	clusterServices := []domain.Service{
 		{
 			ID: "c1", HostIP: "10.0.1.1", Port: 443, Interestingness: 60,

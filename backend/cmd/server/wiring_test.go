@@ -51,9 +51,8 @@ func waitStatus(t *testing.T, store db.Store, runID string, want ...string) *dom
 // TestWindowOverrunPausesAndResumesEndToEnd drives the real LiveScanRunner + ingest pipeline +
 // scheduler run-now through: full scan -> second scan overruns the 22:00-06:00 window at
 // 06:00 -> PAUSED_WINDOW with checkpoint -> window watcher resumes at 22:01 -> COMPLETED.
-// It pins two bugs fixed together with the scheduler: hosts scanned in the first window
-// must not be flagged missing by the resumed segment, and the profile must be blocked from
-// a concurrent run while paused.
+// Hosts scanned in the first window must not be flagged missing by the resumed segment, and
+// the profile must be blocked from a concurrent run while paused.
 func TestWindowOverrunPausesAndResumesEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	loc, _ := time.LoadLocation("Europe/Warsaw")

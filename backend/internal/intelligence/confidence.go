@@ -32,7 +32,7 @@ func NoisyOR(weights []float64) float64 {
 	return 1.0 - prod
 }
 
-// Evidence channels and their likelihood weights.
+// ChannelWeight is the likelihood cap of one evidence channel.
 //
 // In the noisy-OR model each piece of evidence i is an independent "cause" that
 // would reveal the technology with probability w_i, so
@@ -284,7 +284,7 @@ func DetectTechnologies(svc domain.ObservedService, sigMatches []signatures.Matc
 		}
 	}
 
-	// Detect mutually exclusive web server conflicts (e.g. Microsoft IIS + Apache + Nginx simultaneously).
+	// Microsoft IIS and Apache on one port are mutually exclusive: both get conflict evidence.
 	webServerKeys := []string{"microsoft iis", "apache http server"}
 	var presentServers []string
 	for _, k := range webServerKeys {
@@ -515,7 +515,7 @@ func resolveVersion(versions map[string]int) (string, bool) {
 			return v, false
 		}
 	}
-	// Multiple versions: pick highest count / longest (most specific), and check if they conflict.
+	// Pick the most reported version, then the longest (most specific).
 	vers := sortedKeys(versions)
 	best := vers[0]
 	for _, v := range vers[1:] {
@@ -523,7 +523,7 @@ func resolveVersion(versions map[string]int) (string, bool) {
 			best = v
 		}
 	}
-	// Check if one is simply a prefix of another (e.g. "6.4" vs "6.4.2" is NOT a conflict).
+	// A prefix is not a conflict: "6.4" and "6.4.2" agree.
 	conflict := false
 	for _, v := range vers {
 		if !strings.HasPrefix(best, v) && !strings.HasPrefix(v, best) {

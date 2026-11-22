@@ -55,8 +55,8 @@ type SLAInfo struct {
 	Expires string `json:"expires"`
 	// FromDefectDojo is true when Start is the DefectDojo finding date.
 	FromDefectDojo bool `json:"from_defectdojo"`
-	// Expired: the SLA ran out before the ticket was opened, so the due date gives the
-	// owner the full SLA from today instead (and no longer equals DefectDojo's expiry).
+	// Expired reports that the SLA ran out before the ticket was opened; the due date then
+	// gives the owner the full SLA from today and differs from DefectDojo's expiry.
 	Expired bool `json:"expired"`
 	// Due is the default due day (YYYY-MM-DD, instance timezone).
 	Due string `json:"due"`

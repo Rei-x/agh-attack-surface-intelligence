@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// Redaction of evidence. A verified finding proves that something is readable, it must not
+// Redaction of evidence. A verified finding proves that something is readable; it must not
 // copy the secret itself into Dzięcioł, DefectDojo or a screenshot. Values that look like
 // credentials keep their first two characters and length class, the rest is masked.
 

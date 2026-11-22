@@ -38,9 +38,9 @@ type segment struct {
 
 var preRelease = map[string]bool{"alpha": true, "beta": true, "rc": true, "pre": true, "dev": true, "m": true}
 
-// segments splits v into numeric and letter runs. Callers pass a small stack buffer: version
-// checks run for every service against every candidate CVE range during ingest, and the
-// growing slices of a plain append were most of the ingest's allocations.
+// segments splits v into numeric and letter runs. Callers pass a small stack buffer to
+// avoid allocations: ingest runs version checks for every service against every candidate
+// CVE range.
 func segments(v string, out []segment) []segment {
 	i := 0
 	for i < len(v) {
@@ -81,7 +81,8 @@ func numericParts(v string) int {
 	return n
 }
 
-// CompareVersions compares two versions (see the package comment above): -1, 0 or 1.
+// CompareVersions compares two versions by the ordering rules at the top of this file and
+// returns -1, 0 or 1.
 func CompareVersions(a, b string) int {
 	var abuf, bbuf [8]segment
 	as, bs := segments(normalizeVersion(a), abuf[:0]), segments(normalizeVersion(b), bbuf[:0])
@@ -268,7 +269,8 @@ func (r Range) String() string {
 	return strings.TrimSpace(lo + "v" + hi)
 }
 
-// hasSuffix: "8.9p1" or "1.0.2k" carry a letter suffix, which makes them specific releases.
+// hasSuffix reports whether v carries a letter suffix ("8.9p1", "1.0.2k"), which makes it a
+// specific release.
 func hasSuffix(v string) bool {
 	var buf [8]segment
 	for _, s := range segments(v, buf[:0]) {

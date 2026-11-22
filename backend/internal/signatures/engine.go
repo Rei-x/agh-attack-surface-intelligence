@@ -45,7 +45,7 @@ type Engine struct {
 }
 
 // NewEngine builds an evaluation engine from built-in signatures plus optional custom signatures.
-// Invalid or disabled signatures are skipped safely.
+// Invalid or disabled signatures are skipped.
 func NewEngine(custom []domain.Signature) *Engine {
 	all := make([]domain.Signature, 0, len(custom)+60)
 	all = append(all, BuiltinSignatures()...)
@@ -278,7 +278,6 @@ func matchSingle(cm compiledMatcher, svc domain.ObservedService) (bool, string, 
 			if m.Key != "" && !strings.Contains(strings.ToLower(c.Name), strings.ToLower(m.Key)) {
 				continue
 			}
-			// Match against cookie name + flags summary.
 			haystack := c.Name + " " + strings.Join(c.Flags, " ")
 			if ok, ver := matchString(cm, haystack); ok {
 				return true, ver, fmt.Sprintf("cookie %s (flags: %s)", c.Name, strings.Join(c.Flags, ","))
@@ -514,7 +513,7 @@ func ExportJSON(sigs []domain.Signature) ([]byte, error) {
 }
 
 // ImportJSON parses JSON (either an array or a single signature object) and validates every entry.
-// Returns valid signatures, per-item validation error descriptions, and any JSON parse error.
+// It returns the valid signatures, per-item validation errors and any JSON parse error.
 func ImportJSON(data []byte) ([]domain.Signature, []string, error) {
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" {

@@ -257,7 +257,6 @@ func Build(in Input) *Digest {
 	}
 	d.TopRisks = top
 
-	// Remediation progress.
 	for i := range in.Tickets {
 		t := &in.Tickets[i]
 		ti := TicketItem{ID: t.ID, HostID: t.HostID, Where: t.Where(), Title: t.Title, Owner: t.Owner, DueAt: t.DueAt}

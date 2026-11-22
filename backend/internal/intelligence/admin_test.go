@@ -26,13 +26,13 @@ func TestAdminPanelRealProducts(t *testing.T) {
 		admin bool
 	}{
 		{"WordPress with reachable wp-login.php", httpSvc(80, &domain.HTTPFingerprint{
-			StatusCode: 200, Title: "Wydział IET – Akademia Górniczo-Hutnicza", MetaGenerator: "WordPress 6.4.3",
+			StatusCode: 200, Title: "Wydział IET - Akademia Górniczo-Hutnicza", MetaGenerator: "WordPress 6.4.3",
 			ServerHeader: "Apache/2.4.57 (Debian)",
 			BodySnippet:  `<link rel='stylesheet' href='/wp-content/themes/twentytwentyfour/style.css?ver=1.0' />`,
 			SafePathHits: []domain.SafePathHit{
 				{Path: "/admin", StatusCode: 302, Snippet: "Location: http://10.0.0.5/wp-admin/"},
 				{Path: "/login", StatusCode: 302, Snippet: "Location: http://10.0.0.5/wp-login.php"},
-				{Path: "/wp-login.php", StatusCode: 200, Title: "Zaloguj się ‹ Wydział IET — WordPress", LoginForm: true},
+				{Path: "/wp-login.php", StatusCode: 200, Title: "Zaloguj się ‹ Wydział IET - WordPress", LoginForm: true},
 			},
 		}), true},
 		{"Joomla administrator login", httpSvc(80, &domain.HTTPFingerprint{
@@ -62,7 +62,7 @@ func TestAdminPanelRealProducts(t *testing.T) {
 		}), true},
 		{"custom PHP admin at /admin", httpSvc(80, &domain.HTTPFingerprint{
 			StatusCode: 200, Title: "System Rezerwacji Sal", ServerHeader: "Apache/2.4.41 (Ubuntu)",
-			SafePathHits: []domain.SafePathHit{{Path: "/admin", StatusCode: 200, Title: "Panel administracyjny – System Rezerwacji Sal", LoginForm: true}},
+			SafePathHits: []domain.SafePathHit{{Path: "/admin", StatusCode: 200, Title: "Panel administracyjny - System Rezerwacji Sal", LoginForm: true}},
 		}), true},
 		{"MikroTik WebFig", httpSvc(80, &domain.HTTPFingerprint{StatusCode: 200, Title: "RouterOS router configuration page"}), true},
 		{"Synology DSM 7", httpSvc(5000, &domain.HTTPFingerprint{StatusCode: 200, Title: "NAS01 - Synology NAS",

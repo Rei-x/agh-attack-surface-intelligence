@@ -252,8 +252,6 @@ func sortHits(h []Hit) {
 	})
 }
 
-// ---- process-wide database -------------------------------------------------------------
-
 var (
 	curMu       sync.RWMutex
 	cur         *DB

@@ -73,9 +73,8 @@ func TestRequirementTagging(t *testing.T) {
 	}
 }
 
-// HTTP/2 off: Rapid Reset and the 2019 HTTP/2 DoS are suppressed with the probe evidence,
-// the KEV badge, KEV factor, CVSS/EPSS maxima and CVE id list no longer see them; the QUIC
-// CVE stays as an unverified version match (Alt-Svc absence proves nothing).
+// HTTP/2 off: the HTTP/2-only CVEs are suppressed and drop out of the KEV badge, factors,
+// maxima and CVE ids; the QUIC CVE stays unverified (a missing Alt-Svc proves nothing).
 func TestHTTP2DisabledSuppressesHTTP2OnlyCVEs(t *testing.T) {
 	db := nginxSnapshot()
 	vs := db.Assess(nginxService(domain.ProtoNo))
@@ -118,8 +117,7 @@ func TestHTTP2DisabledSuppressesHTTP2OnlyCVEs(t *testing.T) {
 	}
 }
 
-// Unknown keeps today's behaviour (KEV counted) but labels the match unverified; yes marks
-// it applicable with the evidence.
+// HTTP/2 unknown keeps the KEV match but labels it unverified; enabled marks it applicable.
 func TestHTTP2UnknownAndEnabledKeepTheMatch(t *testing.T) {
 	db := nginxSnapshot()
 	for _, tc := range []struct{ state, app, note string }{
