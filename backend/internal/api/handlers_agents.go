@@ -98,19 +98,36 @@ func (s *Server) handleCreateAgentToken(w http.ResponseWriter, r *http.Request) 
 	}
 	s.auditAgent(r, "POST /api/v1/agents/tokens", map[string]any{"token_id": rec.ID, "name": rec.Name, "site": rec.Site, "expires_at": rec.ExpiresAt})
 	server := publicBaseURL(r)
-	q := shellQuote
-	nameArg := ""
-	if rec.Name != "" {
-		nameArg = " --name " + q(rec.Name)
-	}
+	cmds := agentCommands(server, token, rec.Name)
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"token":        token,
-		"enroll_token": rec,
-		"server_url":   server,
-		"install_command": "curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sudo sh -s -- --agent --server " +
-			q(server) + " --token " + q(token) + nameArg,
-		"run_command": "dzieciol agent --server " + q(server) + " --token " + q(token) + nameArg,
+		"token":              token,
+		"enroll_token":       rec,
+		"server_url":         server,
+		"install_command":    cmds.install,
+		"foreground_command": cmds.foreground,
+		"run_command":        cmds.run,
+		"platforms":          s.dist.Available(),
 	})
+}
+
+type agentCommandSet struct{ install, foreground, run string }
+
+// agentCommands are the copy-paste lines that install and start an agent. Both one-liners
+// fetch install.sh and the binary from this server (GET /install.sh, /download/...):
+// install sets up the systemd service (Linux, sudo), foreground runs the agent in the
+// terminal (macOS, or Linux without root or systemd).
+func agentCommands(server, token, name string) agentCommandSet {
+	q := shellQuote
+	args := " --server " + q(server) + " --token " + q(token)
+	if name != "" {
+		args += " --name " + q(name)
+	}
+	fetch := "curl -fsSL " + q(server+"/install.sh") + " | "
+	return agentCommandSet{
+		install:    fetch + "sudo sh -s -- --agent" + args,
+		foreground: fetch + "sh -s -- --agent --foreground" + args,
+		run:        "dzieciol agent" + args,
+	}
 }
 
 func (s *Server) handleRevokeAgentToken(w http.ResponseWriter, r *http.Request) {

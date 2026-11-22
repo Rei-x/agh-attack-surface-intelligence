@@ -10,6 +10,7 @@ import {
   RiDownload2Line,
   RiEditLine,
   RiFileUploadLine,
+  RiFlashlightLine,
   RiForbidLine,
   RiPauseLine,
   RiPlayLine,
@@ -22,6 +23,7 @@ import { api, ApiError, type ExportFormat } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
+import { useOpenQuickScan } from '@/context/QuickScanContext';
 import { PERMISSIONS } from '@/lib/permissions';
 import {
   formatDateTime,
@@ -35,6 +37,7 @@ import { TagRulesPanel } from '@/components/TagRulesPanel';
 import { AgentsPanel } from '@/components/AgentsPanel';
 import { Button } from '@/components/ui/button';
 import { ChunkMatrix } from '@/components/ChunkMatrix';
+import { LiveDiscoveries } from '@/components/LiveDiscoveries';
 import { NmapCommandsPanel } from '@/components/NmapCommandsPanel';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -229,6 +232,7 @@ export function ScansPage() {
   const canWriteScans = can(PERMISSIONS.SCANS_WRITE);
   const canDeleteScans = can(PERMISSIONS.SCANS_DELETE);
   const canRunScans = can(PERMISSIONS.SCANS_RUN);
+  const openQuickScan = useOpenQuickScan();
   const canImport = can(PERMISSIONS.IMPORT_WRITE);
   const canExport = can(PERMISSIONS.EXPORT_READ);
 
@@ -445,20 +449,27 @@ export function ScansPage() {
     }
   };
 
-  // Deep link from the dashboard: /scans?scan=<id> opens that run expanded.
+  // Deep link from the dashboard and Quick scan: /scans?scan=<id> opens that run expanded. A
+  // run started a moment ago may be missing from the loaded list, so the list is reloaded.
   const [searchParams] = useSearchParams();
-  const deepLinked = useRef(false);
+  const deepLinked = useRef<string | null>(null);
   useEffect(() => {
     const id = searchParams.get('scan');
-    if (!id || deepLinked.current || scans.length === 0) return;
-    deepLinked.current = true;
+    if (!id || deepLinked.current === id || loading) return;
+    deepLinked.current = id;
     setActiveTab('runs');
     setExpandedScanId(id);
     api
       .getScan(id)
       .then(setScanDetail)
       .catch(() => undefined);
-  }, [searchParams, scans.length]);
+    if (!scans.some((s) => s.id === id)) {
+      api
+        .listScans()
+        .then(setScans)
+        .catch(() => undefined);
+    }
+  }, [searchParams, loading, scans]);
 
   const handleToggleScanDetail = async (scanId: string) => {
     if (expandedScanId === scanId) {
@@ -637,24 +648,32 @@ export function ScansPage() {
         title="Scans"
         meta={`${scans.length} runs · ${profiles.length} profiles`}
         actions={
-          activeTab === 'runs' && canRunScans && profiles.length > 0 ? (
+          canRunScans ? (
             <>
-              <SimpleSelect
-                value={launchProfile?.id ?? ''}
-                onValueChange={setLaunchProfileId}
-                options={profiles.map((p) => ({ value: p.id, label: p.name }))}
-                placeholder="Profile"
-                size="sm"
-                className="w-56"
-              />
-              <Button
-                size="sm"
-                disabled={!launchProfile}
-                onClick={() => launchProfile && handleStartProfileScan(launchProfile)}
-              >
-                <RiPlayLine data-icon="inline-start" />
-                Run scan
+              <Button size="sm" variant="outline" onClick={openQuickScan}>
+                <RiFlashlightLine data-icon="inline-start" />
+                Quick scan
               </Button>
+              {activeTab === 'runs' && profiles.length > 0 && (
+                <>
+                  <SimpleSelect
+                    value={launchProfile?.id ?? ''}
+                    onValueChange={setLaunchProfileId}
+                    options={profiles.map((p) => ({ value: p.id, label: p.name }))}
+                    placeholder="Profile"
+                    size="sm"
+                    className="w-56"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!launchProfile}
+                    onClick={() => launchProfile && handleStartProfileScan(launchProfile)}
+                  >
+                    <RiPlayLine data-icon="inline-start" />
+                    Run scan
+                  </Button>
+                </>
+              )}
             </>
           ) : undefined
         }
@@ -887,6 +906,7 @@ export function ScansPage() {
                           <TableRow className="bg-muted/30 hover:bg-muted/30">
                             <TableCell colSpan={11} className="whitespace-normal">
                               <div className="space-y-3 px-5.5 pb-2">
+                                <LiveDiscoveries scan={scan} />
                                 <SectionTitle>Coverage Ledger · {chunks.length}</SectionTitle>
 
                                 {chunks.length === 0 ? (

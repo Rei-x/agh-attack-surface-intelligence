@@ -208,24 +208,68 @@ Sekwencja wywołań (JSON, `Authorization: Bearer <poświadczenie agenta>`):
 
 ### Instalacja
 
-1. W UI: **Skany -> Agenci -> Dodaj agenta** (wymaga `admin:settings`). Token jest pokazany raz, ważny 1-720 h, jednorazowy, przechowywany tylko jako SHA-256.
-2. Na maszynie w segmencie (Linux + systemd, root):
+1. W UI: **Quick scan -> Your own network -> Set up an agent** albo **Scans -> Agents -> Add agent**
+   (wymaga `admin:settings`). Token jest pokazany raz, ważny 1-720 h (z Quick scan: 2 h), jednorazowy,
+   przechowywany tylko jako SHA-256. UI podaje gotową komendę z adresem serwera i tokenem.
+2. Na maszynie w segmencie, Linux + systemd (root przez sudo, amd64 lub arm64):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh \
+curl -fsSL https://dzieciol.cbi.agh.edu.pl/install.sh \
   | sudo sh -s -- --agent --server https://dzieciol.cbi.agh.edu.pl --token aet_... \
-      --name wydzial-eaiib --allow-cidr 10.20.0.0/16
+      [--name wydzial-eaiib] [--allow-cidr 10.20.0.0/16]
 ```
 
-`install.sh --agent` instaluje binarkę do `/usr/local/bin`, zapisuje ustawienia do
+   macOS albo Linux bez roota lub systemd (agent działa w terminalu do Ctrl+C; ta sama komenda
+   uruchomiona ponownie wznawia pracę z zapisanym poświadczeniem):
+
+```bash
+curl -fsSL https://dzieciol.cbi.agh.edu.pl/install.sh \
+  | sh -s -- --agent --foreground --server https://dzieciol.cbi.agh.edu.pl --token aet_...
+```
+
+Skrypt i binarka pochodzą z samej instancji: `GET /install.sh` (skrypt z wpisanym adresem
+`/download/` tej instancji) oraz `GET /download/dzieciol-<os>-<arch>` i `GET /download/checksums.txt`
+(SHA-256 liczone z serwowanych plików; skrypt sprawdza sumę przed instalacją). Obraz Dockera
+zawiera buildy linux i darwin dla amd64 i arm64 (`/app/dist`, własną platformę serwer podaje
+z działającej binarki). Jeśli instancja nie ma pliku dla danej platformy, skrypt pobiera go z
+GitHub Releases; `DZIECIOL_DOWNLOAD_BASE` wskazuje inne lustro, a `install.sh` z repozytorium
+dalej pobiera z GitHub Releases.
+
+`install.sh --agent` jako root z systemd instaluje binarkę do `/usr/local/bin`, zapisuje ustawienia do
 `/etc/dzieciol-agent.env` (0600) i włącza `dzieciol-agent.service` (plik: `deploy/dzieciol-agent.service`).
+Bez roota, bez systemd, na macOS lub z `--foreground` uruchamia agenta w terminalu.
 To samo bez skryptu: `sudo dzieciol agent install --server ... --token ...`. Ręcznie (dowolny system):
 `dzieciol agent --server https://... --token aet_... [--data-dir DIR] [--ca-file ca.pem] [--allow-cidr ...]`.
 Kolejne uruchomienia nie potrzebują tokenu. Logi: `journalctl -u dzieciol-agent -f`.
 
+Bez `--allow-cidr` agent skanuje tylko sieci prywatne własnych interfejsów (RFC 1918, CGNAT
+100.64.0.0/10, IPv6 ULA; bez loopback i link-local), pisze to w logu i zgłasza je serwerowi
+(`capabilities.local_subnets`, przy rejestracji i w każdym heartbeacie). Zadania poza nimi odrzuca
+(`refused`). Host bez sieci prywatnej odrzuca wszystko; `--allow-cidr 0.0.0.0/0,::/0` zdejmuje ograniczenie.
+
 3. W profilu skanowania wybierz pole **Skanuje: Agent: ...**. Harmonogram, „Uruchom teraz”,
 pauza/wznowienie/stop działają jak dla skanów lokalnych; profil nadal nie może mieć dwóch
-aktywnych przebiegów.
+aktywnych przebiegów. Z okna Quick scan agent po połączeniu proponuje swoje sieci jako cele
+jednym kliknięciem (ostrożnie: 150 pakietów/s, 5 zapytań HTTP/s, 32 popularne porty, sieć
+większa niż /22 zawężona do /24 wokół agenta, najwyżej /20).
+
+### Quick scan
+
+Przycisk **Quick scan** (nagłówek i strona Scans) prowadzi do dwóch ścieżek:
+
+- **Our lab network -> Scan the lab**: profil z `DZIECIOL_QUICKSCAN_PROFILE` (id lub nazwa), a bez
+  tej zmiennej najmniejszy włączony profil z „lab” w nazwie (preferowany ten, którego agent jest
+  online). Skan używa portów, limitów, okna i agenta profilu, ale małych chunków (32-64 IP), więc
+  hosty pojawiają się blok po bloku; zakres szerszy niż /22 jest zawężany do pierwszej /22. Jeśli
+  skan laboratorium już trwa (albo agent laboratorium wykonuje inne zadanie), kliknięcie dołącza
+  do niego zamiast kolejkować nowy. Pomiar na lokalnej replice laboratorium (10.66.0.0/22, 28
+  portów, 500 pps): pierwszy host po 40 s, 45 hostów po 90 s, koniec po 147 s (86 hostów, 234
+  usługi); ten sam profil z dużymi chunkami: pierwszy host po 172 s, koniec po 189 s.
+- **Your own network -> Set up an agent**: komenda instalacji opisana wyżej (zakładki Linux oraz
+  macOS or no root), oczekiwanie na połączenie agenta i wybór jego sieci.
+
+Oba przypadki kończą się na `/scans?scan=<id>`: rozwinięty przebieg z sekcją **Live discoveries**
+(hosty i usługi ze zdarzeń SSE `scan.host_discovered`) nad księgą chunków.
 
 ### Wymagania sieciowe
 
@@ -238,7 +282,8 @@ aktywnych przebiegów.
 - Token rejestracyjny: losowe 256 bitów, jednorazowy, z datą ważności, w bazie tylko SHA-256; można go unieważnić.
 - Poświadczenie agenta (`agt.<id>.<sekret>`): losowe 256 bitów, w bazie tylko SHA-256 (porównanie w stałym czasie). Otwiera wyłącznie `/api/v1/agent/*`; tokeny użytkowników (JWT) są tam odrzucane (401), a poświadczenie agenta na endpointach użytkowników też daje 401 (test `TestAgentAuthIsolation`). Agent widzi i raportuje tylko swoje zadania; wyłączenie/usunięcie agenta w UI natychmiast blokuje poświadczenie.
 - TLS: certyfikat serwera weryfikowany domyślnie; `--ca-file` dla wewnętrznego CA; `--insecure` tylko w laboratorium. Zwykły HTTP jest odrzucany poza adresem lokalnym.
-- Lokalna allowlista (`--allow-cidr`): agent odmawia (`refused`, z notatką w skanie) każdego zadania, którego cel lub chunk wychodzi poza dozwolone sieci. Przejęty serwer nie zmusi więc agenta do skanowania dowolnych sieci.
+- Lokalna allowlista (`--allow-cidr`, domyślnie sieci prywatne interfejsów agenta): agent odmawia (`refused`, z notatką w skanie) każdego zadania, którego cel lub chunk wychodzi poza dozwolone sieci. Przejęty serwer nie zmusi więc agenta do skanowania dowolnych sieci. Quick scan sprawdza to samo już po stronie serwera, zanim zleci zadanie.
+- `GET /install.sh` i `GET /download/*` są publiczne (to te same otwarte binarki); serwowane są tylko nazwy `dzieciol-<os>-<arch>` i `checksums.txt`, a adres wpisywany do skryptu przechodzi ścisłą walidację (sfałszowany nagłówek Host nie wstrzyknie kodu powłoki).
 - Unit systemd: `DynamicUser`, `NoNewPrivileges`, `ProtectSystem=strict`, puste `CapabilityBoundingSet`, więc agent działa bez uprawnień.
 - Stan agentów (rejestr, tokeny, zadania) leży w zaszyfrowanych dokumentach `app_settings` (plik `dzieciol-store.enc` lub PostgreSQL), jak reszta danych.
 
@@ -361,7 +406,9 @@ Runs a 10-stage verification: health and crypto status, 4-role RBAC `200`/`403` 
 | `DZIECIOL_STATIC_DIR` | No | *(embedded UI)*; compose sets `/app/static` | Serve the React SPA from this directory instead of the UI embedded in the binary. |
 | `DZIECIOL_LISTEN_ADDR` | No | `:8080` | HTTP bind address (same as `dzieciol serve --listen`; `PORT` is honoured when unset). |
 | `DZIECIOL_PORT` | No | `8080` | Host port mapped to container `:8080`. |
-| `DZIECIOL_PUBLIC_URL` | No | *(scheme/host of the admin's request)* | Server URL put into the agent install command (e.g. `https://dzieciol.cbi.agh.edu.pl`). |
+| `DZIECIOL_PUBLIC_URL` | No | *(scheme/host of the admin's request)* | Server URL put into the agent install command and into the `install.sh` this server serves (e.g. `https://dzieciol.cbi.agh.edu.pl`). |
+| `DZIECIOL_DOWNLOAD_DIR` | No | `dist/` next to the binary (`/app/dist` in the Docker image) | Directory with `dzieciol-<os>-<arch>` builds served at `/download/` for agent installs; the running binary is always served for its own platform. |
+| `DZIECIOL_QUICKSCAN_PROFILE` | No | *(smallest enabled profile with "lab" in its name)* | Profile (id or name) behind Quick scan, "Our lab network". |
 | `DZIECIOL_AGENT_OFFLINE_AFTER` | No | `90s` | Silence after which a remote agent is marked offline and its running scan is parked (resumed when it returns). |
 | `DZIECIOL_CHROME_PATH` | No | *(auto: chrome-headless-shell, chromium, google-chrome on PATH)* | Browser used for web screenshots. `DZIECIOL_SCREENSHOTS=false` turns them off. |
 | `TZ` | No | `Europe/Warsaw` | Default timezone for scan windows and logs. |

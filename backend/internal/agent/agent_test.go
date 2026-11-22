@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,6 +132,14 @@ func fakeNetwork(gate func(ctx context.Context, ips []string) error) func(scanne
 	}
 }
 
+// labInterfaces is a fake host attached to 10.77.0.0/16 (where fakeNetwork's hosts live).
+func labInterfaces() ([]Interface, error) {
+	return []Interface{
+		{Name: "lo", Up: true, Loopback: true, Addrs: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/8")}},
+		{Name: "eth0", Up: true, Addrs: []netip.Prefix{netip.MustParsePrefix("10.77.0.5/16")}},
+	}, nil
+}
+
 func startAgent(t *testing.T, cfg Config) (*Agent, func() error) {
 	t.Helper()
 	a, err := New(cfg)
@@ -162,7 +171,7 @@ func TestAgentEnrollScanKillResume(t *testing.T) {
 		return nil
 	}
 	cfg := Config{ServerURL: ts.http.URL, Token: ts.token(), DataDir: dir, Version: "test", PollWait: time.Second,
-		ProgressEvery: 50 * time.Millisecond, EngineConfig: fakeNetwork(blockAfterFirst), Logf: t.Logf}
+		ProgressEvery: 50 * time.Millisecond, EngineConfig: fakeNetwork(blockAfterFirst), Logf: t.Logf, Interfaces: labInterfaces}
 	a1, stop1 := startAgent(t, cfg)
 	deadline := time.Now().Add(5 * time.Second)
 	for a1.AgentID() == "" && time.Now().Before(deadline) {
@@ -243,7 +252,7 @@ func TestAgentBuffersResultsWhileServerFails(t *testing.T) {
 	ts.failChunks.Store(true)
 	dir := t.TempDir()
 	cfg := Config{ServerURL: ts.http.URL, Token: ts.token(), DataDir: dir, Version: "test", PollWait: time.Second,
-		ProgressEvery: 50 * time.Millisecond, EngineConfig: fakeNetwork(nil), Logf: t.Logf}
+		ProgressEvery: 50 * time.Millisecond, EngineConfig: fakeNetwork(nil), Logf: t.Logf, Interfaces: labInterfaces}
 	a, stop := startAgent(t, cfg)
 	defer stop()
 	for a.AgentID() == "" {

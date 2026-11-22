@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   RiMailSendLine,
@@ -30,6 +30,7 @@ import { Pill } from '@/components/common';
 import { LiveIndicator } from '@/components/LiveIndicator';
 import { WoodpeckerMark } from '@/components/Woodpecker';
 import { QuickScanDialog } from '@/components/QuickScanDialog';
+import { QuickScanContext } from '@/context/QuickScanContext';
 import { DojoStatusChip } from '@/components/DojoStatusChip';
 import { rateChange, throttleReasonLabel } from '@/lib/scanTelemetry';
 import {
@@ -85,6 +86,7 @@ export function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [switchingRole, setSwitchingRole] = useState<string | null>(null);
   const [quickScanOpen, setQuickScanOpen] = useState(false);
+  const openQuickScan = useCallback(() => setQuickScanOpen(true), []);
 
   const visibleNav = NAV_ITEMS.filter((item) => canAny(item.perms));
   const roleSlug = user?.role_slug || user?.role || '';
@@ -278,7 +280,9 @@ export function Layout() {
               Data store problem: {health.db}
             </div>
           )}
-          <Outlet />
+          <QuickScanContext.Provider value={openQuickScan}>
+            <Outlet />
+          </QuickScanContext.Provider>
         </main>
         {can(PERMISSIONS.SCANS_RUN) && (
           <QuickScanDialog open={quickScanOpen} onOpenChange={setQuickScanOpen} />

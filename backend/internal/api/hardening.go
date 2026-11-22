@@ -27,6 +27,8 @@ var publicRoutes = map[string]bool{
 	"POST /api/v1/auth/login":        true,
 	"POST /api/v1/agent/enroll":      true, // authenticated by the one-time enrollment token
 	"/":                              true, // SPA static files
+	"GET /install.sh":                true, // agent installer, fetched by curl on a fresh machine
+	"GET /download/{file}":           true, // the public dzieciol binaries and checksums.txt
 }
 
 // handle registers a route and remembers its pattern so tests can walk every route.

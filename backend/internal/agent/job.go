@@ -87,11 +87,9 @@ func (p *progressSnap) get() (agenthub.Timing, []domain.ScanChunk, bool) {
 }
 
 // outsideAllowlist returns the first IP not covered by the local allowlist ("" when all are
-// allowed or no allowlist is configured).
+// allowed). An empty allowlist (no --allow-cidr and no private interface network) allows
+// nothing.
 func (a *Agent) outsideAllowlist(ips []string) string {
-	if len(a.allow) == 0 {
-		return ""
-	}
 	for _, s := range ips {
 		ip, err := netip.ParseAddr(strings.TrimSpace(s))
 		if err != nil {
@@ -199,9 +197,9 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 			return
 		}
 		if bad := a.outsideAllowlist(res.IPs); bad != "" {
-			a.logf("[WARN] REFUSING job %s: target %s is outside the local allowlist %v", spec.RunID, bad, a.caps.AllowCIDRs)
+			a.logf("[WARN] REFUSING job %s: target %s is outside the local allowlist (%s)", spec.RunID, bad, a.allowlistLabel())
 			a.finishSegment(ctx, spec.RunID, agenthub.FinishRequest{Outcome: agenthub.OutcomeRefused,
-				Error: fmt.Sprintf("target %s is outside the agent's local allowlist (--allow-cidr %s)", bad, strings.Join(a.caps.AllowCIDRs, ","))})
+				Error: fmt.Sprintf("target %s is outside the agent's local allowlist (%s)", bad, a.allowlistLabel())})
 			return
 		}
 		var resp agenthub.ControlResponse
@@ -232,9 +230,9 @@ func (a *Agent) runJob(ctx context.Context, spec *agenthub.JobSpec) {
 			}
 		}
 		if bad := a.outsideAllowlist(ips); bad != "" {
-			a.logf("[WARN] REFUSING job %s: chunk target %s is outside the local allowlist %v", spec.RunID, bad, a.caps.AllowCIDRs)
+			a.logf("[WARN] REFUSING job %s: chunk target %s is outside the local allowlist (%s)", spec.RunID, bad, a.allowlistLabel())
 			a.finishSegment(ctx, spec.RunID, agenthub.FinishRequest{Outcome: agenthub.OutcomeRefused,
-				Error: fmt.Sprintf("target %s is outside the agent's local allowlist (--allow-cidr %s)", bad, strings.Join(a.caps.AllowCIDRs, ","))})
+				Error: fmt.Sprintf("target %s is outside the agent's local allowlist (%s)", bad, a.allowlistLabel())})
 			return
 		}
 		// Hostname -> IP mapping for HTTP Host headers, like a local resume.

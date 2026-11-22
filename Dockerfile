@@ -29,6 +29,15 @@ ARG VERSION=docker
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
       -ldflags="-s -w -X main.version=${VERSION} -X main.commit=docker" \
       -o /app/dzieciol ./cmd/server
+# The same binary for the other platforms, handed out to new agents by GET /install.sh and
+# /download/. The server serves itself for its own platform, so that one is not stored twice.
+RUN set -e; self="linux/$(go env GOARCH)"; mkdir -p /app/dist; \
+    for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+      [ "$p" = "$self" ] && continue; \
+      CGO_ENABLED=0 GOOS="${p%/*}" GOARCH="${p#*/}" go build -trimpath \
+        -ldflags="-s -w -X main.version=${VERSION} -X main.commit=docker" \
+        -o "/app/dist/dzieciol-${p%/*}-${p#*/}" ./cmd/server; \
+    done; ls -l /app/dist
 
 FROM alpine:3.21 AS runtime
 
@@ -40,6 +49,7 @@ RUN apk add --no-cache nmap nmap-scripts ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=backend-builder /app/dzieciol /app/dzieciol
+COPY --from=backend-builder /app/dist /app/dist
 # Kept for compatibility with deployments that set DZIECIOL_STATIC_DIR=/app/static;
 # without it the UI embedded in the binary is served.
 COPY --from=frontend-builder /src/frontend/dist /app/static

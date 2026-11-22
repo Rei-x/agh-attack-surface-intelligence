@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/netip"
 	"sort"
 	"strings"
 	"sync"
@@ -406,6 +407,26 @@ func sanitizeCaps(caps domain.AgentCapabilities) domain.AgentCapabilities {
 	}
 	for i := range caps.AllowCIDRs {
 		caps.AllowCIDRs[i] = clip(caps.AllowCIDRs[i], 64)
+	}
+	// Local subnets become one-click targets in the UI: keep only well-formed prefixes.
+	subnets := make([]domain.LocalSubnet, 0, len(caps.LocalSubnets))
+	for _, s := range caps.LocalSubnets {
+		p, err := netip.ParsePrefix(strings.TrimSpace(s.CIDR))
+		if err != nil || len(subnets) >= 64 {
+			continue
+		}
+		s.CIDR = p.Masked().String()
+		if a, err := netip.ParseAddr(strings.TrimSpace(s.Address)); err == nil && p.Contains(a) {
+			s.Address = a.String()
+		} else {
+			s.Address = ""
+		}
+		s.Interface = clip(s.Interface, 32)
+		subnets = append(subnets, s)
+	}
+	caps.LocalSubnets = subnets
+	if len(subnets) == 0 {
+		caps.LocalSubnets = nil
 	}
 	return caps
 }

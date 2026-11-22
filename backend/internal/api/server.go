@@ -26,6 +26,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/remediation"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/scheduler"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/selfdist"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/verify"
 )
 
@@ -46,6 +47,9 @@ type Config struct {
 	// Agents is the remote scanning agent coordinator (nil: a private one is created, so the
 	// agent API always exists).
 	Agents *agenthub.Coordinator
+	// Downloads are the binaries behind GET /install.sh and /download/ (nil:
+	// selfdist.FromEnvironment, i.e. DZIECIOL_DOWNLOAD_DIR plus the running binary).
+	Downloads *selfdist.Dist
 }
 
 // Server serves the complete Dzięcioł v1 REST API, SSE stream, and embedded/static SPA.
@@ -79,6 +83,9 @@ type Server struct {
 
 	dojoSyncMu    sync.Mutex
 	dojoSyncTimer *time.Timer // debounced triage -> DefectDojo sync (queueDojoSync)
+
+	dist  *selfdist.Dist // install.sh and binaries for new agents (handlers_quickscan.go)
+	quick quickState     // the running lab quick scan, joined by later clicks
 }
 
 // NewServer constructs a fully wired Dzięcioł HTTP Server.
@@ -107,6 +114,10 @@ func NewServer(cfg Config, store db.Store, vault *crypto.Vault, pipeline *ingest
 		hub:      hub,
 		mux:      http.NewServeMux(),
 		logins:   newLoginLimiter(),
+		dist:     cfg.Downloads,
+	}
+	if s.dist == nil {
+		s.dist = selfdist.FromEnvironment()
 	}
 	s.authMW.IsNotFound = func(err error) bool { return errors.Is(err, db.ErrNotFound) }
 	hub.mu.Lock()
@@ -252,6 +263,7 @@ func (s *Server) registerRoutes() {
 	s.registerPolicyRoutes()
 	s.registerRemediationRoutes()
 	s.registerVerifyRoutes()
+	s.registerQuickScanRoutes()
 
 	s.handle("/", s.handleSPA)
 }

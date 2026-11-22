@@ -36,7 +36,7 @@ type Config struct {
 	DataDir    string
 	CAFile     string
 	Insecure   bool
-	AllowCIDRs []string // local safety allowlist; empty = no restriction
+	AllowCIDRs []string // local safety allowlist; empty = this host's private networks (PrivateSubnets)
 	Version    string
 	// Screenshots captures web pages locally (headless Chromium); nil = no screenshots.
 	Screenshots scanner.ScreenshotCapturer
@@ -46,20 +46,23 @@ type Config struct {
 	ProgressEvery time.Duration // progress/event upload interval (default 2s)
 	EngineConfig  func(scanner.EngineConfig) scanner.EngineConfig
 	Logf          func(format string, args ...any)
+	Interfaces    func() ([]Interface, error) // default SystemInterfaces
 }
 
 // Agent is a running agent process.
 type Agent struct {
-	cfg    Config
-	st     *state
-	c      *client
-	box    *outbox
-	allow  []netip.Prefix
-	caps   domain.AgentCapabilities
-	logf   func(string, ...any)
-	hbSec  int
-	lock   *localdata.Lock
-	events *eventBuf
+	cfg       Config
+	st        *state
+	c         *client
+	box       *outbox
+	allow     []netip.Prefix
+	allowAuto bool // no --allow-cidr: allow holds the interfaces' private networks
+	subnets   []domain.LocalSubnet
+	caps      domain.AgentCapabilities
+	logf      func(string, ...any)
+	hbSec     int
+	lock      *localdata.Lock
+	events    *eventBuf
 
 	mu  sync.Mutex
 	cur *jobCtl
@@ -126,6 +129,21 @@ func New(cfg Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	listIfaces := cfg.Interfaces
+	if listIfaces == nil {
+		listIfaces = SystemInterfaces
+	}
+	ifaces, err := listIfaces()
+	if err != nil {
+		logf("[WARN] cannot list network interfaces: %v", err)
+	}
+	subnets := PrivateSubnets(ifaces)
+	allowAuto := len(allow) == 0
+	if allowAuto {
+		for _, s := range subnets {
+			allow = append(allow, netip.MustParsePrefix(s.CIDR))
+		}
+	}
 	if cfg.DataDir == "" {
 		return nil, errors.New("data directory is required")
 	}
@@ -168,14 +186,16 @@ func New(cfg Config) (*Agent, error) {
 		st.InstanceID = randomID()
 	}
 	a := &Agent{
-		cfg:    cfg,
-		st:     st,
-		box:    box,
-		allow:  allow,
-		logf:   logf,
-		hbSec:  15,
-		lock:   lock,
-		events: &eventBuf{max: 2000},
+		cfg:       cfg,
+		st:        st,
+		box:       box,
+		allow:     allow,
+		allowAuto: allowAuto,
+		subnets:   subnets,
+		logf:      logf,
+		hbSec:     15,
+		lock:      lock,
+		events:    &eventBuf{max: 2000},
 		c: &client{
 			base:       base,
 			http:       hc,
@@ -212,7 +232,20 @@ func (a *Agent) detectCapabilities() domain.AgentCapabilities {
 	for _, p := range a.allow {
 		caps.AllowCIDRs = append(caps.AllowCIDRs, p.String())
 	}
+	caps.AllowFromInterfaces = a.allowAuto
+	caps.LocalSubnets = a.subnets
 	return caps
+}
+
+// allowlistLabel describes the allowlist for logs and refusal notes.
+func (a *Agent) allowlistLabel() string {
+	if a.allowAuto {
+		if len(a.allow) == 0 {
+			return "none: no --allow-cidr given and this host has no private network"
+		}
+		return "this host's private networks " + strings.Join(a.caps.AllowCIDRs, ",") + "; start the agent with --allow-cidr to change it"
+	}
+	return "--allow-cidr " + strings.Join(a.caps.AllowCIDRs, ",")
 }
 
 func backoff(ctx context.Context, attempt int) {
@@ -281,8 +314,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	a.logf("[INFO] agent %q connected to %s (instance %s, nmap=%v, allowlist=%v)",
 		a.st.Name, a.st.ServerURL, a.st.InstanceID[:8], a.caps.Nmap, a.caps.AllowCIDRs)
-	if len(a.allow) == 0 {
-		a.logf("[WARN] no --allow-cidr set: the agent will scan whatever targets the server sends")
+	switch {
+	case a.allowAuto && len(a.allow) == 0:
+		a.logf("[WARN] no --allow-cidr given and no private network found on this host's interfaces: every scan job will be refused (pass --allow-cidr to allow targets)")
+	case a.allowAuto:
+		a.logf("[INFO] no --allow-cidr given: scanning only this host's private networks %s; jobs outside them are refused (pass --allow-cidr to change)",
+			strings.Join(a.caps.AllowCIDRs, ", "))
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
