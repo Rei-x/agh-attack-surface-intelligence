@@ -20,9 +20,25 @@ type AgentCapabilities struct {
 	Hostname    string `json:"hostname,omitempty"`
 	// Screenshots: a headless Chromium was found, so web services are captured as pictures.
 	Screenshots bool `json:"screenshots,omitempty"`
-	// AllowCIDRs is the agent's local allowlist (--allow-cidr): it refuses any target outside
-	// it, whatever the server asks. Empty = no local restriction.
+	// AllowCIDRs is the agent's local allowlist: it refuses any target outside it, whatever
+	// the server asks. Set by --allow-cidr, otherwise the private networks in LocalSubnets.
 	AllowCIDRs []string `json:"allow_cidrs,omitempty"`
+	// AllowFromInterfaces: no --allow-cidr was given, so AllowCIDRs are the private networks
+	// of the agent's own interfaces.
+	AllowFromInterfaces bool `json:"allow_from_interfaces,omitempty"`
+	// LocalSubnets are the private networks the agent host is directly attached to, offered
+	// in the UI as one-click scan targets.
+	LocalSubnets []LocalSubnet `json:"local_subnets,omitempty"`
+}
+
+// LocalSubnet is a private network (RFC 1918, CGNAT 100.64.0.0/10 or IPv6 ULA) of one of the
+// agent's interfaces.
+type LocalSubnet struct {
+	CIDR      string `json:"cidr"`
+	Address   string `json:"address,omitempty"` // the agent's own address in it
+	Interface string `json:"interface,omitempty"`
+	// Virtual marks container and VM bridges (docker0, br-*, vmnet*, ...), listed last.
+	Virtual bool `json:"virtual,omitempty"`
 }
 
 // Agent is one enrolled remote scanner. CredentialHash is the SHA-256 of the agent's secret;

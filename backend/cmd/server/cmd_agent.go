@@ -59,7 +59,7 @@ func parseAgentFlags(name string, args []string) (*agentFlags, error) {
 	fs.StringVar(&f.dataDir, "data-dir", "", "data directory for the credential and buffered results (default /var/lib/dzieciol-agent as root, else ~/.dzieciol-agent)")
 	fs.StringVar(&f.caFile, "ca-file", agentEnv("CA_FILE"), "extra CA certificate (PEM) to trust for the server")
 	fs.BoolVar(&f.insecure, "insecure", strings.EqualFold(agentEnv("INSECURE"), "true"), "skip TLS verification / allow plain HTTP (LAB ONLY)")
-	fs.Var(&f.allow, "allow-cidr", "only ever scan inside these networks (repeatable or comma separated); jobs outside are refused")
+	fs.Var(&f.allow, "allow-cidr", "only ever scan inside these networks (repeatable or comma separated); jobs outside are refused. Default: the private networks of this host's interfaces; 0.0.0.0/0,::/0 allows any target")
 	fs.BoolVar(&f.verbose, "verbose", false, "verbose logging")
 	if _, err := parseInterspersed(fs, args); err != nil {
 		return nil, err
