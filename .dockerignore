@@ -5,4 +5,3 @@ backend/internal/webui/ui/*
 bin
 dist
 .git
-.claude

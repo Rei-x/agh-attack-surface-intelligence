@@ -41,7 +41,6 @@ tmp/
 .idea/
 .vscode/
 *.swp
-.claude/worktrees*/
 __pycache__/
 
 # Embedded UI build output (copied by `make ui`); keep the placeholder so go:embed compiles
