@@ -7,6 +7,7 @@ import {
   RiCheckboxCircleLine,
   RiFileCopyLine,
   RiRefreshLine,
+  RiSearchLine,
   RiSendPlaneLine,
   RiTimeLine,
 } from '@remixicon/react';
@@ -24,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Empty, Field, PageHeader, Pill, SimpleSelect, Stat, StatStrip } from '@/components/common';
@@ -248,6 +250,8 @@ export function DiffPage() {
   const [allChanges, setAllChanges] = useState<ChangeEvent[]>([]);
   const [anomalyOnly, setAnomalyOnly] = useState(false);
   const [ownerFilter, setOwnerFilter] = useState(ALL);
+  // Text filter for the tables: IP, owner, product, title. Deep link: /diff?q=nginx
+  const [query, setQuery] = useState(searchParams.get('q') || '');
   const [loading, setLoading] = useState(true);
   const [diffLoading, setDiffLoading] = useState(false);
   const [ackingId, setAckingId] = useState<string | null>(null);
@@ -317,12 +321,18 @@ export function DiffPage() {
     if (fromId && toId) runDiff();
   }, [fromId, toId, runDiff]);
 
-  const newHosts = diff?.new_hosts || [];
-  const missingHosts = diff?.missing_hosts || [];
-  const newServices = diff?.new_services || [];
-  const closedServices = diff?.closed_services || [];
-  const changedServices = diff?.changed_services || [];
-  const timeAnomalies = diff?.time_anomalies || [];
+  const q = query.trim().toLowerCase();
+  const matches = useCallback(
+    (o: unknown) =>
+      !q || JSON.stringify(o, (k, v) => (k === 'id' || k.endsWith('_id') ? undefined : v)).toLowerCase().includes(q),
+    [q]
+  );
+  const newHosts = (diff?.new_hosts || []).filter(matches);
+  const missingHosts = (diff?.missing_hosts || []).filter(matches);
+  const newServices = (diff?.new_services || []).filter(matches);
+  const closedServices = (diff?.closed_services || []).filter(matches);
+  const changedServices = (diff?.changed_services || []).filter(matches);
+  const timeAnomalies = (diff?.time_anomalies || []).filter(matches);
 
   const addedCount = newHosts.length + newServices.length;
   const removedCount = missingHosts.length + closedServices.length;
@@ -391,10 +401,12 @@ export function DiffPage() {
 
   const logRows = useMemo(
     () =>
-      allChanges.filter((c) =>
-        ownerFilter === ALL ? true : ownerFilter === NO_OWNER ? !ownerOf(c) : ownerOf(c) === ownerFilter
+      allChanges.filter(
+        (c) =>
+          (ownerFilter === ALL ? true : ownerFilter === NO_OWNER ? !ownerOf(c) : ownerOf(c) === ownerFilter) &&
+          matches(c)
       ),
-    [allChanges, ownerFilter]
+    [allChanges, ownerFilter, matches]
   );
 
   const scanOptions = scans.map((x) => ({
@@ -525,12 +537,24 @@ export function DiffPage() {
       )}
 
       <Tabs value={tab} onValueChange={(v) => selectTab(v as DiffTab)}>
-        <TabsList variant="line">
-          <TabsTrigger value="added">Added ({addedCount})</TabsTrigger>
-          <TabsTrigger value="removed">Removed ({removedCount})</TabsTrigger>
-          <TabsTrigger value="changed">Changed ({changedCount})</TabsTrigger>
-          <TabsTrigger value="log">Change log ({allChanges.length})</TabsTrigger>
-        </TabsList>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <TabsList variant="line">
+            <TabsTrigger value="added">Added ({addedCount})</TabsTrigger>
+            <TabsTrigger value="removed">Removed ({removedCount})</TabsTrigger>
+            <TabsTrigger value="changed">Changed ({changedCount})</TabsTrigger>
+            <TabsTrigger value="log">Change log ({q ? logRows.length : allChanges.length})</TabsTrigger>
+          </TabsList>
+          <div className="relative w-72">
+            <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter: IP, owner, product"
+              aria-label="Filter changes"
+              className="pl-8"
+            />
+          </div>
+        </div>
 
         <TabsContent value="added" className="pt-4">
           <Card size="sm" className="py-0">
