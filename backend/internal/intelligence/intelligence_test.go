@@ -91,12 +91,25 @@ func TestInterestingnessScoring(t *testing.T) {
 		},
 	}
 
+	// Admin panel + staging + debug headers are strong-ish signals and land in the medium
+	// band; five hygiene findings on top add at most domain.HygieneCap, never a band jump to
+	// critical.
 	score, factors := ScoreService(svc, nil)
-	if score < 80 || score > 100 {
-		t.Fatalf("expected high clamped score [80..100], got %d (factors=%+v)", score, factors)
+	if score < 55 || score >= 75 {
+		t.Fatalf("expected a medium score [55..75), got %d (factors=%+v)", score, factors)
 	}
 	if len(factors) < 5 {
 		t.Fatalf("expected transparent breakdown >= 5 factors, got %+v", factors)
+	}
+	sum, hygiene := 0, 0
+	for _, f := range factors {
+		sum += f.Points
+		if f.Kind == domain.FactorKindHygiene {
+			hygiene += f.Points
+		}
+	}
+	if sum != score || hygiene > domain.HygieneCap {
+		t.Fatalf("points add up to %d (score %d), hygiene %d (cap %d)", sum, score, hygiene, domain.HygieneCap)
 	}
 }
 

@@ -2,43 +2,47 @@ package intelligence
 
 import (
 	"fmt"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/signatures"
 )
 
-// exposureRisk is the base score of a network exposure by protocol. Cleartext remote
-// administration (telnet, r-services, FTP logins, VNC without auth) is scored as high as an
-// exposed admin panel: credentials cross the network unencrypted and these are the first
-// things an attacker tries. Databases and unauthenticated-by-default APIs follow.
+// exposureRisk is the standalone weight of a network exposure by protocol (see
+// domain.CombineFactors: the score this exposure alone would justify). Unauthenticated
+// control (Docker API, VNC or Redis without auth) and cleartext remote administration
+// (telnet, r-services) rank highest: credentials or full control cross the network and these
+// are the first things an attacker tries. Databases and other management ports follow; SSH
+// is near zero on its own.
 type exposureRisk struct {
 	reason string
 	points int
 }
 
 var exposureByService = map[string]exposureRisk{
-	"telnet":        {"Telnet: cleartext remote administration (credentials sent unencrypted)", 45},
-	"exec":          {"rexec: cleartext remote command execution", 45},
-	"login":         {"rlogin: cleartext remote login (host-based trust)", 45},
-	"shell":         {"rsh: cleartext remote shell (host-based trust)", 45},
-	"ftp":           {"FTP: cleartext login and file transfer", 35},
+	"telnet":        {"Telnet: cleartext remote administration (credentials sent unencrypted)", 50},
+	"exec":          {"rexec: cleartext remote command execution", 50},
+	"login":         {"rlogin: cleartext remote login (host-based trust)", 50},
+	"shell":         {"rsh: cleartext remote shell (host-based trust)", 50},
+	"ftp":           {"FTP: cleartext login and file transfer", 30},
 	"vnc":           {"VNC remote desktop exposed", 30},
-	"snmp":          {"SNMP management protocol exposed (cleartext community string)", 25},
-	"docker":        {"Docker API exposed (unauthenticated by default = root on the host)", 45},
-	"redis":         {"Redis exposed (no authentication by default)", 30},
+	"snmp":          {"SNMP management protocol exposed (cleartext community string)", 20},
+	"docker":        {"Docker API exposed (unauthenticated by default = root on the host)", 70},
+	"redis":         {"Redis exposed (no authentication by default)", 35},
 	"memcache":      {"Memcached exposed (no authentication)", 30},
-	"elasticsearch": {"Elasticsearch API exposed (no authentication by default)", 30},
-	"mongodb":       {"MongoDB exposed (no authentication by default)", 30},
+	"elasticsearch": {"Elasticsearch API exposed (no authentication by default)", 35},
+	"mongodb":       {"MongoDB exposed (no authentication by default)", 35},
 	"smb":           {"SMB file sharing exposed", 30},
 	"rdp":           {"RDP remote desktop exposed", 25},
 	"mssql":         {"MSSQL database port exposed", 25},
 	"mysql":         {"MySQL database port exposed", 25},
 	"postgresql":    {"PostgreSQL database port exposed", 25},
 	"oracle":        {"Oracle database listener exposed", 25},
-	"ssh":           {"SSH remote access exposed", 5},
-	"amqp":          {"AMQP message broker port exposed", 15},
+	"ssh":           {"SSH remote access exposed", 3},
+	"amqp":          {"AMQP message broker port exposed", 12},
 }
 
 var exposurePorts = map[int]string{
@@ -73,49 +77,63 @@ func classifyExposure(svc *domain.Service) (exposureRisk, bool) {
 	switch key {
 	case "vnc":
 		if strings.Contains(banner, "no authentication") || strings.Contains(banner, "security types: none") || strings.Contains(banner, "auth: none") {
-			r = exposureRisk{"VNC without authentication (anyone can take over the desktop)", 50}
+			r = exposureRisk{"VNC without authentication (anyone can take over the desktop)", 65}
 		}
 	case "ftp":
 		if strings.Contains(banner, "anonymous") {
-			r = exposureRisk{"FTP with anonymous login (cleartext)", 40}
+			r = exposureRisk{"FTP with anonymous login (cleartext)", 45}
 		}
 	case "redis":
 		if strings.Contains(banner, "redis: no authentication") {
-			r = exposureRisk{"Redis without authentication (anyone can read and write its data)", 40}
+			r = exposureRisk{"Redis without authentication (anyone can read and write its data)", 55}
 		} else if strings.Contains(banner, "redis: authentication required") {
-			r = exposureRisk{"Redis exposed (password protected)", 15}
+			r = exposureRisk{"Redis exposed (password protected)", 12}
 		}
 	case "snmp":
 		if strings.Contains(banner, "public") {
-			r = exposureRisk{"SNMP answers the default 'public' community", 40}
+			r = exposureRisk{"SNMP answers the default 'public' community", 45}
 		}
 	}
 	return r, true
 }
 
-// ScoreService calculates a transparent 0-100 Interestingness Score for a service
-// with an explainable list of InterestingnessFactor entries.
+// Standalone weights of the service-level flags (domain.CombineFactors).
+const (
+	WeightAdminPanel   = 35
+	WeightStaging      = 20
+	WeightBMC          = 50
+	WeightIoT          = 18
+	WeightDebugHeaders = 15
+	WeightSignatureMax = 25 // strongest matched signature that no flag above already covers
+)
+
+// ScoreService calculates a transparent 0-100 Interestingness Score for a service with an
+// explainable list of factors whose Points add up to the score. Strong signals (exposed
+// management, unauthenticated or cleartext control, BMC) weigh the most; hygiene findings
+// (headers, cookies, certificates) are capped together (domain.HygieneCap). CVE, EOL and
+// verified factors are added later by eol.ApplyScore with the same combination.
 func ScoreService(svc *domain.Service, sigMatches []signatures.MatchResult) (int, []domain.InterestingnessFactor) {
 	if svc == nil {
 		return 0, nil
 	}
 
 	var factors []domain.InterestingnessFactor
-	add := func(reason string, pts int) {
-		if pts <= 0 {
-			return
+	add := func(reason string, weight int) {
+		if weight > 0 {
+			factors = append(factors, domain.InterestingnessFactor{Reason: reason, Weight: weight})
 		}
-		factors = append(factors, domain.InterestingnessFactor{
-			Reason: reason,
-			Points: pts,
-		})
+	}
+	hygiene := func(reason string, weight int) {
+		if weight > 0 {
+			factors = append(factors, domain.InterestingnessFactor{Reason: reason, Weight: weight, Kind: domain.FactorKindHygiene})
+		}
 	}
 
 	if svc.IsAdminPanel {
-		add("Admin panel or management surface exposed", 25)
+		add("Admin panel or management surface exposed", WeightAdminPanel)
 	}
 	if svc.IsStagingEnv {
-		add("Staging, dev, test, or debug environment detected", 20)
+		add("Staging, dev, test, or debug environment detected", WeightStaging)
 	}
 	isBMC := false
 	for _, t := range svc.Technologies {
@@ -125,32 +143,32 @@ func ScoreService(svc *domain.Service, sigMatches []signatures.MatchResult) (int
 		}
 	}
 	if isBMC {
-		add("Out-of-band server management (BMC: iDRAC/iLO/IPMI) exposed - full control of the server", 30)
+		add("Out-of-band server management (BMC: iDRAC/iLO/IPMI) exposed - full control of the server", WeightBMC)
 	} else if svc.IsIoT {
-		add("IoT, printer, camera or network device management interface", 18)
+		add("IoT, printer, camera or network device management interface", WeightIoT)
 	}
 
 	if r, ok := classifyExposure(svc); ok {
 		add(r.reason, r.points)
 	}
 
-	// HTTP / TLS specific risk & hygiene signals.
+	// HTTP / TLS hygiene (low signal, capped together) and debug exposure.
 	if fp := svc.HTTP; fp != nil {
 		if fp.TLS != nil {
 			if fp.TLS.IsExpired {
-				add("TLS certificate is expired", 20)
+				hygiene("TLS certificate is expired", 8)
 			} else if fp.TLS.DaysToExpiry >= 0 && fp.TLS.DaysToExpiry <= 30 {
-				add(fmt.Sprintf("TLS certificate expiring soon (%d days)", fp.TLS.DaysToExpiry), 12)
+				hygiene(fmt.Sprintf("TLS certificate expiring soon (%d days)", fp.TLS.DaysToExpiry), 4)
 			}
 			if fp.TLS.IsSelfSigned {
-				add("Self-signed TLS certificate", 10)
+				hygiene("Self-signed TLS certificate", 4)
 			}
 		}
 
 		if len(fp.MissingSecHeaders) >= 3 {
-			add(fmt.Sprintf("Missing %d key HTTP security headers", len(fp.MissingSecHeaders)), 8)
+			hygiene(fmt.Sprintf("Missing %d key HTTP security headers", len(fp.MissingSecHeaders)), 5)
 		} else if len(fp.MissingSecHeaders) > 0 {
-			add(fmt.Sprintf("Missing %d HTTP security header(s)", len(fp.MissingSecHeaders)), 4)
+			hygiene(fmt.Sprintf("Missing %d HTTP security header(s)", len(fp.MissingSecHeaders)), 2)
 		}
 
 		insecureCookies := 0
@@ -163,7 +181,7 @@ func ScoreService(svc *domain.Service, sigMatches []signatures.MatchResult) (int
 			}
 		}
 		if insecureCookies > 0 {
-			add(fmt.Sprintf("%d cookie(s) missing HttpOnly/Secure flags", insecureCookies), 8)
+			hygiene(fmt.Sprintf("%d cookie(s) missing HttpOnly/Secure flags", insecureCookies), 4)
 		}
 
 		hasDebugHeader := false
@@ -178,66 +196,92 @@ func ScoreService(svc *domain.Service, sigMatches []signatures.MatchResult) (int
 			}
 		}
 		if hasDebugHeader {
-			add("Debug HTTP headers exposed in response", 12)
+			add("Debug HTTP headers exposed in response", WeightDebugHeaders)
 		}
 		if hasAuthHeader {
-			add("HTTP Basic/Digest authentication challenge exposed", 8)
+			hygiene("HTTP Basic/Digest authentication challenge exposed", 3)
 		}
 	}
 
-	// Add bounded signature points (preventing duplicate double-counting with base flags).
-	sigPts := 0
-	for _, m := range sigMatches {
-		if m.Matched && m.Signature.InterestingPts > 0 {
-			sigPts += m.Signature.InterestingPts
+	if name, more, pts := strongestSignature(svc, isBMC, sigMatches); pts > 0 {
+		reason := "Detection signature: " + name
+		if more > 0 {
+			reason += fmt.Sprintf(" (+%d more)", more)
 		}
-	}
-	if sigPts > 25 {
-		sigPts = 25
-	}
-	if sigPts > 0 {
-		add(fmt.Sprintf("Matched %d detection signature(s)", len(sigMatches)), sigPts)
+		add(reason, pts)
 	}
 
-	total := 0
-	for _, f := range factors {
-		total += f.Points
-	}
-	if total > 100 {
-		total = 100
-	}
-
-	sort.Slice(factors, func(i, j int) bool {
-		if factors[i].Points != factors[j].Points {
-			return factors[i].Points > factors[j].Points
-		}
-		return factors[i].Reason < factors[j].Reason
-	})
-
-	return total, factors
+	return domain.CombineFactors(factors)
 }
 
-// ScoreHost computes a host-level 0-100 Interestingness Score aggregating its
-// highest-risk service, lifecycle state, environment, and recent anomalies.
+// strongestSignature picks the matched signature with the most points that is not already
+// represented by a flag factor (admin panel, staging, BMC/IoT) or by the hygiene factors
+// (certificate, cookie and header signatures), so one finding is not counted twice.
+func strongestSignature(svc *domain.Service, isBMC bool, matches []signatures.MatchResult) (string, int, int) {
+	best, bestPts, n := "", 0, 0
+	for _, m := range matches {
+		if !m.Matched || m.Signature.InterestingPts <= 0 {
+			continue
+		}
+		switch m.Signature.Category {
+		case "interesting_header", "interesting_cookie":
+			continue
+		case "admin_panel":
+			if svc.IsAdminPanel {
+				continue
+			}
+		case "staging":
+			if svc.IsStagingEnv {
+				continue
+			}
+		case "bmc", "iot":
+			if isBMC || svc.IsIoT {
+				continue
+			}
+		}
+		n++
+		if m.Signature.InterestingPts > bestPts {
+			best, bestPts = m.Signature.Name, m.Signature.InterestingPts
+		}
+	}
+	if bestPts > WeightSignatureMax {
+		bestPts = WeightSignatureMax
+	}
+	return best, n - 1, bestPts
+}
+
+// Host-level weights (domain.CombineFactors).
+const (
+	WeightOtherServicesMax = 20 // further high-risk services together
+	WeightNewHost          = 5  // every host is new on a first scan, so this is context only
+	WeightReactivated      = 10
+	WeightIntermittent     = 5
+	WeightNonProd          = 8
+	WeightLargeSurface     = 5
+	WeightTimeAnomaly      = 15
+)
+
+// ScoreHost computes a host-level 0-100 Interestingness Score: its riskiest service (whose
+// score enters as the first factor, so it is never diluted), further high-risk services at
+// a third of their score with diminishing returns (capped together), then lifecycle,
+// environment and anomaly context.
+// The factor Points add up to the score.
 func ScoreHost(host *domain.Host, services []domain.Service, changes []domain.ChangeEvent) (int, []domain.InterestingnessFactor) {
 	if host == nil {
 		return 0, nil
 	}
 
 	var factors []domain.InterestingnessFactor
-	add := func(reason string, pts int) {
-		if pts <= 0 {
-			return
+	add := func(reason string, weight int) {
+		if weight > 0 {
+			factors = append(factors, domain.InterestingnessFactor{Reason: reason, Weight: weight})
 		}
-		factors = append(factors, domain.InterestingnessFactor{
-			Reason: reason,
-			Points: pts,
-		})
 	}
+	open := func(s domain.Service) bool { return s.State == "" || s.State == "open" }
 
 	maxIdx := -1
 	for i := range services {
-		if services[i].State != "" && services[i].State != "open" {
+		if !open(services[i]) {
 			continue
 		}
 		if maxIdx < 0 || services[i].Interestingness > services[maxIdx].Interestingness {
@@ -248,41 +292,44 @@ func ScoreHost(host *domain.Host, services []domain.Service, changes []domain.Ch
 		top := services[maxIdx]
 		why := ""
 		if len(top.InterestingFactors) > 0 {
-			why = ": " + top.InterestingFactors[0].Reason
+			why = ": " + topReasons(top.InterestingFactors)
 		}
 		add(fmt.Sprintf("Highest-risk service %d/%s %s%s", top.Port, nonEmptyStr(top.Protocol, "tcp"), nonEmptyStr(top.ServiceName, "unknown"), why), top.Interestingness)
 	}
-	// Further high-risk services add up (two cleartext admin protocols are worse than one).
-	others := 0
+	// Further high-risk services add up with diminishing returns (two cleartext admin
+	// protocols are worse than one, ten database ports are not ten times worse).
+	var ports []string
+	rest := 1.0
 	for i := range services {
-		if i != maxIdx && services[i].Interestingness >= 25 && (services[i].State == "" || services[i].State == "open") {
-			others++
+		if i != maxIdx && services[i].Interestingness >= 25 && open(services[i]) {
+			ports = append(ports, strconv.Itoa(services[i].Port))
+			rest *= 1 - float64(services[i].Interestingness)/300
 		}
 	}
-	if others > 0 {
-		pts := others * 5
-		if pts > 15 {
-			pts = 15
+	if len(ports) > 0 {
+		w := int(math.Round(100 * (1 - rest)))
+		if w > WeightOtherServicesMax {
+			w = WeightOtherServicesMax
 		}
-		add(fmt.Sprintf("%d more high-risk service(s) on the same host", others), pts)
+		add(fmt.Sprintf("%d more high-risk service(s) on the same host (port %s)", len(ports), strings.Join(ports, ", ")), w)
 	}
 
 	switch host.LifecycleState {
 	case domain.HostStateNew:
-		add("Newly discovered host on network", 12)
+		add("Newly discovered host on network", WeightNewHost)
 	case domain.HostStateReactivated:
-		add("Previously inactive host reactivated", 14)
+		add("Previously inactive host reactivated", WeightReactivated)
 	case domain.HostStateIntermittent:
-		add("Intermittent / unstable host availability", 8)
+		add("Intermittent / unstable host availability", WeightIntermittent)
 	}
 
 	env := strings.ToLower(strings.TrimSpace(host.Environment))
 	if env == "staging" || env == "dev" || env == "test" {
-		add(fmt.Sprintf("Non-production environment (%s)", env), 10)
+		add(fmt.Sprintf("Non-production environment (%s)", env), WeightNonProd)
 	}
 
 	if len(services) >= 5 {
-		add(fmt.Sprintf("Large attack surface (%d open services)", len(services)), 8)
+		add(fmt.Sprintf("Large attack surface (%d open services)", len(services)), WeightLargeSurface)
 	}
 
 	anomalyCount := 0
@@ -294,25 +341,21 @@ func ScoreHost(host *domain.Host, services []domain.Service, changes []domain.Ch
 		}
 	}
 	if anomalyCount > 0 {
-		add("Time-of-day availability anomaly detected", 15)
+		add("Time-of-day availability anomaly detected", WeightTimeAnomaly)
 	}
 
-	total := 0
-	for _, f := range factors {
-		total += f.Points
-	}
-	if total > 100 {
-		total = 100
-	}
+	return domain.CombineFactors(factors)
+}
 
-	sort.Slice(factors, func(i, j int) bool {
-		if factors[i].Points != factors[j].Points {
-			return factors[i].Points > factors[j].Points
-		}
-		return factors[i].Reason < factors[j].Reason
-	})
-
-	return total, factors
+// topReasons names the strongest one or two factors of a service for the host explanation.
+func topReasons(fs []domain.InterestingnessFactor) string {
+	sorted := append([]domain.InterestingnessFactor(nil), fs...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Points > sorted[j].Points })
+	out := sorted[0].Reason
+	if len(sorted) > 1 && sorted[1].Points >= 10 {
+		out += "; " + sorted[1].Reason
+	}
+	return out
 }
 
 func nonEmptyStr(s, def string) string {

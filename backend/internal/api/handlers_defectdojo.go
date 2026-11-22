@@ -145,15 +145,11 @@ func (s *Server) handlePushDefectDojoFindings(w http.ResponseWriter, r *http.Req
 		eol.Annotate(svc, time.Now().UTC())
 		sev := req.Severity
 		if sev == "" {
-			switch {
-			case svc.Interestingness >= 75 || svc.IsAdminPanel:
-				sev = "High"
-			case svc.Interestingness >= 45 || svc.IsStagingEnv:
+			// From the recalibrated score; an exposed console or a staging instance is at
+			// least Medium whatever else is (not) known about it.
+			sev = domain.ScoreSeverity(svc.Interestingness)
+			if (svc.IsAdminPanel || svc.IsStagingEnv) && (sev == "Low" || sev == "Info") {
 				sev = "Medium"
-			case svc.Interestingness >= 20:
-				sev = "Low"
-			default:
-				sev = "Info"
 			}
 		}
 		title := fmt.Sprintf("Exposed Service %s:%d/%s (%s)", svc.HostIP, svc.Port, svc.Protocol, nonEmptyStr(svc.Product, svc.ServiceName))

@@ -1,17 +1,18 @@
 package eol
 
 import (
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// Interestingness points for the derived flags.
+// Standalone weights of the derived flags (domain.CombineFactors). An end-of-life branch or a
+// passive, version-only CVE hint is worth a look, not an alarm: on its own it stays in the
+// low band.
 const (
-	PointsEOL       = 15
-	PointsKnownVuln = 20
+	PointsEOL       = 12
+	PointsKnownVuln = 15
 	TagEOL          = "eol"
 	TagKnownVuln    = "known-vuln"
 	factorPrefixEOL = "EOL version: "
@@ -76,8 +77,9 @@ func AnnotateServices(services []domain.Service, now time.Time) {
 	}
 }
 
-// ApplyScore annotates svc and folds the result into its interestingness factors, score
-// (capped at 100) and tags ("eol", "known-vuln"). Used once on ingest; idempotent.
+// ApplyScore annotates svc and folds the result into its interestingness factors and score
+// (domain.CombineFactors: diminishing returns, Points add up to the score) and its tags
+// ("eol", "known-vuln"). Used once on ingest; idempotent.
 func ApplyScore(svc *domain.Service, now time.Time) {
 	if svc == nil {
 		return
@@ -107,16 +109,7 @@ func ApplyScore(svc *domain.Service, now time.Time) {
 		svc.Tags = addTag(svc.Tags, TagKnownVuln)
 	}
 	kept = append(kept, extra...)
-	sort.SliceStable(kept, func(i, j int) bool { return kept[i].Points > kept[j].Points })
-	total := 0
-	for _, f := range kept {
-		total += f.Points
-	}
-	if total > 100 {
-		total = 100
-	}
-	svc.InterestingFactors = kept
-	svc.Interestingness = total
+	svc.Interestingness, svc.InterestingFactors = domain.CombineFactors(kept)
 }
 
 func addTag(tags []string, t string) []string {

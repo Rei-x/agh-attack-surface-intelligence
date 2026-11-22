@@ -178,12 +178,17 @@ func TestApplyScoreIdempotent(t *testing.T) {
 	svc := &domain.Service{Product: "Apache httpd", Version: "2.4.49", Interestingness: 10,
 		InterestingFactors: []domain.InterestingnessFactor{{Reason: "x", Points: 10}}}
 	ApplyScore(svc, asOf)
+	first := svc.Interestingness
 	ApplyScore(svc, asOf)
 	if len(svc.KnownVulns) != 2 { // CVE-2021-41773 + CVE-2021-42013
 		t.Fatalf("hints: %+v", svc.KnownVulns)
 	}
-	if svc.Interestingness != 10+PointsKnownVuln || len(svc.InterestingFactors) != 2 {
-		t.Fatalf("score not idempotent: %d %+v", svc.Interestingness, svc.InterestingFactors)
+	// Diminishing returns: hint 15, then 10% of the remaining 85 = 23.5 -> 24, every time.
+	if svc.Interestingness != 24 || first != 24 || len(svc.InterestingFactors) != 2 {
+		t.Fatalf("score not idempotent: %d then %d %+v", first, svc.Interestingness, svc.InterestingFactors)
+	}
+	if sum := svc.InterestingFactors[0].Points + svc.InterestingFactors[1].Points; sum != svc.Interestingness {
+		t.Fatalf("factor points add up to %d, score %d", sum, svc.Interestingness)
 	}
 	if !contains(svc.Tags, TagKnownVuln) || contains(svc.Tags, TagEOL) {
 		t.Fatalf("tags: %v", svc.Tags)

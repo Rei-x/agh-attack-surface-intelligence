@@ -409,9 +409,13 @@ type DetectedTechnology struct {
 }
 
 // InterestingnessFactor is one reason contributing points to an interestingness score.
+// Points add up to the score; Weight is the factor's standalone severity before diminishing
+// returns (see CombineFactors).
 type InterestingnessFactor struct {
 	Reason string `json:"reason"`
 	Points int    `json:"points"`
+	Weight int    `json:"weight,omitempty"`
+	Kind   string `json:"kind,omitempty"` // "hygiene": low-signal, capped together
 }
 
 // TimeSlotStat counts how often a host was seen in one time-of-day slot.
