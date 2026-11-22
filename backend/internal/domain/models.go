@@ -695,6 +695,8 @@ type GraphEdge struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Label  string `json:"label"`
+	// Weight is the number of hosts behind an aggregated edge (0 for plain edges).
+	Weight int `json:"weight,omitempty"`
 }
 
 // Triage statuses shared by services and hosts.

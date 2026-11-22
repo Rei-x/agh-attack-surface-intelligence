@@ -583,6 +583,8 @@ export interface GraphEdge {
   source: string;
   target: string;
   label?: string;
+  /** Hosts behind an aggregated (block to technology) edge. */
+  weight?: number;
 }
 
 export interface GraphSubnetSummary {
@@ -599,12 +601,18 @@ export interface GraphQuery {
   mode?: GraphMode;
   limit?: number;
   subnet?: string;
+  /** CIDR of an overview block: the response lists its /24 subnets. */
+  block?: string;
   q?: string;
   state?: string;
   min_score?: number;
   admin_only?: boolean;
   staging_only?: boolean;
+  admin_or_staging?: boolean;
 }
+
+/** overview: address blocks; block: /24s of one block; subnet: one /24; detailed: top hosts. */
+export type GraphLevel = 'overview' | 'block' | 'subnet' | 'detailed';
 
 export interface GraphResponse {
   nodes: GraphNode[];
@@ -614,6 +622,14 @@ export interface GraphResponse {
   shown_hosts: number;
   clustered: boolean;
   mode: GraphMode | string;
+  level?: GraphLevel;
+  /** Prefix of overview blocks (stable per data set), e.g. 22. */
+  block_prefix?: number;
+  /** Prefix of group nodes on an aggregated level. */
+  group_prefix?: number;
+  /** Block being shown, or the block holding the shown subnet. */
+  block?: string;
+  hidden_groups?: number;
   limit: number;
   subnets: GraphSubnetSummary[];
 }

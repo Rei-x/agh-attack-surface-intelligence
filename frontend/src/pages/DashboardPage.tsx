@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { RiArrowRightUpLine, RiNodeTree, RiRefreshLine, RiSendPlaneLine } from '@remixicon/react';
-import { Bar, BarChart, CartesianGrid, Cell, Label, Line, LineChart, Pie, PieChart, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Cell, Label, Line, LineChart, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import {
   ChartContainer,
   ChartLegend,
@@ -70,23 +70,62 @@ const lifecycleConfig = Object.fromEntries(
   LIFECYCLE_ORDER.map((s) => [s, { label: lifecycleMeta(s).label, color: lifecycleMeta(s).stroke }])
 ) satisfies ChartConfig;
 
-const RISK_LABEL_W = 150;
-const riskConfig = { score: { label: 'Max score' } } satisfies ChartConfig;
-
-function scoreFill(score: number): string {
-  if (score >= 90) return '#f43f5e';
-  if (score >= 75) return '#f97316';
-  if (score >= 50) return '#f59e0b';
-  if (score >= 25) return '#0ea5e9';
-  return '#a8a29e';
+/** Calm risk bands: red only for critical (>= 90), then orange, amber, neutral. */
+function riskBandFill(score: number): string {
+  if (score >= 90) return 'bg-rose-500/55';
+  if (score >= 75) return 'bg-orange-400/70';
+  if (score >= 50) return 'bg-amber-400/70';
+  return 'bg-stone-400/70';
 }
 
-/** Products ranked by their riskiest service, across all hosts (from the inventory). */
+/** Products ranked by their riskiest service, across all hosts (from the inventory). Within a
+ * band the more widespread product goes first: it is the bigger exposure. */
 function buildRiskRows(products: InventoryProduct[]): InventoryProduct[] {
+  const band = (s: number) => (s >= 90 ? 3 : s >= 75 ? 2 : s >= 50 ? 1 : 0);
   return [...products]
     .filter((p) => p.max_score > 0)
-    .sort((a, b) => b.max_score - a.max_score || b.host_count - a.host_count)
+    .sort(
+      (a, b) =>
+        band(b.max_score) - band(a.max_score) || b.host_count - a.host_count || b.max_score - a.max_score
+    )
     .slice(0, 6);
+}
+
+/**
+ * Risk by technology as a plain grid: fixed logo slot, truncating name, a bar whose length is
+ * the host count (exposure) and whose colour is the risk band, then the score and host count in
+ * content-sized columns that never overflow the card.
+ */
+function RiskByTechnology({ rows }: { rows: InventoryProduct[] }) {
+  const maxHosts = Math.max(1, ...rows.map((r) => r.host_count));
+  return (
+    <ul className="grid grid-cols-[20px_minmax(0,1fr)_minmax(40px,24%)_auto_auto] items-center gap-x-2.5 gap-y-2">
+      {rows.map((row) => (
+        <li key={row.name} className="col-span-5 grid grid-cols-subgrid items-center">
+          <Link to={assetsLink(row.query)} className="col-span-5 grid grid-cols-subgrid items-center gap-x-2.5 py-0.5 hover:[&_.risk-name]:underline">
+            <span className="flex size-5 items-center justify-center overflow-visible">
+              <ServiceLogo names={row.logo_names} size="xs" title={false} />
+            </span>
+            <span className="risk-name truncate text-xs" title={row.name}>
+              {row.name.replace(/\s*\(.*\)$/, '')}
+            </span>
+            <span className="h-1.5 w-full bg-muted" title={plural(row.host_count, 'host')}>
+              <span
+                className={cn('block h-full', riskBandFill(row.max_score))}
+                style={{ width: `${Math.max(4, (row.host_count / maxHosts) * 100)}%` }}
+              />
+            </span>
+            <Pill className={cn('justify-center font-mono tabular-nums', scoreColor(row.max_score))}>
+              {row.max_score}
+            </Pill>
+            <span className="text-right font-mono text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">
+              {formatNumber(row.host_count)} {row.host_count === 1 ? 'host' : 'hosts'}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 const cardTitleCls = 'text-xs tracking-widest text-muted-foreground';
@@ -575,89 +614,7 @@ export function DashboardPage() {
               {riskRows.length === 0 ? (
                 <Empty>No data</Empty>
               ) : (
-                <ChartContainer
-                  config={riskConfig}
-                  className="aspect-auto w-full"
-                  style={{ height: riskRows.length * 32 }}
-                >
-                  <BarChart
-                    data={riskRows}
-                    layout="vertical"
-                    margin={{ top: 0, right: 84, left: 0, bottom: 0 }}
-                    barSize={14}
-                  >
-                    <XAxis type="number" dataKey="max_score" domain={[0, 100]} hide />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={RISK_LABEL_W}
-                      tickLine={false}
-                      axisLine={false}
-                      tick={({ x, y, index }) => {
-                        const row = riskRows[index];
-                        if (!row) return <g />;
-                        return (
-                          <foreignObject x={Number(x) - RISK_LABEL_W} y={Number(y) - 11} width={RISK_LABEL_W - 8} height={22}>
-                            <Link to={assetsLink(row.query)} className="flex h-full items-center gap-2 hover:underline">
-                              <ServiceLogo names={row.logo_names} size="xs" title={false} />
-                              <span className="truncate text-[11px] text-muted-foreground" title={row.name}>
-                                {row.name.replace(/\s*\(.*\)$/, "")}
-                              </span>
-                            </Link>
-                          </foreignObject>
-                        );
-                      }}
-                    />
-                    <ChartTooltip
-                      cursor={false}
-                      content={
-                        <ChartTooltipContent
-                          hideIndicator
-                          formatter={(_v, _n, item) => {
-                            const row = item.payload as InventoryProduct;
-                            return (
-                              <div className="flex w-full flex-col gap-0.5 font-mono tabular-nums">
-                                <span>max score {row.max_score}</span>
-                                <span className="text-muted-foreground">{plural(row.host_count, 'host')}</span>
-                                {row.eol_count > 0 && <span className="text-muted-foreground">{row.eol_count} EOL</span>}
-                              </div>
-                            );
-                          }}
-                        />
-                      }
-                    />
-                    <Bar
-                      dataKey="max_score"
-                      isAnimationActive={false}
-                      radius={2}
-                      background={{ fill: 'var(--muted)', radius: 2 }}
-                      className="cursor-pointer"
-                      onClick={(d) => {
-                        const row = (d as { payload?: InventoryProduct })?.payload;
-                        if (row) navigate(assetsLink(row.query));
-                      }}
-                      label={({ x, y, width, height, index }) => {
-                        const row = riskRows[Number(index)];
-                        if (!row) return null;
-                        return (
-                          <text
-                            x={Number(x) + Number(width) + 6}
-                            y={Number(y) + Number(height) / 2}
-                            dominantBaseline="middle"
-                            className="fill-foreground font-mono text-[11px]"
-                          >
-                            {row.max_score}
-                            <tspan className="fill-muted-foreground"> · {row.host_count === 1 ? "1 host" : `${row.host_count} hosts`}</tspan>
-                          </text>
-                        );
-                      }}
-                    >
-                      {riskRows.map((r) => (
-                        <Cell key={r.name} fill={scoreFill(r.max_score)} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ChartContainer>
+                <RiskByTechnology rows={riskRows} />
               )}
             </CardContent>
           </Card>

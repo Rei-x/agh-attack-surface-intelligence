@@ -236,6 +236,11 @@ export const api = {
       clustered: Boolean(res?.clustered),
       mode: res?.mode || params?.mode || 'auto',
       limit: res?.limit ?? params?.limit ?? 50,
+      level: res?.level,
+      block_prefix: res?.block_prefix,
+      group_prefix: res?.group_prefix,
+      block: res?.block,
+      hidden_groups: res?.hidden_groups,
       subnets: res?.subnets || [],
     };
   },
