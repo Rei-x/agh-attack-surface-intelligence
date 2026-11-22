@@ -146,7 +146,7 @@ func (s *Service) RunProfile(ctx context.Context, profileID, hostID, scanRunID, 
 			checked = appendUniq(checked, f.ServiceID)
 		}
 	}
-	if err := s.Results.Record(context.WithoutCancel(ctx), checked, findings, sum); err != nil {
+	if err := s.Results.Record(context.WithoutCancel(ctx), checked, findings, sum, st.Inconclusive); err != nil {
 		sum.Error = strings.TrimSpace(sum.Error + " saving results: " + err.Error())
 	}
 	if s.Audit != nil {

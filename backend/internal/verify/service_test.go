@@ -12,6 +12,24 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
+// A check that could not complete keeps its earlier finding; one that answered without
+// confirming clears it (fixed).
+func TestRecordKeepsInconclusive(t *testing.T) {
+	ctx := context.Background()
+	st := NewStore(nil)
+	f := []domain.VerifiedFinding{{CheckID: "redis-unauth", ServiceID: "s1"}, {CheckID: "tls-certificate", ServiceID: "s1"}}
+	_ = st.Record(ctx, []string{"s1"}, f, RunSummary{}, nil)
+	_ = st.Record(ctx, []string{"s1"}, nil, RunSummary{}, map[string][]string{"s1": {"redis-unauth"}})
+	got := st.ForService("s1")
+	if len(got) != 1 || got[0].CheckID != "redis-unauth" {
+		t.Fatalf("after an inconclusive run: %+v", got)
+	}
+	_ = st.Record(ctx, []string{"s1"}, nil, RunSummary{}, nil)
+	if st.ForService("s1") != nil {
+		t.Fatal("a conclusive negative run must clear the finding")
+	}
+}
+
 func TestServiceOptInScopeAndAnnotation(t *testing.T) {
 	ctx := context.Background()
 	vault, _ := crypto.NewVault("")

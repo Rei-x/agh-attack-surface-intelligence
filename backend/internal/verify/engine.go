@@ -62,6 +62,9 @@ type Stats struct {
 	OutOfScope        int `json:"out_of_scope"`
 	Errors            int `json:"errors"`
 	DefaultCredsTried int `json:"default_creds_tried"`
+	// Inconclusive lists, per service id, the checks that could not complete (connection
+	// refused, timeout): their previous result is kept instead of being treated as fixed.
+	Inconclusive map[string][]string `json:"-"`
 }
 
 const (
@@ -122,6 +125,10 @@ func (e *Engine) Run(ctx context.Context, targets []Target, opt Options) ([]doma
 			f, err := e.runCheck(ctx, c, t, opt)
 			if err != nil {
 				st.Errors++
+				if st.Inconclusive == nil {
+					st.Inconclusive = map[string][]string{}
+				}
+				st.Inconclusive[t.Service.ID] = append(st.Inconclusive[t.Service.ID], c.ID)
 				continue
 			}
 			if f != nil {

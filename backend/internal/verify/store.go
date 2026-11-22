@@ -86,13 +86,28 @@ func (s *Store) ForService(id string) []domain.VerifiedFinding {
 	return append([]domain.VerifiedFinding(nil), f...)
 }
 
-// Record replaces the findings of every checked service (a service checked again without
-// findings is cleared: the exposure was fixed) and stores the run summary.
-func (s *Store) Record(ctx context.Context, checked []string, findings []domain.VerifiedFinding, sum RunSummary) error {
+// Record replaces the findings of every checked service (a check that answered without
+// confirming clears its earlier finding: the exposure was fixed) and stores the run summary.
+// Findings of checks that could not complete this time (inconclusive: service down,
+// timeout) are kept.
+func (s *Store) Record(ctx context.Context, checked []string, findings []domain.VerifiedFinding, sum RunSummary, inconclusive map[string][]string) error {
 	s.load(ctx)
 	s.mu.Lock()
 	for _, id := range checked {
-		delete(s.byService, id)
+		var kept []domain.VerifiedFinding
+		for _, f := range s.byService[id] {
+			for _, c := range inconclusive[id] {
+				if c == f.CheckID {
+					kept = append(kept, f)
+					break
+				}
+			}
+		}
+		if len(kept) > 0 {
+			s.byService[id] = kept
+		} else {
+			delete(s.byService, id)
+		}
 	}
 	for _, f := range findings {
 		s.byService[f.ServiceID] = append(s.byService[f.ServiceID], f)
