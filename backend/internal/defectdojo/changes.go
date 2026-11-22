@@ -244,7 +244,7 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 		f := newFinding(h, kind, title, severity, serviceDescription(h, s, kind, evidence))
 		f.UniqueIDFromTool = UniqueID(s.HostIP, s.Port, proto, "dz-change:"+kind+idSuffix)
 		f.VulnIDFromTool = kind
-		f.Date = dateOf(s.FirstSeen, now)
+		f.Date = FindingDate(s.FirstSeen, now)
 		// No finding.service here: DefectDojo's close_old_findings only closes findings whose
 		// service matches the reimport's (unset) service, so setting it would keep fixed
 		// items open forever.
@@ -257,31 +257,28 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 	}
 
 	if label, risky := ingest.RiskyExposure(s.Port, s.ServiceName); risky {
-		add(KindExposure, "", fmt.Sprintf("Risky service exposed: %s (%s) on %s", label, s.ServiceName, where), exposureSeverity(label),
+		add(KindExposure, "", fmt.Sprintf("Risky service exposed: %s (%s) on %s", label, s.ServiceName, where), ExposureSeverity(label),
 			fmt.Sprintf("Port %d/%s (%s) is reachable from the scanning network. Remote access, file sharing and database services should not be exposed without a reason.", s.Port, proto, label),
 			func(g *genericFinding) {
 				g.Mitigation = "Check with the owner whether the service is needed; if not, turn it off or restrict access with a firewall/VPN."
 			})
 	}
 	if s.IsAdminPanel {
-		add(KindAdmin, "", fmt.Sprintf("Admin panel exposed: %s on %s", adminName(s), where), "Medium",
+		add(KindAdmin, "", fmt.Sprintf("Admin panel exposed: %s on %s", adminName(s), where), SeverityAdminPanel,
 			"Admin panel / management console detected: "+adminEvidence(s)+".",
 			func(g *genericFinding) {
 				g.Mitigation = "A management panel should not be reachable from the whole network: restrict access (VPN, allowlist) and enforce strong authentication."
 			})
 	}
 	if s.IsStagingEnv {
-		add(KindStaging, "", fmt.Sprintf("Test/staging environment exposed on %s", where), "Low",
+		add(KindStaging, "", fmt.Sprintf("Test/staging environment exposed on %s", where), SeverityStaging,
 			"The service looks like a development/test environment (staging, dev, debug). Such instances often have weaker configuration and test data.",
 			func(g *genericFinding) {
 				g.Mitigation = "Confirm with the owner whether the instance is needed; remove it or put it behind a VPN."
 			})
 	}
 	for _, o := range s.Outdated {
-		sev := "Medium"
-		if o.DistroPackaged {
-			sev = "Low"
-		}
+		sev := EOLSeverity(o)
 		o := o
 		add(KindEOL, ":"+strings.ToLower(o.Product)+":"+o.Branch,
 			fmt.Sprintf("%s %s: branch %s EOL since %s, on %s", o.Product, versionShort(o.Version), o.Branch, o.EOLDate, where), sev,
@@ -312,7 +309,7 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 	for _, v := range s.KnownVulns {
 		v := v
 		add(KindKnownVuln, ":"+v.ID,
-			fmt.Sprintf("[passive hint] %s: %s %s on %s", v.ID, v.Product, versionShort(v.Version), where), "Medium",
+			fmt.Sprintf("[passive hint] %s: %s %s on %s", v.ID, v.Product, versionShort(v.Version), where), SeverityPassiveHint,
 			v.Evidence,
 			func(g *genericFinding) {
 				g.ComponentName, g.ComponentVersion = v.Product, versionShort(v.Version)
@@ -321,7 +318,7 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 			})
 	}
 	if len(out) == 0 && isNew(s.FirstSeen, baseline, now) {
-		add(KindNew, "", fmt.Sprintf("New service: %s on %s", nonEmpty(strings.TrimSpace(s.ServiceName+" "+s.Product), "tcp"), where), "Low",
+		add(KindNew, "", fmt.Sprintf("New service: %s on %s", nonEmpty(strings.TrimSpace(s.ServiceName+" "+s.Product), "tcp"), where), SeverityNewService,
 			"The service appeared after the first scan of this scope (first seen: "+s.FirstSeen.UTC().Format("2006-01-02 15:04 UTC")+"). Who started it, and is it needed?",
 			nil)
 	}
@@ -474,12 +471,6 @@ func versionShort(v string) string {
 	return strings.TrimSpace(v)
 }
 
-func dateOf(t, fallback time.Time) string {
-	if t.IsZero() {
-		t = fallback
-	}
-	return t.UTC().Format("2006-01-02")
-}
 
 func tagSlug(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))

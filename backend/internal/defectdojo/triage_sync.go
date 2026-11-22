@@ -13,20 +13,6 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// cleartextOrUnauth are exposures that hand over credentials or data without any
-// authentication; they are High in DefectDojo (the same band as the Dzięcioł score).
-var cleartextOrUnauth = map[string]bool{
-	"Telnet": true, "TELNET": true, "FTP": true, "VNC": true, "Docker API": true, "Redis": true,
-	"MongoDB": true, "Elasticsearch": true, "Memcached": true, "CouchDB": true,
-}
-
-func exposureSeverity(label string) string {
-	if cleartextOrUnauth[label] {
-		return "High"
-	}
-	return "Medium"
-}
-
 // DefectDojo finding states mirrored per finding.
 const (
 	DojoStateActive       = "active"
