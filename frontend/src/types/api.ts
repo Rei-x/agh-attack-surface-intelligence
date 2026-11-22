@@ -980,6 +980,12 @@ export interface DefectDojoSyncState {
   nmap_pushed_at?: string;
 }
 
+/** A DefectDojo account typed in by an admin; the header chip shows it to everyone signed in. */
+export interface DefectDojoLogin {
+  username: string;
+  password: string;
+}
+
 export interface DefectDojoStatus {
   configured: boolean;
   url: string;
@@ -987,6 +993,7 @@ export interface DefectDojoStatus {
   auto_push_findings: boolean;
   sync: DefectDojoSyncState;
   last_export?: DefectDojoExport;
+  login?: DefectDojoLogin;
 }
 
 export interface DefectDojoServiceStatus {

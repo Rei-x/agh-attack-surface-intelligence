@@ -80,6 +80,9 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 - `POST /api/v1/integrations/defectdojo/push-findings` → `{service_ids[], change_ids[], engagement_id, severity}`
 - `POST /api/v1/integrations/defectdojo/push-nmap` → `{scan_run_id, engagement_id}`
 - `GET /api/v1/integrations/defectdojo/history`
+- `GET /api/v1/integrations/defectdojo/status` (`assets:read`) → header chip: `{configured, url, auto_push_nmap, auto_push_findings, sync, last_export?, login?}`. `login` is `{username, password}` of the DefectDojo account set in Admin, returned to every user who can read the chip; it is absent when none is set.
+- `PUT /api/v1/integrations/defectdojo/login` (`admin:settings`) → `{username, password}` stores the login shown in the header chip (encrypted at rest); both fields are required, both empty clears it. Answers `{login}`.
+- `DELETE /api/v1/integrations/defectdojo/login` (`admin:settings`) → clears the login, answers `{login: null}`.
 
 ### Admin: Users, Dynamic Roles, Crypto Proof & Audit
 - `GET /api/v1/admin/users` | `POST /api/v1/admin/users` | `PUT /api/v1/admin/users/:id` | `DELETE /api/v1/admin/users/:id`

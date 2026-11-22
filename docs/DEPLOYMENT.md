@@ -371,6 +371,10 @@ Runs a 10-stage verification: health and crypto status, 4-role RBAC `200`/`403` 
 | `DZIECIOL_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | No | `false` | Sends `deduplication_on_engagement=true` when DefectDojo auto-creates the engagement. |
 | `DZIECIOL_DEFECTDOJO_MINIMUM_SEVERITY` | No | `Info` | `minimum_severity` for reimports (`Info`, `Low`, `Medium`, `High`, `Critical`). |
 
+### DefectDojo login in the header chip
+
+So people reviewing the results can open DefectDojo without asking for an account, an admin can type in the username and password of an existing DefectDojo account under **Admin > DefectDojo > Login shown in the header**. Everyone signed in to Dzięcioł then sees it, with copy buttons, in the popover of the DefectDojo chip in the header, next to the button that opens the "Dzięcioł changes" test. Pick an account whose DefectDojo permissions you are happy to share with every Dzięcioł user. The login is stored encrypted like the API token (vault, AES-256-GCM, rotated with the DEK) and is never logged; **Clear** removes it from the chip.
+
 ---
 
 ## 6. Key management and online DEK rotation
