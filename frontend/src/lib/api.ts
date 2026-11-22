@@ -17,6 +17,7 @@ import type {
   HostPage,
   InventoryResponse,
   LoginResponse,
+  QuickScanInfo,
   Role,
   ScanDiffResponse,
   ScanProfile,
@@ -572,6 +573,12 @@ export const api = {
   createAgentToken: (payload: { name?: string; site?: string; ttl_hours?: number }) =>
     request<CreatedAgentToken>('/api/v1/agents/tokens', { method: 'POST', body: JSON.stringify(payload) }),
   revokeAgentToken: (id: string) => request<void>(`/api/v1/agents/tokens/${id}`, { method: 'DELETE' }),
+
+  quickScanInfo: () => request<QuickScanInfo>('/api/v1/quickscan'),
+  // Starts the lab quick scan, or returns the lab scan already running (joined: true).
+  quickScanLab: () => request<{ run: ScanRun; joined: boolean }>('/api/v1/quickscan/lab', { method: 'POST' }),
+  quickScanAgent: (payload: { agent_id: string; target: string }) =>
+    request<{ run: ScanRun }>('/api/v1/quickscan/agent', { method: 'POST', body: JSON.stringify(payload) }),
 
   listUsers: async (): Promise<User[]> => {
     const res = await request<unknown>('/api/v1/admin/users');

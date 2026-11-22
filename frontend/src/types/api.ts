@@ -138,7 +138,20 @@ export interface AgentCapabilities {
   os?: string;
   arch?: string;
   hostname?: string;
+  screenshots?: boolean;
   allow_cidrs?: string[];
+  /** No --allow-cidr given: allow_cidrs are the private networks of the agent's interfaces. */
+  allow_from_interfaces?: boolean;
+  local_subnets?: LocalSubnet[];
+}
+
+/** A private network the agent host is attached to (offered as a one-click target). */
+export interface LocalSubnet {
+  cidr: string;
+  address?: string;
+  interface?: string;
+  /** Container or VM bridge (docker0, br-*, vmnet ...). */
+  virtual?: boolean;
 }
 
 export interface Agent {
@@ -172,8 +185,37 @@ export interface CreatedAgentToken {
   token: string;
   enroll_token: AgentEnrollToken;
   server_url: string;
+  /** Linux with systemd: `curl <server>/install.sh | sudo sh -s -- --agent ...` */
   install_command: string;
+  /** macOS or no root: the same installer, agent running in the terminal. */
+  foreground_command: string;
   run_command: string;
+  /** os/arch builds this server hands out. */
+  platforms?: string[];
+}
+
+/** The "Our lab network" option of the Quick scan dialog (GET /api/v1/quickscan). */
+export interface QuickScanLab {
+  available: boolean;
+  reason?: string;
+  profile_id?: string;
+  profile_name?: string;
+  targets?: string[];
+  total_ips?: number;
+  port_count?: number;
+  agent_id?: string;
+  agent_name?: string;
+  agent_online?: boolean;
+  /** A click joins this run instead of starting another one. */
+  active_run_id?: string;
+}
+
+export interface QuickScanInfo {
+  lab: QuickScanLab;
+  server_url: string;
+  platforms?: string[];
+  /** Who can create agent commands (only sent to users without admin:settings). */
+  token_admins?: string[];
 }
 
 export interface ScheduleRunRef {

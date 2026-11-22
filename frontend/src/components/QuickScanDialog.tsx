@@ -3,15 +3,20 @@ import type React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   RiArrowDownSLine,
+  RiArrowLeftLine,
   RiFlashlightLine,
+  RiFlaskLine,
+  RiHome4Line,
   RiPlayFill,
   RiRadarLine,
+  RiTerminalBoxLine,
 } from '@remixicon/react';
 import { api } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
-import { formatDurationSeconds, formatNumber } from '@/lib/format';
+import { formatDurationSeconds, formatNumber, plural } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { TargetEstimate } from '@/types/api';
+import type { QuickScanInfo, ScanRun, TargetEstimate } from '@/types/api';
+import { OwnNetworkView, useAgentSetupState } from '@/components/QuickScanAgent';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -63,9 +68,19 @@ function EstimateCell({ label, value, tone }: { label: string; value: React.Reac
   );
 }
 
-export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+/** "Enter targets yourself": any IP, CIDR, range or domain from this server. */
+function CustomTargetsView({
+  open,
+  onBack,
+  onStarted,
+  onFullSetup,
+}: {
+  open: boolean;
+  onBack: () => void;
+  onStarted: (run: ScanRun) => void;
+  onFullSetup: () => void;
+}) {
   const toast = useToast();
-  const navigate = useNavigate();
 
   const [targetsText, setTargetsText] = useState('');
   const [ports, setPorts] = useState(DEFAULT_PORTS);
@@ -142,7 +157,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
         'Scan started',
         `${run?.name || 'Quick scan'} · ${formatNumber(estimate?.effective_ips ?? run?.total_ips)} IP`
       );
-      onOpenChange(false);
+      onStarted(run);
     } catch (err) {
       toast.error('Could not start scan', (err as Error).message);
     } finally {
@@ -151,8 +166,7 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => onOpenChange(o)}>
-      <DialogContent className="gap-5 sm:max-w-xl">
+    <>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RiRadarLine className="size-5 text-primary" />
@@ -291,24 +305,226 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
           </div>
 
           <DialogFooter className="items-center sm:justify-between">
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="px-0 text-muted-foreground"
-              onClick={() => {
-                onOpenChange(false);
-                navigate('/scans');
-              }}
-            >
-              Full scanner setup →
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+                <RiArrowLeftLine data-icon="inline-start" /> Back
+              </Button>
+              <Button type="button" variant="link" size="sm" className="px-0 text-muted-foreground" onClick={onFullSetup}>
+                Full scanner setup →
+              </Button>
+            </div>
             <Button type="submit" disabled={targets.length === 0 || submitting}>
               {submitting ? <PeckSpinner className="h-3.5" /> : <RiPlayFill />}
               Start scan
             </Button>
           </DialogFooter>
         </form>
+    </>
+  );
+}
+
+type View = 'choose' | 'agent' | 'custom';
+
+/** One big choice per option: the option body explains it, the button starts it. */
+function OptionCard({
+  icon: Icon,
+  title,
+  children,
+  action,
+  highlight,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  children: React.ReactNode;
+  action: React.ReactNode;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={cn('flex flex-col gap-3 border p-4', highlight ? 'border-primary/50 bg-primary/5' : 'border-border')}>
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <Icon className={cn('size-4', highlight ? 'text-primary' : 'text-muted-foreground')} />
+        {title}
+      </div>
+      <div className="space-y-1.5 text-xs text-muted-foreground">{children}</div>
+      <div>{action}</div>
+    </div>
+  );
+}
+
+function ChooseView({
+  info,
+  infoError,
+  startingLab,
+  onLab,
+  onAgent,
+  onCustom,
+  onFullSetup,
+}: {
+  info: QuickScanInfo | null;
+  infoError: string | null;
+  startingLab: boolean;
+  onLab: () => void;
+  onAgent: () => void;
+  onCustom: () => void;
+  onFullSetup: () => void;
+}) {
+  const lab = info?.lab;
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <RiRadarLine className="size-5 text-primary" />
+          Quick scan
+        </DialogTitle>
+        <DialogDescription>
+          Pick a network. You land on a live view where hosts and services appear while the scan runs.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="grid gap-3">
+        <OptionCard
+          icon={RiFlaskLine}
+          title="Our lab network"
+          highlight
+          action={
+            <Button onClick={onLab} disabled={!lab?.available || startingLab}>
+              {startingLab ? <PeckSpinner className="h-3.5" /> : <RiPlayFill data-icon="inline-start" />}
+              {lab?.active_run_id ? 'Watch the lab scan' : 'Scan the lab'}
+            </Button>
+          }
+        >
+          {!info && !infoError && (
+            <span className="inline-flex items-center gap-2">
+              <PeckSpinner className="h-3" /> Checking the lab
+            </span>
+          )}
+          {infoError && <Notice tone="danger">{infoError}</Notice>}
+          {lab && lab.available && (
+            <>
+              <p>
+                A test range built like a campus network, with web apps, admin panels, databases and devices.
+                Hosts show up block by block; the whole run takes a few minutes.
+              </p>
+              <p className="font-mono text-[11px] text-foreground/80">
+                {lab.targets?.join(', ')} · {plural(lab.total_ips ?? 0, 'address', 'addresses')}
+                {lab.port_count ? ` · ${formatNumber(lab.port_count)} ports` : ''}
+                {lab.agent_name ? ` · agent ${lab.agent_name}` : ''}
+              </p>
+              {lab.active_run_id && <p>A lab scan is already running. You will join it.</p>}
+            </>
+          )}
+          {lab && !lab.available && (
+            <Notice tone="warning">The lab scan is not available right now: {lab.reason}.</Notice>
+          )}
+        </OptionCard>
+
+        <OptionCard
+          icon={RiHome4Line}
+          title="Your own network"
+          action={
+            <Button variant="outline" onClick={onAgent}>
+              <RiTerminalBoxLine data-icon="inline-start" /> Set up an agent
+            </Button>
+          }
+        >
+          <p>
+            Paste one command on a computer in your network. A small agent connects out to this server, so nothing
+            has to be opened in your firewall, and it only scans the private networks that computer is on.
+          </p>
+        </OptionCard>
+      </div>
+
+      <DialogFooter className="items-center sm:justify-between">
+        <Button variant="link" size="sm" className="px-0 text-muted-foreground" onClick={onCustom}>
+          Enter targets yourself
+        </Button>
+        <Button variant="link" size="sm" className="px-0 text-muted-foreground" onClick={onFullSetup}>
+          Full scanner setup →
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [view, setView] = useState<View>('choose');
+  const [info, setInfo] = useState<QuickScanInfo | null>(null);
+  const [infoError, setInfoError] = useState<string | null>(null);
+  const [startingLab, setStartingLab] = useState(false);
+  // Kept while the dialog is closed, so reopening it still waits for the same agent.
+  const agentSetup = useAgentSetupState();
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setInfoError(null);
+    api
+      .quickScanInfo()
+      .then((res) => !cancelled && setInfo(res))
+      .catch((err) => !cancelled && setInfoError((err as Error).message));
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const goLive = (run: ScanRun) => {
+    onOpenChange(false);
+    setView('choose');
+    navigate(`/scans?scan=${encodeURIComponent(run.id)}`);
+  };
+
+  const startLab = async () => {
+    setStartingLab(true);
+    try {
+      const res = await api.quickScanLab();
+      if (res.joined) toast.success('Joined the running lab scan', res.run.name);
+      else toast.success('Lab scan started', res.run.name);
+      goLive(res.run);
+    } catch (err) {
+      toast.error('Could not start the lab scan', (err as Error).message);
+    } finally {
+      setStartingLab(false);
+    }
+  };
+
+  const fullSetup = () => {
+    onOpenChange(false);
+    navigate('/scans');
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => onOpenChange(o)}>
+      <DialogContent className="gap-5 sm:max-w-2xl">
+        {view === 'choose' && (
+          <ChooseView
+            info={info}
+            infoError={infoError}
+            startingLab={startingLab}
+            onLab={startLab}
+            onAgent={() => setView('agent')}
+            onCustom={() => setView('custom')}
+            onFullSetup={fullSetup}
+          />
+        )}
+        {view === 'agent' && (
+          <OwnNetworkView
+            state={agentSetup}
+            serverURL={info?.server_url}
+            tokenAdmins={info?.token_admins}
+            onBack={() => setView('choose')}
+            onStarted={goLive}
+          />
+        )}
+        {view === 'custom' && (
+          <CustomTargetsView
+            open={open}
+            onBack={() => setView('choose')}
+            onStarted={goLive}
+            onFullSetup={fullSetup}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -192,11 +192,16 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
                       <TableCell className="max-w-[200px] whitespace-normal font-mono text-[11px]">
                         {allow.length > 0 ? (
                           <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
-                            <RiShieldCheckLine className="size-3.5" />
+                            <RiShieldCheckLine className="size-3.5 shrink-0" />
                             {allow.join(', ')}
                           </span>
+                        ) : a.capabilities?.allow_from_interfaces ? (
+                          <span className="text-amber-700 dark:text-amber-300">none (no private network found)</span>
                         ) : (
                           <span className="text-amber-700 dark:text-amber-300">no restriction</span>
+                        )}
+                        {a.capabilities?.allow_from_interfaces && allow.length > 0 && (
+                          <div className="mt-0.5 font-sans text-muted-foreground">its own networks (default)</div>
                         )}
                       </TableCell>
                       <TableCell>
@@ -295,10 +300,12 @@ export function AgentsPanel({ canManage }: { canManage: boolean }) {
                   {formatDateTime(created.enroll_token.expires_at)}, single use.
                 </Notice>
                 <CopyBlock label="Linux + systemd (root)" text={created.install_command} />
-                <CopyBlock label="Manual (any OS)" text={created.run_command} />
+                <CopyBlock label="macOS or Linux without root (runs in the terminal)" text={created.foreground_command} />
+                <CopyBlock label="dzieciol already installed" text={created.run_command} />
                 <p className="text-[11px] text-muted-foreground">
-                  The agent only needs outbound access to <Code>{created.server_url}</Code> (HTTPS). Add{' '}
-                  <Code>--allow-cidr 10.20.0.0/16</Code> so the agent rejects targets outside its network.
+                  The agent only needs outbound access to <Code>{created.server_url}</Code> (HTTPS); the installer
+                  and binary come from this server. By default it only scans the private networks of its own
+                  interfaces; add <Code>--allow-cidr 10.20.0.0/16</Code> to set the networks yourself.
                 </p>
               </CardContent>
             </Card>

@@ -62,6 +62,8 @@ interface LiveEventsContextValue {
   liveChunks: Record<string, LiveChunk>;
   /** IPs discovered / changed recently (cleared after ~15s). */
   recentIPs: Record<string, number>;
+  /** Hosts found by each run since this page loaded, newest first (scan.host_discovered). */
+  runHosts: Record<string, LiveHost[]>;
   dataVersion: number;
   throttled: boolean;
   /** Last noise-governor backoff (reason, rates) and how many happened this session per run. */
@@ -80,6 +82,7 @@ const LiveEventsContext = createContext<LiveEventsContextValue>({
   activeScan: null,
   liveChunks: {},
   recentIPs: {},
+  runHosts: {},
   dataVersion: 0,
   throttled: false,
   lastThrottle: null,
@@ -111,6 +114,18 @@ const DATA_EVENTS = new Set([
 
 const FEED_LIMIT = 40;
 const RECENT_IP_TTL = 15000;
+const RUN_HOSTS_LIMIT = 500;
+const RUN_HOSTS_RUNS = 6;
+
+/** Adds a discovered host to its run's list (newest first, one entry per IP, bounded). */
+function addRunHost(prev: Record<string, LiveHost[]>, runId: string, host: LiveHost): Record<string, LiveHost[]> {
+  const list = [host, ...(prev[runId] ?? []).filter((h) => h.ip !== host.ip)].slice(0, RUN_HOSTS_LIMIT);
+  const next: Record<string, LiveHost[]> = { [runId]: list };
+  for (const id of Object.keys(prev)) {
+    if (id !== runId && Object.keys(next).length < RUN_HOSTS_RUNS) next[id] = prev[id];
+  }
+  return next;
+}
 
 const num = (v: unknown, fallback = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
@@ -140,6 +155,7 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
   const [activeScan, setActiveScan] = useState<ActiveScanLive | null>(null);
   const [liveChunks, setLiveChunks] = useState<Record<string, LiveChunk>>({});
   const [recentIPs, setRecentIPs] = useState<Record<string, number>>({});
+  const [runHosts, setRunHosts] = useState<Record<string, LiveHost[]>>({});
   const [dataVersion, setDataVersion] = useState(0);
   const [throttled, setThrottled] = useState(false);
   const [lastThrottle, setLastThrottle] = useState<LiveThrottle | null>(null);
@@ -261,6 +277,8 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
           };
           markIP(host.ip);
           setActiveScan((prev) => ({ ...(prev || { ...emptyScan(), scan_run_id: evt.scan_run_id }), latestHost: host }));
+          const runId = evt.scan_run_id;
+          if (runId && host.ip) setRunHosts((prev) => addRunHost(prev, runId, host));
           break;
         }
         case 'scan.paused_window':
@@ -351,12 +369,13 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
       activeScan,
       liveChunks,
       recentIPs,
+      runHosts,
       dataVersion,
       throttled,
       lastThrottle,
       clearEvents: () => setLiveFeed([]),
     }),
-    [connected, clients, lastEventAt, pulseTick, liveFeed, activeScan, liveChunks, recentIPs, dataVersion, throttled, lastThrottle]
+    [connected, clients, lastEventAt, pulseTick, liveFeed, activeScan, liveChunks, recentIPs, runHosts, dataVersion, throttled, lastThrottle]
   );
 
   return <LiveEventsContext.Provider value={value}>{children}</LiveEventsContext.Provider>;
