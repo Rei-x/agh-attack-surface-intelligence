@@ -65,10 +65,15 @@ func (s *Server) hardeningMiddleware(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; "+
-			"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "+
-			"font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; "+
-			"connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+		csp := "default-src 'self'; script-src 'self'; " +
+			"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+			"font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; " +
+			"connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		if strings.HasPrefix(r.URL.Path, "/deck/") {
+			// The pitch deck embeds the launch film; nothing else may load frames.
+			csp += "; frame-src https://www.youtube-nocookie.com"
+		}
+		h.Set("Content-Security-Policy", csp)
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			h.Set("Cache-Control", "no-store")
 		}
