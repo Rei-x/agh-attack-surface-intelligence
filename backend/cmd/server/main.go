@@ -72,6 +72,7 @@ func run(args []string) int {
 		return 2
 	}
 	cmd, rest := args[0], args[1:]
+	goMemoryLimit = applyContainerMemoryLimit()
 	var err error
 	switch cmd {
 	case "serve", "server":
