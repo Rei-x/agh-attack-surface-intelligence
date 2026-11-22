@@ -426,7 +426,7 @@ func (e *Engine) runHTTP(ctx context.Context, c *Check, t *Target, opt Options) 
 			if r.BasicAuth != "" {
 				user, pass, _ := strings.Cut(r.BasicAuth, ":")
 				req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
-				reqLine += fmt.Sprintf("\nAuthorization: Basic (user %q with the vendor default password)", user)
+				reqLine += fmt.Sprintf("\nDefault credential tried: user %q with the vendor default password (HTTP Basic)", user)
 				if e.Audit != nil {
 					e.Audit(ctx, &domain.AuditLog{
 						Username: "system", Action: "verify.default_credentials", Resource: "service", ResourceID: t.Service.ID,

@@ -424,7 +424,7 @@ func TestDefaultCredsOptIn(t *testing.T) {
 	if len(f) != 1 || !f[0].DefaultCreds || st.DefaultCredsTried != 1 {
 		t.Fatalf("opt-in: %+v %+v", f, st)
 	}
-	if strings.Contains(f[0].Request, "Z3Vlc3Q6Z3Vlc3Q") || strings.Contains(f[0].Request, "guest:guest") {
+	if !strings.Contains(f[0].Request, `user "guest"`) || strings.Contains(f[0].Request, "Z3Vlc3Q6Z3Vlc3Q") || strings.Contains(f[0].Request, "guest:guest") {
 		t.Fatalf("credential leaked into the request evidence: %s", f[0].Request)
 	}
 	if len(audit) != 1 || audit[0].Action != "verify.default_credentials" || audit[0].Details["user"] != "guest" {
