@@ -55,6 +55,16 @@ func vulnEvidence(v domain.VulnSummary) string {
 	}
 	fmt.Fprintf(&b, " Highest EPSS: %.1f%% (percentile %.1f).", v.MaxEPSS*100, v.MaxEPSSPercentile*100)
 	fmt.Fprintf(&b, "\n\n**Version match confidence:** %s. %s", v.Confidence, v.ConfidenceNote)
+	if v.Unverified > 0 {
+		fmt.Fprintf(&b, " %d of the CVEs need a protocol the scan could not check (version match, unverified).", v.Unverified)
+	}
+	if len(v.Suppressed) > 0 {
+		ids := make([]string, 0, len(v.Suppressed))
+		for _, c := range v.Suppressed {
+			ids = append(ids, c.ID)
+		}
+		fmt.Fprintf(&b, "\n\n**Not applicable (excluded from this finding):** %s. %s", strings.Join(ids, ", "), v.Suppressed[0].ApplicabilityNote)
+	}
 	b.WriteString("\n\n**Top CVEs:**\n")
 	for _, c := range v.Top {
 		kev := ""

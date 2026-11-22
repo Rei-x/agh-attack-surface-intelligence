@@ -21,7 +21,8 @@ import (
 //	verified:true        confirmed by a safe verification check
 //
 // "possible" matches (distro backports, incomplete versions) count too: the badge in the UI
-// carries the confidence.
+// carries the confidence. Matches ruled out by the protocol probe (a Rapid Reset CVE on a
+// server with HTTP/2 off, VulnSummary.Suppressed) never count.
 
 var reComparison = regexp.MustCompile(`^(-?)(epss|cvss)(>=|<=|>|<|=)(.+)$`)
 
@@ -105,7 +106,7 @@ func annotated(s *domain.Service, now time.Time) domain.Service {
 
 func hasKnownCVE(s *domain.Service, now time.Time) bool {
 	cp := annotated(s, now)
-	return len(cp.KnownVulns) > 0 || len(cp.Vulns) > 0
+	return len(cp.KnownVulns) > 0 || domain.AnyVulnFindings(cp.Vulns)
 }
 
 func (t *QueryTerm) matchVulnTerm(s *domain.Service, now time.Time) bool {
@@ -121,7 +122,7 @@ func (t *QueryTerm) matchVulnTerm(s *domain.Service, now time.Time) bool {
 		return kev == (t.Values[0] == "true")
 	case "cve":
 		if len(t.Values) == 1 && (t.Values[0] == "true" || t.Values[0] == "false") {
-			return (len(cp.KnownVulns) > 0 || len(cp.Vulns) > 0) == (t.Values[0] == "true")
+			return (len(cp.KnownVulns) > 0 || domain.AnyVulnFindings(cp.Vulns)) == (t.Values[0] == "true")
 		}
 		for _, want := range t.Values {
 			for _, v := range cp.Vulns {
@@ -139,11 +140,14 @@ func (t *QueryTerm) matchVulnTerm(s *domain.Service, now time.Time) bool {
 		}
 		return false
 	case "epss", "cvss":
-		if len(cp.Vulns) == 0 {
+		if !domain.AnyVulnFindings(cp.Vulns) {
 			return false
 		}
 		best := 0.0
 		for _, v := range cp.Vulns {
+			if v.Total == 0 {
+				continue
+			}
 			x := v.MaxCVSS
 			if t.Key == "epss" {
 				x = v.MaxEPSS

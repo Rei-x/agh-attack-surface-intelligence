@@ -35,6 +35,7 @@ import {
   translateFactor,
 } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { checkedTime } from '@/lib/vulnintel';
 import { Empty, Notice, Pill, SectionTitle, SimpleSelect } from '@/components/common';
 import { ServiceLogo, ServiceLogoFor } from '@/components/ServiceLogo';
 import { CategoryBadges, serviceFlags } from '@/components/CategoryBadge';
@@ -480,7 +481,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
     try {
       await api.pushDefectDojoFindings({
         service_ids: [svc.id],
-        severity: svc.interestingness >= 75 ? 'High' : svc.interestingness >= 50 ? 'Medium' : 'Low',
+        // Severity left to the backend (domain.ScoreSeverity: one mapping for every caller).
       });
       toast.success('Sent to DefectDojo', `${host?.ip}:${svc.port}`);
     } catch (err) {
@@ -936,6 +937,24 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                         </KV>
                                       ) : null}
                                       {http.server_header && <KV label="Server">{http.server_header}</KV>}
+                                      {http.protocols && (
+                                        <KV label="HTTP/2">
+                                          <span
+                                            className={cn(
+                                              'font-medium',
+                                              http.protocols.http2 === 'unknown' && 'text-muted-foreground'
+                                            )}
+                                            title={`${http.protocols.http2_evidence || ''}${http.protocols.http3_evidence ? `\nHTTP/3: ${http.protocols.http3_evidence}` : ''}`}
+                                          >
+                                            {http.protocols.http2 === 'yes' ? 'on' : http.protocols.http2 === 'no' ? 'off' : 'unknown'}
+                                          </span>
+                                          <span className="text-muted-foreground">
+                                            {' '}
+                                            via {http.protocols.http2_method === 'alpn' ? 'TLS ALPN' : http.protocols.http2_method === 'h2c-upgrade' ? 'Upgrade: h2c' : 'h2c preface'}
+                                            {http.protocols.http3 === 'yes' && ', HTTP/3 advertised'}, checked {checkedTime(http.protocols.checked_at)}
+                                          </span>
+                                        </KV>
+                                      )}
                                       {http.meta_generator && (
                                         <KV label="Generator">{http.meta_generator}</KV>
                                       )}
@@ -1241,10 +1260,23 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                       {host.interesting_factors!.map((f, idx) => (
                         <div key={idx} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
                           <span className="text-foreground">{translateFactor(f.reason)}</span>
-                          <span className="font-mono text-muted-foreground tabular-nums">+{f.points}</span>
+                          <span
+                            className="font-mono text-muted-foreground tabular-nums"
+                            title={
+                              f.weight && f.weight !== f.points
+                                ? `Weight ${f.weight} on its own; adds ${f.points} after the stronger factors (diminishing returns)`
+                                : undefined
+                            }
+                          >
+                            +{f.points}
+                          </span>
                         </div>
                       ))}
                     </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Strongest factor first; each further one fills part of the remaining headroom, so the points add up to
+                      the score. Low-signal hygiene findings together add at most 12.
+                    </p>
                   </div>
                 )}
 

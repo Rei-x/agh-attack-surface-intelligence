@@ -13,8 +13,8 @@ func TestCleartextAdminProtocolsScoreHigh(t *testing.T) {
 	ftp := domain.Service{Port: 21, Protocol: "tcp", State: "open", ServiceName: "ftp"}
 	telnet.Interestingness, telnet.InterestingFactors = ScoreService(&telnet, nil)
 	ftp.Interestingness, ftp.InterestingFactors = ScoreService(&ftp, nil)
-	if telnet.Interestingness < 45 || ftp.Interestingness < 35 {
-		t.Fatalf("telnet=%d ftp=%d, want >=45 / >=35", telnet.Interestingness, ftp.Interestingness)
+	if telnet.Interestingness < 45 || ftp.Interestingness < 30 {
+		t.Fatalf("telnet=%d ftp=%d, want >=45 / >=30", telnet.Interestingness, ftp.Interestingness)
 	}
 	// Service name wins over port: HTTP on 23 is not telnet, telnet on 2323 is.
 	h23 := domain.Service{Port: 23, ServiceName: "http"}

@@ -54,6 +54,8 @@ type Options struct {
 	OnThrottle     func(host string, statusCode int, err error)
 	Now            func() time.Time
 	DisableJARM    bool // skip the 10-probe JARM TLS fingerprint (see jarm.go)
+	// DisableProtocolProbe skips the HTTP/2 capability probe (protocols.go).
+	DisableProtocolProbe bool
 }
 
 // DefaultOptions returns safe read-only defaults.
@@ -143,6 +145,7 @@ func mergeOptions(base, override Options) Options {
 		out.Now = override.Now
 	}
 	out.DisableJARM = out.DisableJARM || override.DisableJARM
+	out.DisableProtocolProbe = out.DisableProtocolProbe || override.DisableProtocolProbe
 	return normalizeOptions(out)
 }
 
@@ -333,6 +336,10 @@ func (f *Fingerprinter) probeWithScheme(ctx context.Context, scheme, ip string, 
 
 	// JARM TLS server fingerprint (jarm.go); rate-limited, bounded budget.
 	f.attachJARM(ctx, fp, scheme, ip, port, serverName, opts)
+
+	// HTTP/2 (and advertised HTTP/3) support of this port, so protocol-specific CVEs can be
+	// ruled out (protocols.go); one or two short, rate-limited connections.
+	f.probeProtocols(ctx, fp, scheme, ip, port, serverName, hostHeader, resp.Header, opts)
 
 	// Fetch favicon via safe GET.
 	f.fetchFavicon(ctx, client, finalURL, bodyStr, ip, opts, fp)

@@ -56,6 +56,12 @@ func TestHTTPProbeExtractsFullEvidenceAndEnforcesReadOnly(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
+		if r.Method == "PRI" && r.RequestURI == "*" && r.Proto == "HTTP/2.0" {
+			// The HTTP/2 connection preface of the protocol probe (protocols.go): protocol
+			// magic, not a request. Go's HTTP/1 server hands it to the handler.
+			mu.Unlock()
+			return
+		}
 		seenMethods = append(seenMethods, r.Method)
 		seenUA = r.Header.Get("User-Agent")
 		mu.Unlock()

@@ -10,19 +10,21 @@ import (
 )
 
 // Interestingness factor prefixes (registered with eol.RegisterAnnotator so a re-score
-// replaces them) and their points. KEV and a high EPSS weigh the most: they say an attacker
-// is likely to use the hole, while CVSS alone says how bad it would be.
+// replaces them) and their standalone weights (domain.CombineFactors). A KEV CVE that applies
+// (exact upstream version, precondition not ruled out) weighs the most: it says attackers use
+// the hole. A KEV match that is only possible (distro backport, incomplete version) and a
+// high EPSS weigh less; CVSS alone says how bad it would be, not how likely.
 const (
 	FactorKEV  = "Exploited in the wild (CISA KEV): "
 	FactorEPSS = "High exploit probability (EPSS): "
 	FactorCVSS = "Known CVEs: "
 
-	PointsKEV          = 35
+	PointsKEV          = 60
 	PointsKEVPossible  = 15
-	PointsEPSSHigh     = 20 // EPSS >= 0.5
+	PointsEPSSHigh     = 25 // EPSS >= 0.5
 	PointsEPSSMedium   = 10 // EPSS >= 0.1
-	PointsCVSSCritical = 15 // CVSS >= 9
-	PointsCVSSHigh     = 8  // CVSS >= 7
+	PointsCVSSCritical = 12 // CVSS >= 9
+	PointsCVSSHigh     = 6  // CVSS >= 7
 )
 
 // FactorPrefixes lists the prefixes above.
@@ -157,11 +159,22 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 		Version:        c.version,
 		Via:            c.via,
 		CPE:            c.def.CPEs[0],
-		Total:          len(hits),
 		DistroBackport: distro,
 		DataAsOf:       dateOnly(d.snap.GeneratedAt),
 	}
+	ps := protocolsOf(svc)
 	for _, h := range hits {
+		app := applicability(RequirementOf(h.CVE), ps)
+		if app.state == domain.ApplicabilityNotApplicable {
+			ref := cveRef(h)
+			app.apply(&ref)
+			vs.Suppressed = append(vs.Suppressed, ref)
+			continue
+		}
+		if app.state == domain.ApplicabilityUnverified {
+			vs.Unverified++
+		}
+		vs.Total++
 		if h.Possible {
 			vs.Possible++
 		}
@@ -192,9 +205,12 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 		}
 		vs.CVEIDs = append(vs.CVEIDs, h.CVE.ID)
 		if len(vs.Top) < 3 {
-			vs.Top = append(vs.Top, cveRef(h))
+			ref := cveRef(h)
+			app.apply(&ref)
+			vs.Top = append(vs.Top, ref)
 		}
 	}
+	vs.SuppressedCount = len(vs.Suppressed)
 	// Confidence of the version match.
 	label := nonEmpty(viaLabels[c.via], c.via)
 	exactParts := numericParts(nv) >= c.def.FullParts || hasSuffix(nv)
@@ -251,6 +267,9 @@ func Annotate(svc *domain.Service, _ time.Time) []domain.InterestingnessFactor {
 			for _, id := range v.CVEIDs {
 				covered[id] = true
 			}
+			for _, c := range v.Suppressed {
+				covered[c.ID] = true // ruled out by the protocol probe: no passive hint either
+			}
 		}
 		kept := svc.KnownVulns[:0:0]
 		for _, h := range svc.KnownVulns {
@@ -267,11 +286,18 @@ func Annotate(svc *domain.Service, _ time.Time) []domain.InterestingnessFactor {
 }
 
 // Factors converts the summaries into interestingness factors (one per kind, strongest
-// product first). Distro builds and incomplete-version matches count as "possible".
+// product first). Distro builds and incomplete-version matches count as "possible". The
+// EPSS factor names a CVE other than the KEV ones: a KEV entry's high EPSS is the same
+// evidence and is not counted twice.
 func Factors(vulns []domain.VulnSummary) []domain.InterestingnessFactor {
 	var kevIDs, kevPossible []string
 	var maxEPSS, maxCVSS float64
 	epssID, cvssLabel := "", ""
+	type epssCand struct {
+		id   string
+		epss float64
+	}
+	var epssCands []epssCand
 	for _, v := range vulns {
 		definite := !v.DistroBackport && v.Confidence != "low"
 		for _, c := range v.Top {
@@ -291,13 +317,22 @@ func Factors(vulns []domain.VulnSummary) []domain.InterestingnessFactor {
 			continue
 		}
 		for _, c := range v.Top {
-			if !c.Possible && c.EPSS > maxEPSS {
-				maxEPSS, epssID = c.EPSS, c.ID
+			if !c.Possible {
+				epssCands = append(epssCands, epssCand{c.ID, c.EPSS})
 			}
 		}
 		if v.MaxCVSS > maxCVSS && v.Total > v.Possible {
 			maxCVSS = v.MaxCVSS
 			cvssLabel = fmt.Sprintf("%s %s: %d CVEs, max CVSS %.1f", v.Product, versionShort(v.Version), v.Total, v.MaxCVSS)
+		}
+	}
+	isKEV := map[string]bool{}
+	for _, id := range kevIDs {
+		isKEV[id] = true
+	}
+	for _, c := range epssCands {
+		if !isKEV[c.id] && c.epss > maxEPSS {
+			maxEPSS, epssID = c.epss, c.id
 		}
 	}
 	var out []domain.InterestingnessFactor

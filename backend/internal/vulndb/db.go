@@ -44,6 +44,9 @@ type CVE struct {
 	Ransomware  bool    `json:"kr,omitempty"`
 	EPSS        float64 `json:"e,omitempty"`
 	EPSSPct     float64 `json:"ep,omitempty"`
+	// Requires is a protocol the vulnerable code needs enabled ("http2", "http3", "" = none
+	// known), tagged from the description and the explicit table (preconditions.go).
+	Requires string `json:"rq,omitempty"`
 }
 
 // Affected lists a CVE's affected version ranges for one product.

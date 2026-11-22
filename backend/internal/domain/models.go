@@ -365,6 +365,28 @@ type HTTPFingerprint struct {
 	// diff uses it to report latency changes (e.g. a proxy adding 500 ms).
 	MedianResponseMs int64 `json:"median_response_ms,omitempty"`
 	ResponseSamples  int   `json:"response_samples,omitempty"`
+	// Protocols records which HTTP versions the endpoint accepts (read-only capability probe,
+	// see fingerprint.probeProtocols). Protocol-specific CVEs use it to decide applicability.
+	Protocols *ProtocolSupport `json:"protocols,omitempty"`
+}
+
+// Protocol support states.
+const (
+	ProtoYes     = "yes"
+	ProtoNo      = "no"
+	ProtoUnknown = "unknown"
+)
+
+// ProtocolSupport is the result of the HTTP version capability probe of one endpoint. HTTP/2
+// is probed (TLS: ALPN offer of h2; cleartext: the HTTP/2 connection preface and an
+// "Upgrade: h2c" GET), HTTP/3 is only read from the Alt-Svc header, so it is never "no".
+type ProtocolSupport struct {
+	HTTP2         string    `json:"http2"`                    // yes, no, unknown
+	HTTP2Method   string    `json:"http2_method,omitempty"`   // alpn, h2c-prior-knowledge, h2c-upgrade
+	HTTP2Evidence string    `json:"http2_evidence,omitempty"` // what the server answered
+	HTTP3         string    `json:"http3,omitempty"`          // yes (advertised in Alt-Svc) or unknown
+	HTTP3Evidence string    `json:"http3_evidence,omitempty"`
+	CheckedAt     time.Time `json:"checked_at"`
 }
 
 // TechEvidence is one piece of evidence for a detected technology and its weight.
@@ -387,9 +409,13 @@ type DetectedTechnology struct {
 }
 
 // InterestingnessFactor is one reason contributing points to an interestingness score.
+// Points add up to the score; Weight is the factor's standalone severity before diminishing
+// returns (see CombineFactors).
 type InterestingnessFactor struct {
 	Reason string `json:"reason"`
 	Points int    `json:"points"`
+	Weight int    `json:"weight,omitempty"`
+	Kind   string `json:"kind,omitempty"` // "hygiene": low-signal, capped together
 }
 
 // TimeSlotStat counts how often a host was seen in one time-of-day slot.

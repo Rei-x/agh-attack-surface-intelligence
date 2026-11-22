@@ -213,8 +213,9 @@ func annotateActive(svc *domain.Service, now time.Time) []domain.Interestingness
 
 // ---- read-time annotation --------------------------------------------------------------
 
-// Points of a verified finding in the service interestingness, by severity.
-var verifiedPoints = map[string]int{"critical": 40, "high": 30, "medium": 15, "low": 5}
+// Standalone weight of a verified finding in the service interestingness, by severity
+// (domain.CombineFactors). A confirmed critical exposure is the strongest signal there is.
+var verifiedPoints = map[string]int{"critical": 85, "high": 70, "medium": 40, "low": 10}
 
 // FactorVerified prefixes the interestingness factor of verified findings.
 const FactorVerified = "Verified exposure: "

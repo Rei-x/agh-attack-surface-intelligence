@@ -88,7 +88,7 @@ func (b *Builder) Build(ctx context.Context) (*Snapshot, error) {
 }
 
 // Enrich refreshes the KEV and EPSS columns of an existing snapshot (the fast part of an
-// update: two downloads, no NVD rate limit).
+// update: two downloads, no NVD rate limit) and re-tags the protocol preconditions.
 func (b *Builder) Enrich(ctx context.Context, s *Snapshot) error {
 	if s.byID == nil {
 		s.index()
@@ -99,6 +99,10 @@ func (b *Builder) Enrich(ctx context.Context, s *Snapshot) error {
 	if err := b.joinEPSS(ctx, s); err != nil {
 		return fmt.Errorf("epss: %w", err)
 	}
+	// Protocol preconditions (offline: descriptions + the explicit table), so an update of
+	// an older snapshot gets them too.
+	st := TagRequirements(s)
+	b.logf("protocol preconditions: %d HTTP/2, %d HTTP/3", st.ByRequirement[ReqHTTP2], st.ByRequirement[ReqHTTP3])
 	s.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
 	return nil
 }
@@ -283,6 +287,8 @@ func addNVD(s *Snapshot, cves map[string]*CVE, n *nvdCVE, cpeOwner map[string]st
 		for _, d := range n.Descriptions {
 			if d.Lang == "en" {
 				c.Summary = shorten(d.Value, summaryMax)
+				// Tag from the full description; the stored summary is cut short.
+				c.Requires = DetectRequirement(d.Value)
 				break
 			}
 		}
