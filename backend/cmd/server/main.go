@@ -41,6 +41,7 @@ Commands:
   export                    Export the inventory as JSON or CSV
   diff [runA runB]          Compare two scan runs (default: the last two)
   runs                      List recent scan runs
+  store-stats               Show store size per collection, heap after load and what retention would trim
   agent                     Run a remote scanning agent (outbound HTTPS to a server; 'agent install' = systemd)
   vulndb [info|update]      Show or refresh the offline CVE / KEV / EPSS snapshot
   version                   Print version information
@@ -85,6 +86,8 @@ func run(args []string) int {
 		err = cmdDiff(rest)
 	case "runs", "scans":
 		err = cmdRuns(rest)
+	case "store-stats":
+		err = cmdStoreStats(rest)
 	case "agent":
 		err = cmdAgent(rest)
 	case "vulndb":

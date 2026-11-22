@@ -260,6 +260,29 @@ func getChangeRollup(ctx context.Context, q queryRower, hostID string) (*domain.
 	return &r, nil
 }
 
+// TableStats lists the application tables with their estimated row counts and total size on
+// disk (table, indexes and TOAST), largest first (`dzieciol store-stats` in PostgreSQL mode).
+func (s *PostgresStore) TableStats(ctx context.Context) ([]CollectionStat, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT relname, n_live_tup, pg_total_relation_size(relid)
+		FROM pg_stat_user_tables ORDER BY 3 DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CollectionStat
+	for rows.Next() {
+		var c CollectionStat
+		var items int64
+		if err := rows.Scan(&c.Name, &items, &c.Bytes); err != nil {
+			return nil, err
+		}
+		c.Items = int(items)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // GetChangeRollup returns the summary of the host's change events removed by retention.
 func (s *PostgresStore) GetChangeRollup(ctx context.Context, hostID string) (*domain.ChangeRollup, error) {
 	r, err := getChangeRollup(ctx, s.pool, hostID)
