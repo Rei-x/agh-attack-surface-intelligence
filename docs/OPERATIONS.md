@@ -41,7 +41,7 @@ Baner i log pokazują wtedy ostrzeżenie `DEMO MODE`. Tylko do laboratorium.
 - konta demo, które wciąż mają jawne hasło, zostają wyłączone,
 - jeśli nie ma aktywnego administratora, powstaje konto `admin` z hasłem z `DZIECIOL_ADMIN_PASSWORD`
   albo z losowym hasłem wypisanym **jeden raz** na terminal (w Dockerze: `docker compose logs dzieciol`).
-  Po zalogowaniu zmień je w Administracja > Użytkownicy.
+  Po zalogowaniu zmień je w Admin > Users.
 
 Skan z terminala (gdy `dzieciol serve` nie działa na tym samym katalogu danych):
 

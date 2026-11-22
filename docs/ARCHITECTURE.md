@@ -20,7 +20,7 @@ flowchart TB
         ING["Unified Ingestion Pipeline<br/>(Active / Manual / CSV / JSON / Passive)"]
         ENG["Chunked Scan Engine<br/>(Target Normalizer, Scope/Deny Gate,<br/>WindowGuard, Target Noise Governor)"]
         FP["Safe HTTP/HTTPS/TLS Fingerprinter<br/>(GET/HEAD only, Favicon MMH3, TLS X.509)"]
-        SIG["Signature Studio Engine<br/>(55+ Built-ins, Safety Validator,<br/>Retroactive Playground)"]
+        SIG["Signature Studio Engine<br/>(66 Built-ins, Safety Validator,<br/>Retroactive Playground)"]
         INT["Intelligence Engine<br/>(Host Hysteresis FSM, Time-of-Day Matrix,<br/>Noisy-OR Confidence, Interestingness)"]
         VAULT["Crypto Vault<br/>(AES-256-GCM Envelope AEAD + AAD +<br/>HMAC-SHA256 Blind Indexes)"]
         DD["DefectDojo v2 Client<br/>(Nmap XML + Deduplicated Findings)"]

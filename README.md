@@ -26,10 +26,10 @@ Konta demo (wyłączenie: `--seed-demo=false` / `DZIECIOL_SEED_DEMO=false`):
 
 | Login | Hasło | Rola |
 | :--- | :--- | :--- |
-| `admin` | `Admin123!` | Administracja |
-| `operator` | `Operator123!` | Dodawanie, usuwanie, modyfikacja |
-| `analyst` | `Analyst123!` | Modyfikacja i odczyt |
-| `viewer` | `Viewer123!` | Odczyt |
+| `admin` | `Admin123!` | Administration |
+| `operator` | `Operator123!` | Add, delete, modify |
+| `analyst` | `Analyst123!` | Modify and read |
+| `viewer` | `Viewer123!` | Read only |
 
 ## Architektura
 
@@ -133,7 +133,7 @@ dzieciol scan 192.168.1.0/24 -p 22,80,443,8080
 dzieciol scan 10.0.0.1-10.0.0.50 scanme.example.org --rate 300 --concurrency 64
 dzieciol scan -f cele.txt --json -o raport.json       # cele: jeden na linię, komentarze #
 dzieciol scan --profile "Szybki Skan Demo"             # zapisany profil z UI
-dzieciol scan 127.0.0.1 -p 22,8080 --ignore-exclusions    # lokalny test (127.0.0.0/8 jest domyślnie wykluczone)
+dzieciol scan 127.0.0.1 -p 22,8080                        # lokalny test (localhost nie jest wykluczony)
 ```
 
 W trakcie skanu widać pasek postępu (hosty zrobione/wszystkie, hosts/s, ETA, liczba żywych hostów i usług), a na końcu tabelę: żywe hosty, najciekawsze znaleziska (panele admina, środowiska staging, IoT, wykryte technologie) oraz zmiany względem poprzedniego skanu (nowe / zniknięte hosty, nowe / zamknięte / zmienione usługi). Wyniki trafiają do tej samej bazy, więc `dzieciol serve` od razu je pokazuje.

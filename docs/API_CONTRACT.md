@@ -5,16 +5,16 @@ Wszystkie endpointy poza `/api/v1/health`, `/api/v1/auth/login` i `/api/v1/auth/
 ## 1. Role i uprawnienia RBAC
 
 ### Predefiniowane role (seedowane przy starcie)
-1. `admin` („Administracja”): wszystkie uprawnienia (`*`).
-2. `operator` („Dodawanie, usuwanie, modyfikacja”): `dashboard:read`, `assets:read`, `assets:write`, `assets:delete`, `scans:read`, `scans:write`, `scans:delete`, `scans:run`, `signatures:read`, `signatures:write`, `signatures:delete`, `import:write`, `export:read`, `defectdojo:push`.
-3. `analyst` („Modyfikacja i odczyt”): `dashboard:read`, `assets:read`, `assets:write`, `scans:read`, `scans:write`, `signatures:read`, `signatures:write`, `export:read`.
-4. `viewer` („Odczyt”): `dashboard:read`, `assets:read`, `scans:read`, `signatures:read`, `export:read`.
+1. `admin` („Administration”): wszystkie uprawnienia (`*`).
+2. `operator` („Add, delete, modify”): `dashboard:read`, `assets:read`, `assets:write`, `assets:delete`, `scans:read`, `scans:write`, `scans:delete`, `scans:run`, `signatures:read`, `signatures:write`, `signatures:delete`, `import:write`, `export:read`, `defectdojo:push`.
+3. `analyst` („Modify and read”): `dashboard:read`, `assets:read`, `assets:write`, `scans:read`, `scans:write`, `signatures:read`, `signatures:write`, `export:read`.
+4. `viewer` („Read only”): `dashboard:read`, `assets:read`, `scans:read`, `signatures:read`, `export:read`.
 
 ### Konta demo (seedowane gdy `DZIECIOL_SEED_DEMO=true`)
-- `admin` / `Admin123!` (Administracja)
-- `operator` / `Operator123!` (Dodawanie, usuwanie, modyfikacja)
-- `analyst` / `Analyst123!` (Modyfikacja i odczyt)
-- `viewer` / `Viewer123!` (Odczyt)
+- `admin` / `Admin123!` (Administration)
+- `operator` / `Operator123!` (Add, delete, modify)
+- `analyst` / `Analyst123!` (Modify and read)
+- `viewer` / `Viewer123!` (Read only)
 
 ## 2. Endpointy REST
 

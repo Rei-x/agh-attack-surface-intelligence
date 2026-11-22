@@ -63,8 +63,8 @@ case start scans from the UI or with `POST /api/v1/scans`. `export`, `diff` and 
 read-only and work while the server runs (they read its last autosave). With `DATABASE_URL`
 set, every command uses PostgreSQL and no lock is taken.
 
-**Exclusions:** stored target exclusions apply to CLI scans too. The default `127.0.0.0/8`
-safety exclusion means a local test needs `--ignore-exclusions`.
+**Exclusions:** stored target exclusions apply to CLI scans too; `--ignore-exclusions` skips them.
+Localhost is not excluded by default, so a local test needs no extra flag.
 
 ### History retention and memory
 
@@ -278,12 +278,12 @@ Open the SOC dashboard at http://localhost:8080.
 
 ### Seeded demo accounts (`DZIECIOL_SEED_DEMO=true`)
 
-| Username | Password | Role (Polish) | Key Capabilities |
+| Username | Password | Role | Key Capabilities |
 | :--- | :--- | :--- | :--- |
-| `admin` | `Admin123!` | Administracja | Full access (`*`), RBAC roles/users, crypto rotation, DefectDojo config, audit log |
-| `operator` | `Operator123!` | Dodawanie, usuwanie, modyfikacja | Targets, profiles, run/stop scans, CSV/JSON/manual ingest, signatures, DefectDojo push |
-| `analyst` | `Analyst123!` | Modyfikacja i odczyt | Curate hosts/services (preserved overrides), edit scan notes, test signatures, export |
-| `viewer` | `Viewer123!` | Odczyt | Read-only dashboard, graph, assets, diff, signatures, export (`403` on all writes) |
+| `admin` | `Admin123!` | Administration | Full access (`*`), RBAC roles/users, crypto rotation, DefectDojo config, audit log |
+| `operator` | `Operator123!` | Add, delete, modify | Targets, profiles, run/stop scans, CSV/JSON/manual ingest, signatures, DefectDojo push |
+| `analyst` | `Analyst123!` | Modify and read | Curate hosts/services (preserved overrides), edit scan notes, test signatures, export |
+| `viewer` | `Viewer123!` | Read only | Read-only dashboard, graph, assets, diff, signatures, export (`403` on all writes) |
 
 > In production, set `DZIECIOL_SEED_DEMO=false` before exposing Dzięcioł on the network, and create real operator accounts in the Admin panel.
 
@@ -385,7 +385,7 @@ Store `DZIECIOL_MASTER_KEY` in a dedicated secret manager (HashiCorp Vault, Kube
 
 ### Rotating the data encryption key (DEK)
 
-DEK rotation needs no downtime. Run it from the Admin UI (**Admin → Encryption At Rest → Rotate DEK**) or the REST API:
+DEK rotation needs no downtime. Run it from the Admin UI (**Admin → Encryption → Rotate key**) or the REST API:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/admin/crypto/rotate \

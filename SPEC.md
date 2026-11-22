@@ -31,7 +31,7 @@
    - Fingerprinter HTTP/HTTPS/TLS (pure Go, wyłącznie GET/HEAD) zbiera `<title>`, kod odpowiedzi, pełny łańcuch przekierowań, nagłówki z analizą security headers, ciasteczka z flagami (`HttpOnly`/`Secure`/`SameSite`), certyfikat TLS (Subject, SANs, Issuer, wygasanie, self-signed), hash faviconu MurmurHash3 (zgodny z Shodanem) i wersje ze stopek. Wykrywa CMS-y, frameworki, serwery aplikacyjne, urządzenia IoT, środowiska `staging/dev/test` i panele administracyjne.
    - Evidence receipts: każda technologia, zmiana i finding jest trwale powiązany z konkretną zaszyfrowaną obserwacją surową, która jest jego dowodem.
    - Interaktywny graf powierzchni ataku pokazuje topologię `Zakres/Domena → Host (stan) → Usługa (port) → Technologia/Sygnatura/Finding`. Osobny widok grupuje podobne usługi w klastry po faviconie, stosie technologicznym, tytule HTTP i TLS.
-   - Signature Studio: 45+ wbudowanych bezpiecznych sygnatur i kreator własnych (YAML/JSON/UI). Walidator bezpieczeństwa blokuje metody mutujące i próby logowania, a retroaktywny playground testuje sygnaturę na zapisanych danych bez ponownego skanowania.
+   - Signature Studio: 66 wbudowanych bezpiecznych sygnatur i kreator własnych (YAML/JSON/UI). Walidator bezpieczeństwa blokuje metody mutujące i próby logowania, a retroaktywny playground testuje sygnaturę na zapisanych danych bez ponownego skanowania.
 
 4. **Zunifikowany import, warstwa kuratorska (overrides), RBAC, szyfrowanie at rest i DefectDojo v2 (20% + 10%)**
    - Zunifikowany pipeline: ręczny formularz i import CSV / JSON tworzą zwykłe `scan_runs` i przechodzą to samo przetwarzanie (sygnatury, diff, stan hosta, scoring, szyfrowanie, eksport).
