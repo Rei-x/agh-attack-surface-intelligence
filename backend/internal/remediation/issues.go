@@ -68,7 +68,7 @@ func ServiceIssues(svc *domain.Service, now time.Time) []Issue {
 	for _, o := range svc.Outdated {
 		advice := "Upgrade to a supported release"
 		if o.SupportedBranch != "" {
-			advice += " (" + o.Product + " " + o.SupportedBranch + " or newer)"
+			advice = "Upgrade to " + o.Product + " " + o.UpgradeTarget() + " or newer" // nginx: "1.30 (stable)", not mainline 1.31
 		}
 		advice += ", or remove the service if nobody needs it."
 		out = append(out, Issue{

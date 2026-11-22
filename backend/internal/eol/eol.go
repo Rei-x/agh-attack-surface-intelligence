@@ -33,12 +33,19 @@ type Branch struct {
 
 // Product is one entry of the table.
 type Product struct {
-	Key      string   `json:"key"`
-	Name     string   `json:"name"`
-	Source   string   `json:"source"`
-	Aliases  []string `json:"aliases"`
-	Branches []Branch `json:"branches"`
+	Key     string   `json:"key"`
+	Name    string   `json:"name"`
+	Source  string   `json:"source"`
+	Aliases []string `json:"aliases"`
+	// StableRule says which branches are the stable line when a product also ships a
+	// development line in parallel; "" means every branch is a release line.
+	StableRule string   `json:"stable_rule,omitempty"`
+	Branches   []Branch `json:"branches"`
 }
+
+// StableEvenMinor: even minor branches are stable, odd ones are the development (mainline)
+// line, as in nginx (1.30 stable, 1.31 mainline).
+const StableEvenMinor = "even-minor"
 
 type vulnRange struct {
 	Exact  string `json:"exact,omitempty"`
@@ -156,15 +163,53 @@ func (p *Product) MatchBranch(version string) (Branch, bool) {
 	return best, found
 }
 
-// supportedBranch is the first branch in table order (newest first) still supported at now.
+func (b Branch) supported(now time.Time) bool {
+	if b.EOL == "" {
+		return true
+	}
+	t, _ := time.Parse("2006-01-02", b.EOL)
+	return t.After(now)
+}
+
+// Track names the line a branch belongs to under the product's StableRule: "stable" or
+// "mainline", "" when the product has no separate lines.
+func (p *Product) Track(b Branch) string {
+	if p.StableRule != StableEvenMinor {
+		return ""
+	}
+	parts := strings.Split(b.Cycle, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return ""
+	}
+	if minor%2 == 0 {
+		return "stable"
+	}
+	return "mainline"
+}
+
+// supportedBranch is the upgrade target at now: the newest supported branch (table order is
+// newest first), skipping a development line while a stable one is supported, so nginx
+// advice names 1.30 (stable) rather than 1.31 (mainline).
 func (p *Product) supportedBranch(now time.Time) (Branch, bool) {
-	for _, b := range p.Branches {
-		if b.EOL == "" {
-			return b, true
+	var newest *Branch
+	for i := range p.Branches {
+		b := &p.Branches[i]
+		if !b.supported(now) {
+			continue
 		}
-		if t, _ := time.Parse("2006-01-02", b.EOL); t.After(now) {
-			return b, true
+		if p.Track(*b) != "mainline" {
+			return *b, true
 		}
+		if newest == nil {
+			newest = b
+		}
+	}
+	if newest != nil {
+		return *newest, true
 	}
 	return Branch{}, false
 }
@@ -302,7 +347,7 @@ func (d *Data) outdated(c candidate, b Branch, eolAt, now time.Time, distro bool
 		DataAsOf:       d.AsOf,
 	}
 	if sb, ok := c.product.supportedBranch(now); ok {
-		oc.SupportedBranch = sb.Cycle
+		oc.SupportedBranch, oc.SupportedTrack = sb.Cycle, c.product.Track(sb)
 	}
 	var ev strings.Builder
 	fmt.Fprintf(&ev, "%s %s (version from: %s) belongs to branch %s", c.product.Name, core, nonEmpty(viaLabels[c.via], c.via), b.Cycle)
@@ -314,7 +359,7 @@ func (d *Data) outdated(c candidate, b Branch, eolAt, now time.Time, distro bool
 		fmt.Fprintf(&ev, " Latest release in the branch: %s.", b.Latest)
 	}
 	if oc.SupportedBranch != "" {
-		fmt.Fprintf(&ev, " Supported branch: %s.", oc.SupportedBranch)
+		fmt.Fprintf(&ev, " Supported branch: %s.", oc.UpgradeTarget())
 	}
 	if distro {
 		ev.WriteString(" Distro-packaged version: security fixes may be backported, but the upstream branch is no longer supported; check the OS release support.")

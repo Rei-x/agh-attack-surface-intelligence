@@ -192,6 +192,10 @@ func TestServiceIssuesAndDraft(t *testing.T) {
 	if strings.Join(kinds, ",") != "eol,admin-panel" {
 		t.Fatalf("kinds: %v", kinds)
 	}
+	// nginx 1.31 is mainline: the advice names the stable branch.
+	if want := "Upgrade to nginx 1.30 (stable) or newer, or remove the service if nobody needs it."; is[0].Advice != want {
+		t.Fatalf("advice %q, want %q", is[0].Advice, want)
+	}
 	due := t0.AddDate(0, 0, 30)
 	tk := &Ticket{HostIP: "10.0.0.9", Port: 80, Protocol: "tcp", Title: is[0].Title, Evidence: is[0].Evidence, Action: ActionPatch, Owner: "WI IT <it@wi.agh.edu.pl>", DueAt: &due}
 	d := BuildDraft(tk, is[0].Advice, t0)

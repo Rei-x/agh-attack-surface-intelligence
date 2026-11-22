@@ -71,7 +71,7 @@ func TestAssessNginxFromServerHeader(t *testing.T) {
 	if o.DaysSinceEOL < 7*365 || o.DistroPackaged || o.Via != "http-server-header" {
 		t.Fatalf("age/distro/via wrong: %+v", o)
 	}
-	for _, want := range []string{"2019-04-23", "7 years", "endoflife.date/nginx", "data as of 2026-11-21", "Supported branch: 1.31"} {
+	for _, want := range []string{"2019-04-23", "7 years", "endoflife.date/nginx", "data as of 2026-11-21", "Supported branch: 1.30 (stable)"} {
 		if !strings.Contains(o.Evidence, want) {
 			t.Errorf("evidence %q lacks %q", o.Evidence, want)
 		}
@@ -206,6 +206,38 @@ func TestCompareVersionsAndAge(t *testing.T) {
 		if got := Age(days); got != want {
 			t.Errorf("Age(%d)=%q want %q", days, got, want)
 		}
+	}
+}
+
+// nginx: even minor branches are stable, odd ones mainline. The upgrade target is the
+// newest supported stable branch (1.30), not the newer mainline (1.31); with no stable branch
+// supported the mainline one is still named.
+func TestSupportedBranchPrefersStable(t *testing.T) {
+	nginx := Table().LookupProduct("nginx")
+	if nginx.StableRule != StableEvenMinor {
+		t.Fatalf("nginx stable rule = %q", nginx.StableRule)
+	}
+	out, _ := Assess(&domain.Service{Product: "nginx", Version: "1.20.1"}, asOf)
+	if len(out) != 1 || out[0].SupportedBranch != "1.30" || out[0].SupportedTrack != "stable" || out[0].UpgradeTarget() != "1.30 (stable)" {
+		t.Fatalf("nginx 1.20.1: %+v", out)
+	}
+	for _, tc := range []struct{ cycle, track string }{{"1.31", "mainline"}, {"1.30", "stable"}, {"1.9", "mainline"}, {"1.10", "stable"}, {"2", ""}} {
+		if got := nginx.Track(Branch{Cycle: tc.cycle}); got != tc.track {
+			t.Errorf("nginx %s track %q, want %q", tc.cycle, got, tc.track)
+		}
+	}
+	d, err := parse([]byte(`{"products":[{"key":"x","name":"X","stable_rule":"even-minor","aliases":["x"],"branches":[
+		{"cycle":"3.5","eol":"","latest":"3.5.1"},{"cycle":"3.4","eol":"2026-01-01","latest":"3.4.9"},{"cycle":"3.3","eol":"2025-01-01","latest":"3.3.9"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, ok := d.byKey["x"].supportedBranch(asOf); !ok || b.Cycle != "3.5" {
+		t.Fatalf("only mainline supported: %+v %v", b, ok)
+	}
+	// Products without the rule keep the newest supported branch and no track.
+	php := Table().LookupProduct("php")
+	if b, ok := php.supportedBranch(asOf); !ok || b.Cycle != "8.6" || php.Track(b) != "" {
+		t.Fatalf("php target %+v", b)
 	}
 }
 
