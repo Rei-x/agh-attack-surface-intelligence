@@ -50,11 +50,22 @@ func TestRemediationLoopVerifiedByNextScan(t *testing.T) {
 	if r.Code != http.StatusOK || draft.Owner != "WI IT" || draft.OwnerEmail != "it@wi.agh.edu.pl" || draft.IssueKey != "cleartext-admin:telnet" {
 		t.Fatalf("draft: %d %s", r.Code, r.Body.String())
 	}
-	if !strings.Contains(draft.Body, "Hello WI IT,") {
+	// A new install writes Polish notices; the analyst can switch per message.
+	if !strings.HasPrefix(draft.Body, "Szanowni Państwo,") || !strings.Contains(draft.Body, "(w naszej ewidencji: WI IT)") || draft.Language != "pl" {
 		t.Fatalf("draft body: %s", draft.Body)
 	}
+	// Telnet is High in DefectDojo: 30 days.
+	if draft.SLA.Severity != "high" || draft.SLA.Days != 30 || draft.DueDate == "" || !strings.Contains(draft.Body, "w terminie do "+draft.DueDate) {
+		t.Fatalf("draft due: %+v %s", draft.SLA, draft.DueDate)
+	}
+	r = doJSON(h, http.MethodGet, "/api/v1/remediation/draft?host_id="+host.ID+"&service_id="+telnetID+"&lang=en", viewerTok, nil)
+	var en remediation.DraftResponse
+	_ = json.Unmarshal(r.Body.Bytes(), &en)
+	if !strings.Contains(en.Body, "Hello WI IT,") || en.Language != "en" {
+		t.Fatalf("english draft: %s", en.Body)
+	}
 
-	create := map[string]any{"host_id": host.ID, "service_id": telnetID, "issue_key": draft.IssueKey, "subject": draft.Subject, "body": draft.Body, "channel": "manual"}
+	create := map[string]any{"host_id": host.ID, "service_id": telnetID, "issue_key": draft.IssueKey, "subject": draft.Subject, "body": draft.Body, "language": draft.Language, "due_date": draft.DueDate, "channel": "manual"}
 	if r := doJSON(h, http.MethodPost, "/api/v1/remediation/tickets", viewerTok, create); r.Code != http.StatusForbidden {
 		t.Fatalf("viewer create expected 403, got %d", r.Code)
 	}
@@ -84,6 +95,17 @@ func TestRemediationLoopVerifiedByNextScan(t *testing.T) {
 	}
 	if got.Status != remediation.StatusFixed || !got.Verified || got.FixedScanID == "" {
 		t.Fatalf("ticket not verified fixed: %+v", got)
+	}
+	// The closed port is reported as out of reach, not as a patch.
+	var view struct {
+		FixedReason string `json:"fixed_reason"`
+		FixOutcome  string `json:"fix_outcome"`
+		DueDate     string `json:"due_date"`
+		Language    string `json:"language"`
+	}
+	_ = json.Unmarshal(r.Body.Bytes(), &view)
+	if view.FixedReason != remediation.FixedServiceRemoved || view.FixOutcome != "Fixed: service removed" || view.DueDate != draft.DueDate || view.Language != "pl" {
+		t.Fatalf("ticket view: %+v", view)
 	}
 
 	r = doJSON(h, http.MethodGet, "/api/v1/remediation/tickets?status=fixed", viewerTok, nil)
@@ -118,10 +140,36 @@ func TestRemediationLoopVerifiedByNextScan(t *testing.T) {
 		t.Fatalf("build digest: %d %s", r.Code, r.Body.String())
 	}
 	r = doJSON(h, http.MethodGet, "/api/v1/digest/"+d.ID+"/markdown", viewerTok, nil)
-	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), "Fixed: Telnet (cleartext login)") {
+	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), "Fixed (service removed): Telnet (cleartext login)") {
 		t.Fatalf("markdown: %d %s", r.Code, r.Body.String())
 	}
 	if r := doJSON(h, http.MethodPut, "/api/v1/digest/settings", analystTok, map[string]any{"enabled": true}); r.Code != http.StatusForbidden {
 		t.Fatalf("analyst digest settings expected 403, got %d", r.Code)
+	}
+
+	// Notice settings are readable by every role (dates, SLA), writable by admins only.
+	r = doJSON(h, http.MethodGet, "/api/v1/remediation/channels", viewerTok, nil)
+	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"notice_language":"pl"`) || !strings.Contains(r.Body.String(), `"timezone":"Europe/Warsaw"`) || !strings.Contains(r.Body.String(), `"medium":90`) {
+		t.Fatalf("channels: %d %s", r.Code, r.Body.String())
+	}
+	if r := doJSON(h, http.MethodPut, "/api/v1/remediation/channels", analystTok, map[string]any{"notice_language": "en"}); r.Code != http.StatusForbidden {
+		t.Fatalf("analyst channels expected 403, got %d", r.Code)
+	}
+}
+
+func TestMitigationNoteSaysWhatTheScanSaw(t *testing.T) {
+	warsaw, _ := time.LoadLocation("Europe/Warsaw")
+	at := time.Date(2026, 11, 21, 23, 39, 0, 0, time.UTC) // 00:39 on the 22nd in Warsaw
+	closed := remediation.Ticket{Status: remediation.StatusFixed, FixedReason: remediation.FixedServiceRemoved, FixedAt: &at,
+		LastCheckNote: "service no longer reachable from the scanner: port 23/tcp is closed (it may be firewalled rather than removed)"}
+	note := mitigationNote(closed, "0123456789abcdef", warsaw)
+	want := "Dzięcioł verification: Fixed: service removed (scan 01234567, 2026-11-22). Service no longer reachable from the scanner: port 23/tcp is closed (it may be firewalled rather than removed). This is not a confirmed patch: the service may only be blocked for the scanner."
+	if note != want {
+		t.Fatalf("note:\n got %q\nwant %q", note, want)
+	}
+	upgraded := remediation.Ticket{Status: remediation.StatusFixed, FixedReason: remediation.FixedUpgraded, FixedDetail: "nginx 1.30.1", FixedAt: &at,
+		LastCheckNote: "upgraded to nginx 1.30.1, which is no longer end of life"}
+	if note := mitigationNote(upgraded, "scan-9", warsaw); note != "Dzięcioł verification: Fixed: upgraded to nginx 1.30.1 (scan scan-9, 2026-11-22). Upgraded to nginx 1.30.1, which is no longer end of life." {
+		t.Fatalf("upgrade note: %q", note)
 	}
 }

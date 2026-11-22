@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/notify"
 )
 
@@ -60,6 +61,40 @@ type Settings struct {
 	// UseAlertWebhook falls back to the alert webhook (Admin > Integrations) when no
 	// dedicated webhook is set.
 	UseAlertWebhook bool `json:"use_alert_webhook"`
+
+	// NoticeLanguage is the default language of owner notices: "pl" (new installs) or
+	// "en". The analyst can switch it per message.
+	NoticeLanguage string `json:"notice_language"`
+	// Timezone is the instance timezone (IANA name, default Europe/Warsaw): every date in
+	// notices, ticket history and the digest is written in it.
+	Timezone string `json:"timezone"`
+	// SLADays overrides the days to fix per severity ("critical", "high", "medium",
+	// "low"). Missing keys use the DefectDojo default SLA table in internal/remediation,
+	// so ticket due dates, the notice "patch by" date and DefectDojo agree.
+	SLADays map[string]int `json:"sla_days,omitempty"`
+}
+
+// SLASeverities are the keys SLADays accepts.
+var SLASeverities = []string{"critical", "high", "medium", "low"}
+
+// Location is the instance timezone.
+func (s *Settings) Location() *time.Location { return locale.Location(s.Timezone) }
+
+// Language is the default notice language.
+func (s *Settings) Language() string {
+	if l := locale.Lang(s.NoticeLanguage); l != "" {
+		return l
+	}
+	return locale.PL
+}
+
+// defaultLanguage: a delivery document saved by an older version (found, no language)
+// keeps the English notices it always sent; a new install starts in Polish.
+func defaultLanguage(found bool) string {
+	if found {
+		return locale.EN
+	}
+	return locale.PL
 }
 
 // EmailReady reports whether SMTP can send.
@@ -71,11 +106,18 @@ func (s *Settings) EmailReady() bool {
 // is consulted for the alert webhook fallback.
 func Load(ctx context.Context, store db.Store) *Settings {
 	s := &Settings{WebhookFormat: FormatSlack, UseAlertWebhook: true}
+	found := false
 	if ss, ok := store.(db.SettingsStore); ok {
-		_, _ = ss.GetSetting(ctx, SettingDelivery, s)
+		found, _ = ss.GetSetting(ctx, SettingDelivery, s)
 	}
 	if s.WebhookFormat == "" {
 		s.WebhookFormat = FormatSlack
+	}
+	if s.NoticeLanguage = locale.Lang(s.NoticeLanguage); s.NoticeLanguage == "" {
+		s.NoticeLanguage = defaultLanguage(found)
+	}
+	if strings.TrimSpace(s.Timezone) == "" || locale.ValidTimezone(s.Timezone) != nil {
+		s.Timezone = locale.DefaultTimezone
 	}
 	applyEnv(s)
 	return s
@@ -101,7 +143,7 @@ func Save(ctx context.Context, store db.Store, in *Settings, clearPassword, clea
 		return errors.New("store does not support settings")
 	}
 	var cur Settings
-	_, _ = ss.GetSetting(ctx, SettingDelivery, &cur)
+	found, _ := ss.GetSetting(ctx, SettingDelivery, &cur)
 	out := *in
 	out.SMTPFromEnv, out.HasWebhookURL, out.WebhookMasked, out.SMTP.HasPassword = false, false, "", false
 	if out.SMTP.Password == "" && !clearPassword {
@@ -127,7 +169,52 @@ func Save(ctx context.Context, store db.Store, in *Settings, clearPassword, clea
 	default:
 		return fmt.Errorf("unknown webhook format %q", out.WebhookFormat)
 	}
+	// Fields an older client does not send keep their stored value.
+	switch {
+	case strings.TrimSpace(out.NoticeLanguage) == "":
+		out.NoticeLanguage = nonEmptyStr(locale.Lang(cur.NoticeLanguage), defaultLanguage(found))
+	case locale.Lang(out.NoticeLanguage) == "":
+		return fmt.Errorf("unknown notice language %q (use pl or en)", out.NoticeLanguage)
+	default:
+		out.NoticeLanguage = locale.Lang(out.NoticeLanguage)
+	}
+	out.Timezone = strings.TrimSpace(out.Timezone)
+	if out.Timezone == "" {
+		out.Timezone = nonEmptyStr(cur.Timezone, locale.DefaultTimezone)
+	}
+	if err := locale.ValidTimezone(out.Timezone); err != nil {
+		return err
+	}
+	if out.SLADays == nil {
+		out.SLADays = cur.SLADays
+	}
+	if err := validSLA(out.SLADays); err != nil {
+		return err
+	}
 	return ss.SaveSetting(ctx, SettingDelivery, &out)
+}
+
+func validSLA(m map[string]int) error {
+	for k, v := range m {
+		known := false
+		for _, s := range SLASeverities {
+			known = known || k == s
+		}
+		if !known {
+			return fmt.Errorf("unknown SLA severity %q (use critical, high, medium, low)", k)
+		}
+		if v < 1 || v > 3650 {
+			return fmt.Errorf("SLA days for %s must be between 1 and 3650", k)
+		}
+	}
+	return nil
+}
+
+func nonEmptyStr(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
 }
 
 // Public returns a copy without secrets.

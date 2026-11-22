@@ -12,17 +12,22 @@ import { useToast } from '@/context/ToastContext';
 import { useLiveEvents } from '@/context/LiveEventsContext';
 import { PERMISSIONS } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
-import { formatDateTime, formatRelativeTime } from '@/lib/format';
+import { formatDateTime, formatIsoDay, formatRelativeTime } from '@/lib/format';
 import {
   ACTION_LABEL,
+  FIX_REASON_HINT,
   KIND_LABEL,
   STATUS_META,
+  fixHistoryLabel,
+  fixLabel,
   formatDay,
   invalidateTickets,
   isActive,
   kindCategory,
   remediationApi,
+  type FixReason,
   type Ticket,
+  type TicketHistory,
   type TicketStats,
   type TicketStatus,
 } from '@/lib/remediation';
@@ -30,6 +35,7 @@ import { Empty, PageHeader, Pill, SimpleSelect, Stat, StatStrip } from '@/compon
 import { CategoryBadge } from '@/components/CategoryBadge';
 import { NotifyOwnerButton } from '@/components/NotifyOwnerDialog';
 import { DeliveryChannelsPanel } from '@/components/DeliveryChannelsPanel';
+import { IsoDateInput } from '@/components/IsoDateInput';
 import { PeckLoader } from '@/components/Woodpecker';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -56,14 +62,29 @@ function overdue(t: Ticket): boolean {
   return isActive(t.status) && (t.overdue || !!t.past_due);
 }
 
+/** Status, and for a fixed ticket what closed it ("Fixed: service removed" is not a patch). */
 export function StatusPill({ t }: { t: Ticket }) {
   if (overdue(t)) return <Pill tone="warning">Overdue</Pill>;
   const meta = STATUS_META[t.status];
+  if (t.status !== 'fixed') return <Pill tone={meta.tone}>{meta.label}</Pill>;
+  const label = fixLabel(t);
+  const hint = t.fixed_reason ? FIX_REASON_HINT[t.fixed_reason as FixReason] : undefined;
+  // "Fixed: upgraded" in the pill, the version on the line below (the pill is one line).
+  const upgradedTo = t.fixed_reason === 'upgraded' && t.fixed_detail ? t.fixed_detail : '';
   return (
-    <Pill tone={meta.tone}>
-      {t.status === 'fixed' && t.verified ? 'Fix verified' : meta.label}
-    </Pill>
+    <span className="flex min-w-0 flex-col items-start gap-0.5" title={hint ? `${label}. ${hint}` : label}>
+      <Pill tone={t.fixed_reason === 'service_removed' || t.fixed_reason === 'manual' ? 'info' : meta.tone} className="max-w-full">
+        <span className="truncate">{upgradedTo ? 'Fixed: upgraded' : label}</span>
+      </Pill>
+      {upgradedTo && <span className="max-w-full truncate font-mono text-[10px] text-muted-foreground">to {upgradedTo}</span>}
+    </span>
   );
+}
+
+function historyLabel(h: TicketHistory): string {
+  if (h.action === 'verified_fixed') return fixHistoryLabel(h.fixed_reason);
+  if (h.action === 'status' && h.to === 'fixed') return 'Marked fixed';
+  return HISTORY_LABEL[h.action] || h.action;
 }
 
 const HISTORY_LABEL: Record<string, string> = {
@@ -81,10 +102,10 @@ const HISTORY_LABEL: Record<string, string> = {
 function TicketDetail({ t, canWrite, onChanged }: { t: Ticket; canWrite: boolean; onChanged: () => void }) {
   const toast = useToast();
   const [note, setNote] = useState('');
-  const [due, setDue] = useState(t.due_at?.slice(0, 10) || '');
+  const [due, setDue] = useState(t.due_date || '');
   const [busy, setBusy] = useState<string | null>(null);
 
-  const apply = async (status?: TicketStatus, extra?: { due_at?: string }) => {
+  const apply = async (status?: TicketStatus, extra?: { due_date?: string }) => {
     if (status === 'accepted_risk' && !note.trim()) {
       toast.warning('Add a reason first', 'Accepting a risk needs a short reason in the note field.');
       return;
@@ -140,8 +161,8 @@ function TicketDetail({ t, canWrite, onChanged }: { t: Ticket; canWrite: boolean
               <li key={i} className="flex gap-3">
                 <span className="w-40 shrink-0 font-mono text-[11px] whitespace-nowrap text-muted-foreground">{formatDateTime(h.at)}</span>
                 <span className="min-w-0">
-                  <span className="font-semibold">{HISTORY_LABEL[h.action] || h.action}</span>
-                  {h.to && h.action === 'status' && <> to {STATUS_META[h.to as TicketStatus]?.label || h.to}</>}
+                  <span className="font-semibold">{historyLabel(h)}</span>
+                  {h.to && h.action === 'status' && h.to !== 'fixed' && <> to {STATUS_META[h.to as TicketStatus]?.label || h.to}</>}
                   <span className="text-muted-foreground"> · {h.by}</span>
                   {h.note && <span className="text-muted-foreground"> · {h.note}</span>}
                 </span>
@@ -183,12 +204,12 @@ function TicketDetail({ t, canWrite, onChanged }: { t: Ticket; canWrite: boolean
           </div>
           {active && (
             <div className="flex items-center gap-1.5">
-              <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="h-8 w-40 text-xs" aria-label="Due date" />
+              <IsoDateInput value={due} onChange={setDue} className="w-40" inputClassName="h-8 text-xs" aria-label="Due date" />
               <Button
                 variant="ghost"
                 size="xs"
-                disabled={!!busy || !due || due === t.due_at?.slice(0, 10)}
-                onClick={() => apply(undefined, { due_at: new Date(`${due}T23:59:00Z`).toISOString() })}
+                disabled={!!busy || !due || due === t.due_date}
+                onClick={() => apply(undefined, { due_date: due })}
               >
                 Set due
               </Button>
@@ -198,7 +219,9 @@ function TicketDetail({ t, canWrite, onChanged }: { t: Ticket; canWrite: boolean
             <NotifyOwnerButton hostId={t.host_id} serviceId={t.service_id} issueKey={t.issue_key} onSent={onChanged} />
           )}
           <p className="text-[11px] text-muted-foreground">
-            Every completed scan checks this ticket again. A fix the scan confirms closes it and is mitigated in DefectDojo.
+            Every completed scan checks this ticket again. When the issue is gone the ticket closes with what the scan saw:
+            an upgrade, or a service it no longer reaches (which may only be firewalled). DefectDojo mitigates the finding
+            and gets a note saying which.
           </p>
         </div>
       )}
@@ -271,12 +294,19 @@ export function RemediationPage() {
     setChecking(true);
     try {
       const res = await remediationApi.verify();
-      const fixed = res.outcomes.filter((o) => o.action === 'verified_fixed').length;
+      const fixed = res.outcomes.filter((o) => o.action === 'verified_fixed');
+      const upgraded = fixed.filter((o) => o.fixed_reason === 'upgraded').length;
+      const unreachable = fixed.filter((o) => o.fixed_reason === 'service_removed').length;
+      const detail = [
+        upgraded ? `${upgraded} upgraded` : '',
+        unreachable ? `${unreachable} no longer reachable` : '',
+        fixed.length - upgraded - unreachable ? `${fixed.length - upgraded - unreachable} no longer detected` : '',
+      ].filter(Boolean);
       toast.success(
         'Tickets checked',
         res.outcomes.length === 0
           ? 'No change against the latest scan'
-          : `${fixed} verified fixed, ${res.outcomes.length - fixed} other change(s)`
+          : `${fixed.length} closed as fixed${detail.length ? ` (${detail.join(', ')})` : ''}, ${res.outcomes.length - fixed.length} other change(s)`
       );
       invalidateTickets();
       await load();
@@ -365,7 +395,7 @@ export function RemediationPage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-8 pl-4" />
-                <TableHead className="w-32">Status</TableHead>
+                <TableHead className="w-48">Status</TableHead>
                 <TableHead>Finding</TableHead>
                 <TableHead className="w-40">Where</TableHead>
                 <TableHead className="w-48">Owner</TableHead>
@@ -422,7 +452,7 @@ export function RemediationPage() {
                       <TableCell className="text-right font-mono text-xs tabular-nums">{t.age_days ?? 0}d</TableCell>
                       <TableCell className={cn('font-mono text-xs', overdue(t) && 'text-amber-700 dark:text-amber-400')}>
                         {isActive(t.status) ? (
-                          formatDay(t.due_at)
+                          t.due_date ? formatIsoDay(t.due_date) : formatDay(t.due_at)
                         ) : (
                           <span className="text-muted-foreground">{t.status === 'fixed' ? 'fixed ' : 'closed '}{formatDay(t.fixed_at || t.updated_at)}</span>
                         )}

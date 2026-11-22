@@ -73,6 +73,23 @@ const (
 	KindOther          = "other"
 )
 
+// Fix outcomes (Ticket.FixedReason): what actually closed the ticket. Only "upgraded" means
+// the software was patched; a closed port or a silent host only means the scanner can no
+// longer reach the service, which a firewall rule does just as well.
+const (
+	// FixedServiceRemoved: the port is closed, filtered or gone, or the host no longer
+	// answers / left the inventory.
+	FixedServiceRemoved = "service_removed"
+	// FixedUpgraded: the service still answers with a version that is supported (EOL) or
+	// outside the affected range (CVE hint). FixedDetail names it ("nginx 1.30.1").
+	FixedUpgraded = "upgraded"
+	// FixedIssueGone: the service still answers but the condition is no longer detected
+	// (admin panel gone, version no longer visible, no longer a cleartext protocol).
+	FixedIssueGone = "issue_gone"
+	// FixedManual: an analyst marked the ticket fixed; no scan confirmed it.
+	FixedManual = "manual"
+)
+
 // Requested owner actions.
 const (
 	ActionPatch    = "patch"
@@ -89,6 +106,8 @@ type HistoryEntry struct {
 	To     string    `json:"to,omitempty"`
 	Note   string    `json:"note,omitempty"`
 	ScanID string    `json:"scan_id,omitempty"`
+	// FixedReason is set on verified_fixed / fixed entries (Fixed* constants).
+	FixedReason string `json:"fixed_reason,omitempty"`
 }
 
 // Ticket is one remediation request for a finding on a host or service.
@@ -116,10 +135,16 @@ type Ticket struct {
 	Overdue  bool       `json:"overdue"`
 	Verified bool       `json:"verified"` // fixed status was confirmed by a scan
 	DueAt    *time.Time `json:"due_at,omitempty"`
+	// FixedReason says how the fix was established (Fixed* constants); FixedDetail is the
+	// product and version seen after an upgrade.
+	FixedReason string `json:"fixed_reason,omitempty"`
+	FixedDetail string `json:"fixed_detail,omitempty"`
 
 	Subject string `json:"subject,omitempty"`
 	Body    string `json:"body,omitempty"`
-	Channel string `json:"channel,omitempty"` // email, webhook, manual (last delivery)
+	// Language of Subject and Body (pl, en; empty for tickets of older versions: en).
+	Language string `json:"language,omitempty"`
+	Channel  string `json:"channel,omitempty"` // email, webhook, manual (last delivery)
 
 	CreatedBy      string     `json:"created_by"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -151,8 +176,26 @@ func (t *Ticket) Where() string {
 }
 
 // SetStatus moves the ticket to status to, records history and stamps the status time.
-// It refuses moves the flow does not allow.
+// It refuses moves the flow does not allow. A fix without a scan is a manual one; scan
+// verification goes through MarkFixed, which records what the scan saw.
 func (t *Ticket) SetStatus(to, by, note, scanID string, now time.Time) error {
+	reason := ""
+	if to == StatusFixed {
+		reason = FixedManual
+		if scanID != "" {
+			reason = FixedIssueGone
+		}
+	}
+	return t.setStatus(to, by, note, scanID, reason, "", now)
+}
+
+// MarkFixed closes the ticket as verified by scanID with the outcome of the check.
+func (t *Ticket) MarkFixed(res CheckResult, scanID string, now time.Time) error {
+	reason := nonEmpty(res.Fixed, FixedIssueGone)
+	return t.setStatus(StatusFixed, SystemUser, res.Reason, scanID, reason, res.Detail, now)
+}
+
+func (t *Ticket) setStatus(to, by, note, scanID, fixedReason, fixedDetail string, now time.Time) error {
 	to = strings.TrimSpace(to)
 	if !ValidStatus(to) {
 		return fmt.Errorf("unknown status %q", to)
@@ -173,12 +216,14 @@ func (t *Ticket) SetStatus(to, by, note, scanID string, now time.Time) error {
 		t.FixedScanID = scanID
 		t.Verified = scanID != ""
 		t.Overdue = false
+		t.FixedReason, t.FixedDetail = fixedReason, fixedDetail
 	case StatusAcceptedRisk:
 		t.Overdue = false
 	case StatusReopened:
 		t.FixedAt = nil
 		t.FixedScanID = ""
 		t.Verified = false
+		t.FixedReason, t.FixedDetail = "", ""
 	}
 	action := "status"
 	switch {
@@ -189,8 +234,40 @@ func (t *Ticket) SetStatus(to, by, note, scanID string, now time.Time) error {
 	case to == StatusNotified:
 		action = "notified"
 	}
-	t.History = append(t.History, HistoryEntry{At: now, By: by, Action: action, From: from, To: to, Note: note, ScanID: scanID})
+	h := HistoryEntry{At: now, By: by, Action: action, From: from, To: to, Note: note, ScanID: scanID}
+	if to == StatusFixed {
+		h.FixedReason = fixedReason
+	}
+	t.History = append(t.History, h)
 	return nil
+}
+
+// FixOutcome is the short English label of a closed fix, as the UI and the digest show it:
+// "Fixed: service removed", "Fixed: upgraded to nginx 1.30.1", "Fixed: issue no longer
+// detected", "Fixed (marked by an analyst)". Empty for tickets that are not fixed.
+func (t *Ticket) FixOutcome() string {
+	if t.Status != StatusFixed {
+		return ""
+	}
+	return FixOutcomeLabel(t.FixedReason, t.FixedDetail)
+}
+
+// FixOutcomeLabel is FixOutcome for a reason and detail.
+func FixOutcomeLabel(reason, detail string) string {
+	switch reason {
+	case FixedServiceRemoved:
+		return "Fixed: service removed"
+	case FixedUpgraded:
+		if detail != "" {
+			return "Fixed: upgraded to " + detail
+		}
+		return "Fixed: upgraded"
+	case FixedIssueGone:
+		return "Fixed: issue no longer detected"
+	case FixedManual:
+		return "Fixed (marked by an analyst)"
+	}
+	return "Fixed"
 }
 
 // AgeDays is the number of whole days since the ticket was created.

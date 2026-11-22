@@ -49,7 +49,7 @@ func fixture() Input {
 	fixedAt := now.Add(-3 * time.Hour)
 	pastDue := now.Add(-24 * time.Hour)
 	tickets := []remediation.Ticket{
-		{ID: "t1", HostID: "h1", HostIP: "10.66.0.10", Port: 21, Title: "FTP (cleartext login) open", Owner: "wi-it@agh.edu.pl", Status: remediation.StatusFixed, FixedAt: &fixedAt, Verified: true, LastCheckNote: "port 21/tcp is closed"},
+		{ID: "t1", HostID: "h1", HostIP: "10.66.0.10", Port: 21, Title: "FTP (cleartext login) open", Owner: "wi-it@agh.edu.pl", Status: remediation.StatusFixed, FixedAt: &fixedAt, Verified: true, FixedReason: remediation.FixedServiceRemoved, LastCheckNote: "port 21/tcp is closed"},
 		{ID: "t2", HostID: "h2", HostIP: "10.70.1.5", ServiceID: "s3", Port: 23, Kind: remediation.KindCleartextAdmin, Title: "Telnet open", Status: remediation.StatusNotified, DueAt: &pastDue},
 		{ID: "t3", HostID: "h1", HostIP: "10.66.0.10", ServiceID: "s2", Port: 443, Kind: remediation.KindOther, Title: "Review", Status: remediation.StatusOpen},
 	}
@@ -92,17 +92,21 @@ func TestBuildDigest(t *testing.T) {
 	if len(d.Owners) < 3 || d.Owners[0].Owner != "wi-it@agh.edu.pl" || d.Owners[len(d.Owners)-1].Owner != Unassigned {
 		t.Fatalf("owners: %+v", d.Owners)
 	}
-	if !strings.Contains(d.Headline, "3 new risky exposures") || !strings.Contains(d.Headline, "1 fix verified") || !strings.Contains(d.Headline, "1 ticket overdue") {
+	if !strings.Contains(d.Headline, "3 new risky exposures") || !strings.Contains(d.Headline, "1 ticket closed as fixed") || !strings.Contains(d.Headline, "1 ticket overdue") {
 		t.Fatalf("headline: %q", d.Headline)
 	}
 	md := d.Markdown()
-	for _, want := range []string{"# Dzięcioł digest 2026-11-21", "## Top risks", "## Remediation", "Fixed: FTP (cleartext login) open", "### wi-it@agh.edu.pl", "### Unassigned"} {
+	for _, want := range []string{"# Dzięcioł digest 2026-11-21", "## Top risks", "## Remediation", "Fixed (service removed): FTP (cleartext login) open", "Window: 2026-11-20 07:30 CET to 2026-11-21 07:30 CET", "Overdue: Telnet open on 10.70.1.5:23/tcp (owner: unknown, due 2026-11-20)", "### wi-it@agh.edu.pl", "### Unassigned"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("markdown misses %q\n%s", want, md)
 		}
 	}
 	if strings.ContainsAny(md, "\u2013\u2014") {
 		t.Error("markdown must not contain dashes")
+	}
+
+	if d.Fixed[0].Outcome != "Fixed: service removed" || d.Fixed[0].FixedReason != remediation.FixedServiceRemoved {
+		t.Fatalf("fixed item: %+v", d.Fixed[0])
 	}
 
 	quiet := Build(Input{Now: now, Since: now.Add(-time.Hour)})
@@ -155,5 +159,33 @@ func TestDigestServiceSchedulesDelivery(t *testing.T) {
 	pub := s.LoadSettings(ctx).Public()
 	if pub.WebhookURL != "" || !pub.HasWebhookURL || pub.LastDeliveredDay != "2026-11-21" {
 		t.Fatalf("public settings: %+v", pub)
+	}
+}
+
+func TestDigestDatesAroundMidnight(t *testing.T) {
+	// 23:30 UTC on the 21st is already the 22nd in Warsaw (and still the 21st in UTC).
+	late := time.Date(2026, 11, 21, 23, 30, 0, 0, time.UTC)
+	due := time.Date(2026, 11, 21, 22, 59, 0, 0, time.UTC) // 23:59 Warsaw on the 21st
+	in := Input{Now: late, Since: late.Add(-24 * time.Hour), Tickets: []remediation.Ticket{
+		{ID: "t", HostID: "h", HostIP: "10.0.0.1", Port: 22, Title: "SSH review", Status: remediation.StatusNotified, DueAt: &due},
+	}}
+	d := Build(in)
+	if d.Timezone != "Europe/Warsaw" || d.Title() != "Dzięcioł digest 2026-11-22" || d.Day() != "2026-11-22" {
+		t.Fatalf("Warsaw digest: %s %s", d.Timezone, d.Title())
+	}
+	md := d.Markdown()
+	for _, want := range []string{"Window: 2026-11-21 00:30 CET to 2026-11-22 00:30 CET", "due 2026-11-21"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown misses %q\n%s", want, md)
+		}
+	}
+	in.Timezone = "UTC"
+	if d := Build(in); d.Title() != "Dzięcioł digest 2026-11-21" || !strings.Contains(d.Markdown(), "Window: 2026-11-20 23:30 UTC to 2026-11-21 23:30 UTC") {
+		t.Fatalf("UTC digest: %s\n%s", d.Title(), d.Markdown())
+	}
+	// Digests stored by older versions (no timezone) are shown in the default zone.
+	d.Timezone = ""
+	if d.Title() != "Dzięcioł digest 2026-11-22" {
+		t.Fatalf("old digest: %s", d.Title())
 	}
 }

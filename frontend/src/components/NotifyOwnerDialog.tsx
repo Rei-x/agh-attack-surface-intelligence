@@ -12,10 +12,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { PERMISSIONS } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
+import { isIsoDay } from '@/lib/format';
 import {
   ACTION_LABEL,
   KIND_LABEL,
+  LANGUAGE_LABEL,
+  SEVERITY_LABEL,
   STATUS_META,
+  fixLabel,
   invalidateTickets,
   isActive,
   kindCategory,
@@ -28,6 +32,7 @@ import {
 } from '@/lib/remediation';
 import { Field, Notice, Pill, SimpleSelect } from '@/components/common';
 import { CategoryBadge } from '@/components/CategoryBadge';
+import { IsoDateInput } from '@/components/IsoDateInput';
 import { PeckLoader } from '@/components/Woodpecker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,6 +69,26 @@ function channelLine(d: Draft, to: string): { text: string; ready: boolean } {
   };
 }
 
+/** text with every occurrence of the ISO day from replaced by to. */
+function withDue(text: string, from: string, to: string): string {
+  if (!from || !to || from === to) return text;
+  return text.split(from).join(to);
+}
+
+/** Where the default due date comes from, in one line. */
+function slaLine(d: Draft): string {
+  const zone = d.timezone ? ` Dates in ${d.timezone}.` : '';
+  if (d.existing?.due_at) return `Due date kept from the open ticket.${zone}`;
+  const sev = SEVERITY_LABEL[d.sla.severity] || d.sla.severity;
+  if (d.sla.expired) {
+    return `DefectDojo SLA for this ${sev} finding (${d.sla.days} days from ${d.sla.start}) ended on ${d.sla.expires}; the owner gets ${d.sla.days} days from today.${zone}`;
+  }
+  if (d.sla.from_defectdojo) {
+    return `Same day as the DefectDojo SLA: ${sev}, ${d.sla.days} days from the finding date ${d.sla.start}.${zone}`;
+  }
+  return `${sev} severity: ${d.sla.days} days to fix.${zone}`;
+}
+
 /** "Notify owner": prefilled, editable message plus a remediation ticket. */
 export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issueKey, onSent }: Props) {
   const toast = useToast();
@@ -76,17 +101,23 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
   const [body, setBody] = useState('');
   const [sending, setSending] = useState<string | null>(null);
   const [result, setResult] = useState<Delivery | null>(null);
+  /** Notice language of this message ('' until the first draft: the instance default). */
+  const [lang, setLang] = useState('');
+  const [switching, setSwitching] = useState(false);
 
-  const load = async (k?: string) => {
+  /** Loads a draft; keepDue keeps the analyst's due day (and writes it into the message). */
+  const load = async (k?: string, l?: string, keep?: { contact?: boolean; due?: string }) => {
     setError(null);
     try {
-      const d = await remediationApi.draft(hostId, serviceId, k);
+      const d = await remediationApi.draft(hostId, serviceId, k, l);
+      const day = keep?.due && isIsoDay(keep.due) ? keep.due : d.due_date;
       setDraft(d);
       setKey(d.issue_key);
-      setTo(d.owner_email || '');
-      setDue(d.due_at.slice(0, 10));
-      setSubject(d.subject);
-      setBody(d.body);
+      setLang(d.language);
+      if (!keep?.contact) setTo(d.owner_email || '');
+      setDue(day);
+      setSubject(withDue(d.subject, d.due_date, day));
+      setBody(withDue(d.body, d.due_date, day));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -96,9 +127,29 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
     if (!open) return;
     setDraft(null);
     setResult(null);
+    setLang('');
     load(issueKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, hostId, serviceId, issueKey]);
+
+  /** The ticket due day and the message's "by" date stay the same day. */
+  const changeDue = (day: string) => {
+    if (due && isIsoDay(day)) {
+      setSubject((s) => withDue(s, due, day));
+      setBody((b) => withDue(b, due, day));
+    }
+    setDue(day);
+  };
+
+  const edited =
+    !!draft && (subject !== withDue(draft.subject, draft.due_date, due) || body !== withDue(draft.body, draft.due_date, due));
+  const switchLanguage = async (l: string) => {
+    if (!draft || l === lang) return;
+    if (edited && !window.confirm('Switching the language rewrites the subject and message. Your edits will be lost.')) return;
+    setSwitching(true);
+    await load(key, l, { contact: true, due });
+    setSwitching(false);
+  };
 
   const send = async (channel: string) => {
     if (!draft) return;
@@ -111,7 +162,8 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
         owner_email: to.trim(),
         subject,
         body,
-        due_at: due ? new Date(`${due}T23:59:00Z`).toISOString() : undefined,
+        language: lang || undefined,
+        due_date: due || undefined,
         channel,
       });
       invalidateTickets();
@@ -205,7 +257,7 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
                 {draft.issues.length > 1 ? (
                   <SimpleSelect
                     value={key}
-                    onValueChange={(v) => load(v)}
+                    onValueChange={(v) => load(v, lang, { contact: true })}
                     options={draft.issues.map((i) => ({ value: i.key, label: `${KIND_LABEL[i.kind] || i.kind}: ${i.title}` }))}
                   />
                 ) : (
@@ -213,9 +265,10 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
                 )}
               </Field>
               <Field label="Due" htmlFor="no-due">
-                <Input id="no-due" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+                <IsoDateInput id="no-due" value={due} onChange={changeDue} />
               </Field>
             </div>
+            <span className="-mt-2 text-[11px] text-muted-foreground">{slaLine(draft)}</span>
             {issue && (
               <div className="-mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 {cat && <CategoryBadge kind={cat} size="xs" />}
@@ -223,6 +276,31 @@ export function NotifyOwnerDialog({ open, onOpenChange, hostId, serviceId, issue
                 <span className="min-w-0 flex-1">{issue.evidence}</span>
               </div>
             )}
+
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] text-muted-foreground">
+                Notice language{draft.default_language && draft.default_language !== lang ? ` (default ${LANGUAGE_LABEL[draft.default_language] || draft.default_language})` : ''}
+              </span>
+              <div className="flex gap-1" role="group" aria-label="Notice language">
+                {(draft.languages?.length ? draft.languages : ['pl', 'en']).map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    disabled={switching || !!sending}
+                    aria-pressed={l === lang}
+                    onClick={() => switchLanguage(l)}
+                    className={cn(
+                      'h-7 border px-2.5 text-[11px] font-semibold transition-colors disabled:opacity-50',
+                      l === lang
+                        ? 'border-foreground/40 bg-muted text-foreground'
+                        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                  >
+                    {LANGUAGE_LABEL[l] || l.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <Field label="Subject" htmlFor="no-subject">
               <Input id="no-subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
@@ -346,7 +424,8 @@ export function TicketBadge({ serviceId }: { serviceId: string }) {
   if (!t) return null;
   const overdue = isActive(t.status) && (t.overdue || t.past_due);
   const meta = STATUS_META[t.status];
-  const label = overdue ? 'Overdue' : t.status === 'fixed' ? (t.verified ? 'Fix verified' : 'Fixed') : meta.label;
+  const fixed = t.status === 'fixed' ? fixLabel(t) : '';
+  const label = overdue ? 'Overdue' : fixed ? (t.fixed_reason === 'upgraded' ? 'Fixed: upgraded' : fixed) : meta.label;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -366,8 +445,11 @@ export function TicketBadge({ serviceId }: { serviceId: string }) {
       <TooltipContent className="max-w-xs flex-col items-start gap-0.5 text-left">
         <span className="font-semibold">Remediation ticket</span>
         <span className="opacity-80">{t.title}</span>
+        {fixed && <span className="opacity-80">{fixed}</span>}
         {t.owner && <span className="opacity-80">Owner: {t.owner}</span>}
-        {t.due_at && isActive(t.status) && <span className="opacity-80">Due {t.due_at.slice(0, 10)}</span>}
+        {(t.due_date || t.due_at) && isActive(t.status) && (
+          <span className="opacity-80">Due {t.due_date || t.due_at?.slice(0, 10)}</span>
+        )}
         {t.last_check_note && <span className="opacity-60">Last check: {t.last_check_note}</span>}
       </TooltipContent>
     </Tooltip>

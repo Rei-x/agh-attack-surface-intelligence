@@ -14,11 +14,15 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/notify"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/outbound"
 )
 
-var t0 = time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
+var (
+	t0     = time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
+	warsaw = locale.Location("Europe/Warsaw")
+)
 
 func TestStatusTransitions(t *testing.T) {
 	cases := []struct {
@@ -95,13 +99,13 @@ func TestCheckDetectsEachKindOfFix(t *testing.T) {
 	if r := Check(&tk, eolHost("1.14.0", "open"), t0); !r.Known || !r.Present {
 		t.Fatalf("old nginx must still be present: %+v", r)
 	}
-	if r := Check(&tk, eolHost("1.30.1", "open"), t0); !r.Known || r.Present || !strings.Contains(r.Reason, "no longer end of life") {
+	if r := Check(&tk, eolHost("1.30.1", "open"), t0); !r.Known || r.Present || !strings.Contains(r.Reason, "no longer end of life") || r.Fixed != FixedUpgraded {
 		t.Fatalf("upgraded nginx must count as fixed: %+v", r)
 	}
-	if r := Check(&tk, eolHost("1.14.0", "closed"), t0); r.Present || !strings.Contains(r.Reason, "closed") {
+	if r := Check(&tk, eolHost("1.14.0", "closed"), t0); r.Present || !strings.Contains(r.Reason, "closed") || r.Fixed != FixedServiceRemoved {
 		t.Fatalf("closed port must count as fixed: %+v", r)
 	}
-	if r := Check(&tk, nil, t0); r.Present || !r.Known {
+	if r := Check(&tk, nil, t0); r.Present || !r.Known || r.Fixed != FixedServiceRemoved {
 		t.Fatalf("deleted host must count as fixed: %+v", r)
 	}
 	missing := eolHost("1.14.0", "open")
@@ -117,7 +121,7 @@ func TestCheckDetectsEachKindOfFix(t *testing.T) {
 		t.Fatalf("exposed panel must be present: %+v", r)
 	}
 	h.Services[0].IsAdminPanel = false
-	if r := Check(admin, h, t0); r.Present {
+	if r := Check(admin, h, t0); r.Present || r.Fixed != FixedIssueGone {
 		t.Fatalf("removed panel must count as fixed: %+v", r)
 	}
 
@@ -138,41 +142,47 @@ func TestVerifyFixesOverduesAndReopens(t *testing.T) {
 	ts = append(ts, accepted)
 
 	// Before the due date nothing happens.
-	if out := Verify(ts, lookup, "scan-1", t0.Add(time.Hour)); len(out) != 0 {
+	if out := Verify(ts, lookup, "scan-1", t0.Add(time.Hour), warsaw); len(out) != 0 {
 		t.Fatalf("expected no outcome, got %+v", out)
 	}
 	if ts[0].LastCheckScan != "scan-1" {
 		t.Fatalf("last check not recorded: %+v", ts[0])
 	}
-	// Past due and still there: overdue once.
-	out := Verify(ts, lookup, "scan-2", t0.Add(72*time.Hour))
+	// Past due and still there: overdue once, with the due day in Warsaw time.
+	out := Verify(ts, lookup, "scan-2", t0.Add(72*time.Hour), warsaw)
 	if len(out) != 1 || out[0].Action != "overdue" || !ts[0].Overdue {
 		t.Fatalf("expected overdue: %+v / %+v", out, ts[0])
 	}
-	if out := Verify(ts, lookup, "scan-3", t0.Add(73*time.Hour)); len(out) != 0 {
+	if h := ts[0].History[len(ts[0].History)-1]; h.Note != "still present after the due date 2026-11-22" {
+		t.Fatalf("overdue note: %q", h.Note)
+	}
+	if out := Verify(ts, lookup, "scan-3", t0.Add(73*time.Hour), warsaw); len(out) != 0 {
 		t.Fatalf("overdue must be flagged only once: %+v", out)
 	}
 	// Owner upgrades nginx: verified fixed with the scan as evidence.
 	hosts["h1"] = eolHost("1.30.1", "open")
-	out = Verify(ts, lookup, "scan-4", t0.Add(96*time.Hour))
+	out = Verify(ts, lookup, "scan-4", t0.Add(96*time.Hour), warsaw)
 	if len(out) != 1 || out[0].Action != "verified_fixed" {
 		t.Fatalf("expected verified fix: %+v", out)
 	}
 	if ts[0].Status != StatusFixed || ts[0].FixedScanID != "scan-4" || !ts[0].Verified || ts[0].Overdue {
 		t.Fatalf("ticket not fixed: %+v", ts[0])
 	}
+	if ts[0].FixedReason != FixedUpgraded || ts[0].FixedDetail != "nginx 1.30.1" || out[0].FixedReason != FixedUpgraded {
+		t.Fatalf("upgrade outcome: %q %q / %+v", ts[0].FixedReason, ts[0].FixedDetail, out[0])
+	}
 	if ts[1].Status != StatusAcceptedRisk {
 		t.Fatal("accepted risk must be left alone")
 	}
 	// Someone rolls the old version back: the verified fix is reopened.
 	hosts["h1"] = eolHost("1.14.0", "open")
-	out = Verify(ts, lookup, "scan-5", t0.Add(120*time.Hour))
+	out = Verify(ts, lookup, "scan-5", t0.Add(120*time.Hour), warsaw)
 	if len(out) != 1 || out[0].Action != "reopened" || ts[0].Status != StatusReopened {
 		t.Fatalf("expected reopen: %+v / %s", out, ts[0].Status)
 	}
 	// Unreadable host record: leave the ticket alone.
 	failing := func(string) (*domain.Host, bool) { return nil, false }
-	if out := Verify(ts, failing, "scan-6", t0.Add(121*time.Hour)); len(out) != 0 || ts[0].Status != StatusReopened {
+	if out := Verify(ts, failing, "scan-6", t0.Add(121*time.Hour), warsaw); len(out) != 0 || ts[0].Status != StatusReopened {
 		t.Fatalf("lookup failure must not change tickets: %+v", out)
 	}
 }
@@ -198,7 +208,7 @@ func TestServiceIssuesAndDraft(t *testing.T) {
 	}
 	due := t0.AddDate(0, 0, 30)
 	tk := &Ticket{HostIP: "10.0.0.9", Port: 80, Protocol: "tcp", Title: is[0].Title, Evidence: is[0].Evidence, Action: ActionPatch, Owner: "WI IT <it@wi.agh.edu.pl>", DueAt: &due}
-	d := BuildDraft(tk, is[0].Advice, t0)
+	d := BuildDraft(tk, Notice{Lang: locale.EN, Loc: warsaw, Advice: is[0].Advice, FirstSeen: t0})
 	for _, want := range []string{"Hello WI IT,", "Where: 10.0.0.9:80/tcp", "What to do: Upgrade", "Please patch it by " + due.Format("2006-01-02")} {
 		if !strings.Contains(d.Body, want) {
 			t.Errorf("draft body misses %q:\n%s", want, d.Body)
@@ -245,7 +255,7 @@ func TestServiceNotifyFallbacksAndVerification(t *testing.T) {
 	s.OnVerifiedFix = func(_ context.Context, tk Ticket, scanID string) { fixed = append(fixed, tk.ID+"@"+scanID) }
 
 	// Nothing configured: the draft says so and sending falls back to manual.
-	d, err := s.Draft(ctx, host.ID, svc.ID, "")
+	d, err := s.Draft(ctx, host.ID, svc.ID, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,6 +319,15 @@ func TestServiceNotifyFallbacksAndVerification(t *testing.T) {
 	got, _ := s.Repo.Get(ctx, res.Ticket.ID)
 	if got.Status != StatusFixed || got.FixedScanID != "scan-b" || !got.Verified {
 		t.Fatalf("ticket: %+v", got)
+	}
+	// A closed port is not a patch: the outcome says the service is out of the scanner's
+	// reach, and so does the history line.
+	if got.FixedReason != FixedServiceRemoved || got.FixOutcome() != "Fixed: service removed" {
+		t.Fatalf("outcome: %q / %q", got.FixedReason, got.FixOutcome())
+	}
+	last := got.History[len(got.History)-1]
+	if last.FixedReason != FixedServiceRemoved || !strings.Contains(last.Note, "no longer reachable from the scanner") || !strings.Contains(last.Note, "firewalled") {
+		t.Fatalf("history: %+v", last)
 	}
 	if len(fixed) != 1 || fixed[0] != got.ID+"@scan-b" {
 		t.Fatalf("DefectDojo hook not called: %v", fixed)

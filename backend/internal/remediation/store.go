@@ -48,7 +48,32 @@ func (r *Repo) load(ctx context.Context) ([]Ticket, error) {
 	if _, err := ss.GetSetting(ctx, SettingTickets, &doc); err != nil {
 		return nil, err
 	}
+	migrate(doc.Tickets)
 	return doc.Tickets, nil
+}
+
+// migrate fills, in memory, what tickets of older versions did not store (saved with the
+// next update): the outcome of a fix, read back from its verification note. Due dates are
+// left alone; locale.DueDay reads their day the way it was meant.
+func migrate(ts []Ticket) {
+	for i := range ts {
+		t := &ts[i]
+		if t.Status != StatusFixed || t.FixedReason != "" {
+			continue
+		}
+		if !t.Verified {
+			t.FixedReason = FixedManual
+			continue
+		}
+		note := t.LastCheckNote
+		for j := len(t.History) - 1; j >= 0; j-- {
+			if h := t.History[j]; h.To == StatusFixed {
+				note = nonEmpty(h.Note, note)
+				break
+			}
+		}
+		t.FixedReason, t.FixedDetail = inferFixedReason(note)
+	}
 }
 
 // List returns all tickets, newest first.

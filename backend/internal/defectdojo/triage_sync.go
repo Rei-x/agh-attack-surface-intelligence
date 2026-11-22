@@ -13,20 +13,6 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// cleartextOrUnauth are exposures that hand over credentials or data without any
-// authentication; they are High in DefectDojo (the same band as the Dzięcioł score).
-var cleartextOrUnauth = map[string]bool{
-	"Telnet": true, "TELNET": true, "FTP": true, "VNC": true, "Docker API": true, "Redis": true,
-	"MongoDB": true, "Elasticsearch": true, "Memcached": true, "CouchDB": true,
-}
-
-func exposureSeverity(label string) string {
-	if cleartextOrUnauth[label] {
-		return "High"
-	}
-	return "Medium"
-}
-
 // DefectDojo finding states mirrored per finding.
 const (
 	DojoStateActive       = "active"
@@ -299,6 +285,18 @@ func triageNote(t *domain.TriageInfo) string {
 		note += fmt.Sprintf(". Expires %s (Dzięcioł re-activates the finding then).", t.ExpiresAt.UTC().Format("2006-01-02"))
 	}
 	return note
+}
+
+// VerificationNotePrefix starts the note a scan-verified remediation ticket leaves on its
+// finding. It is not a triage note, so SyncTriage's own bookkeeping ignores it.
+const VerificationNotePrefix = "Dzięcioł verification: "
+
+// AddFindingNote adds a note to a DefectDojo finding.
+func (c *Client) AddFindingNote(ctx context.Context, cfg *domain.DefectDojoConfig, findingID int, entry string) error {
+	if findingID <= 0 || strings.TrimSpace(entry) == "" {
+		return nil
+	}
+	return c.postJSON(ctx, cfg, fmt.Sprintf("/api/v2/findings/%d/notes/", findingID), map[string]any{"entry": entry})
 }
 
 func (c *Client) patchJSON(ctx context.Context, cfg *domain.DefectDojoConfig, path string, body any) error {

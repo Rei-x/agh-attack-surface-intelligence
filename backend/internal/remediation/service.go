@@ -13,6 +13,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/outbound"
 )
 
@@ -39,6 +40,20 @@ func NewService(store db.Store, deliver *outbound.Deliverer) *Service {
 	return &Service{Repo: NewRepo(store), store: store, Deliver: deliver, Now: func() time.Time { return time.Now().UTC() }}
 }
 
+// Prefs are the instance's notice settings (outbound.Settings): default notice language,
+// timezone and SLA table.
+type Prefs struct {
+	Lang string
+	Loc  *time.Location
+	SLA  SLA
+}
+
+// Prefs loads the notice settings.
+func (s *Service) Prefs(ctx context.Context) Prefs {
+	st := outbound.Load(ctx, s.store)
+	return Prefs{Lang: st.Language(), Loc: st.Location(), SLA: EffectiveSLA(st.SLADays)}
+}
+
 // OwnerFor resolves the owner of a host (host owner or the most specific CIDR rule) and a
 // contact email from the owner text or the matching rule descriptions.
 func (s *Service) OwnerFor(ctx context.Context, host *domain.Host) (string, string) {
@@ -56,23 +71,32 @@ func (s *Service) OwnerFor(ctx context.Context, host *domain.Host) (string, stri
 
 // DraftResponse prefills the "Notify owner" dialog.
 type DraftResponse struct {
-	HostID     string             `json:"host_id"`
-	HostIP     string             `json:"host_ip"`
-	Hostname   string             `json:"hostname,omitempty"`
-	ServiceID  string             `json:"service_id,omitempty"`
-	Port       int                `json:"port,omitempty"`
-	Protocol   string             `json:"protocol,omitempty"`
-	Service    string             `json:"service,omitempty"`
-	Owner      string             `json:"owner"`
-	OwnerEmail string             `json:"owner_email"`
-	Issues     []Issue            `json:"issues"`
-	IssueKey   string             `json:"issue_key"`
-	Action     string             `json:"action"`
-	DueAt      time.Time          `json:"due_at"`
-	Subject    string             `json:"subject"`
-	Body       string             `json:"body"`
-	Channels   outbound.Available `json:"channels"`
-	Existing   *Ticket            `json:"existing,omitempty"`
+	HostID     string    `json:"host_id"`
+	HostIP     string    `json:"host_ip"`
+	Hostname   string    `json:"hostname,omitempty"`
+	ServiceID  string    `json:"service_id,omitempty"`
+	Port       int       `json:"port,omitempty"`
+	Protocol   string    `json:"protocol,omitempty"`
+	Service    string    `json:"service,omitempty"`
+	Owner      string    `json:"owner"`
+	OwnerEmail string    `json:"owner_email"`
+	Issues     []Issue   `json:"issues"`
+	IssueKey   string    `json:"issue_key"`
+	Action     string    `json:"action"`
+	DueAt      time.Time `json:"due_at"`
+	// DueDate is the due day in the instance timezone (YYYY-MM-DD): what the dialog shows
+	// and sends back.
+	DueDate string  `json:"due_date"`
+	SLA     SLAInfo `json:"sla"`
+	Subject string  `json:"subject"`
+	Body    string  `json:"body"`
+	// Language of Subject and Body; DefaultLanguage is the instance setting.
+	Language        string             `json:"language"`
+	DefaultLanguage string             `json:"default_language"`
+	Languages       []string           `json:"languages"`
+	Timezone        string             `json:"timezone"`
+	Channels        outbound.Available `json:"channels"`
+	Existing        *Ticket            `json:"existing,omitempty"`
 }
 
 type target struct {
@@ -105,12 +129,23 @@ func (s *Service) loadTarget(ctx context.Context, hostID, serviceID string) (*ta
 	return tg, nil
 }
 
-func (tg *target) issues(now time.Time) []Issue {
+// issues lists the target's issues in lang with the configured SLA days.
+func (tg *target) issues(now time.Time, lang string, sla SLA) []Issue {
 	var out []Issue
 	if tg.svc != nil {
-		out = ServiceIssues(tg.svc, now)
+		out = ServiceIssuesIn(tg.svc, now, lang)
 	}
-	return append(out, GenericIssue(tg.svc, tg.host))
+	out = append(out, GenericIssueIn(tg.svc, tg.host, lang))
+	for i := range out {
+		out[i].DueDays = sla.Days(out[i].Severity)
+	}
+	return out
+}
+
+// notice is the Notice for issue key of the target in lang.
+func (tg *target) notice(now time.Time, key string, p Prefs, lang string) Notice {
+	local := pickIssue(tg.issues(now, lang, p.SLA), key)
+	return Notice{Lang: lang, Loc: p.Loc, Title: local.Title, Evidence: local.Evidence, Advice: local.Advice, FirstSeen: firstSeen(tg)}
 }
 
 func pickIssue(issues []Issue, key string) Issue {
@@ -122,8 +157,9 @@ func pickIssue(issues []Issue, key string) Issue {
 	return issues[0]
 }
 
-// newTicket fills a ticket from the target and issue (not saved).
-func (s *Service) newTicket(ctx context.Context, tg *target, is Issue, now time.Time) *Ticket {
+// newTicket fills a ticket from the target and issue (not saved). The due date is the
+// DefectDojo SLA expiry of the same finding (see DueFor).
+func (s *Service) newTicket(ctx context.Context, tg *target, is Issue, now time.Time, p Prefs) (*Ticket, SLAInfo) {
 	owner, email := s.OwnerFor(ctx, tg.host)
 	t := &Ticket{
 		HostID: tg.host.ID, HostIP: tg.host.IP, Hostname: tg.host.Hostname,
@@ -136,10 +172,13 @@ func (s *Service) newTicket(ctx context.Context, tg *target, is Issue, now time.
 		t.Service = strings.TrimSpace(strings.Join([]string{tg.svc.ServiceName, tg.svc.Product, tg.svc.Version}, " "))
 		t.DefectDojoUniqueID = ddUniqueID(tg.svc, is)
 	}
-	due := now.AddDate(0, 0, is.DueDays)
-	due = time.Date(due.Year(), due.Month(), due.Day(), 23, 59, 0, 0, time.UTC)
+	findingDate := ""
+	if t.DefectDojoUniqueID != "" {
+		findingDate = defectdojo.FindingDate(tg.svc.FirstSeen, now)
+	}
+	due, info := DueFor(p.SLA, is.Severity, findingDate, now, p.Loc)
 	t.DueAt = &due
-	return t
+	return t, info
 }
 
 // ddUniqueID mirrors the unique_id_from_tool of internal/defectdojo change findings.
@@ -172,30 +211,40 @@ func findActive(ts []Ticket, hostID, serviceID, key string) *Ticket {
 }
 
 // Draft prepares the owner message for a host or service. issueKey picks one of the
-// detected issues (default: the most urgent).
-func (s *Service) Draft(ctx context.Context, hostID, serviceID, issueKey string) (*DraftResponse, error) {
+// detected issues (default: the most urgent); lang the notice language ("": the instance
+// default). The issue list stays in English (the analyst UI).
+func (s *Service) Draft(ctx context.Context, hostID, serviceID, issueKey, lang string) (*DraftResponse, error) {
 	now := s.Now()
 	tg, err := s.loadTarget(ctx, hostID, serviceID)
 	if err != nil {
 		return nil, err
 	}
-	issues := tg.issues(now)
+	p := s.Prefs(ctx)
+	lang = nonEmpty(locale.Lang(lang), p.Lang)
+	issues := tg.issues(now, locale.EN, p.SLA)
 	is := pickIssue(issues, issueKey)
-	t := s.newTicket(ctx, tg, is, now)
-	d := BuildDraft(t, is.Advice, firstSeen(tg))
+	t, sla := s.newTicket(ctx, tg, is, now, p)
+	var existing *Ticket
+	if ts, err := s.Repo.List(ctx); err == nil {
+		existing = findActive(ts, hostID, serviceID, is.Key)
+	}
+	// A ticket already open for this issue keeps its due date.
+	if existing != nil && existing.DueAt != nil {
+		due := *existing.DueAt
+		t.DueAt = &due
+	}
+	d := BuildDraft(t, tg.notice(now, is.Key, p, lang))
 	resp := &DraftResponse{
 		HostID: t.HostID, HostIP: t.HostIP, Hostname: t.Hostname, ServiceID: t.ServiceID,
 		Port: t.Port, Protocol: t.Protocol, Service: t.Service, Owner: t.Owner, OwnerEmail: t.OwnerEmail,
 		Issues: issues, IssueKey: is.Key, Action: is.Action, DueAt: *t.DueAt,
+		DueDate: locale.DueDay(*t.DueAt, p.Loc), SLA: sla,
 		Subject: d.Subject, Body: d.Body,
+		Language: lang, DefaultLanguage: p.Lang, Languages: locale.Languages, Timezone: p.Loc.String(),
+		Existing: existing,
 	}
 	if s.Deliver != nil {
 		resp.Channels = s.Deliver.Channels(ctx)
-	}
-	if ts, err := s.Repo.List(ctx); err == nil {
-		if ex := findActive(ts, hostID, serviceID, is.Key); ex != nil {
-			resp.Existing = ex
-		}
 	}
 	return resp, nil
 }
@@ -209,15 +258,19 @@ func firstSeen(tg *target) time.Time {
 
 // CreateRequest opens (or re-sends) a ticket from the dialog.
 type CreateRequest struct {
-	HostID     string     `json:"host_id"`
-	ServiceID  string     `json:"service_id"`
-	IssueKey   string     `json:"issue_key"`
-	Owner      string     `json:"owner"`
-	OwnerEmail string     `json:"owner_email"`
-	Action     string     `json:"action"`
-	Subject    string     `json:"subject"`
-	Body       string     `json:"body"`
-	DueAt      *time.Time `json:"due_at"`
+	HostID     string `json:"host_id"`
+	ServiceID  string `json:"service_id"`
+	IssueKey   string `json:"issue_key"`
+	Owner      string `json:"owner"`
+	OwnerEmail string `json:"owner_email"`
+	Action     string `json:"action"`
+	Subject    string `json:"subject"`
+	Body       string `json:"body"`
+	// Language of Subject and Body (pl, en); "" is the instance default.
+	Language string `json:"language"`
+	// DueDate (YYYY-MM-DD, instance timezone) wins over DueAt.
+	DueDate string     `json:"due_date"`
+	DueAt   *time.Time `json:"due_at"`
 	// Channel: auto (email, else webhook), email, webhook, manual (the analyst copied the
 	// message or used the mail app), none (only record the ticket).
 	Channel string `json:"channel"`
@@ -238,15 +291,22 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, by string) (*Se
 	if err != nil {
 		return nil, err
 	}
-	is := pickIssue(tg.issues(now), req.IssueKey)
-	fresh := s.newTicket(ctx, tg, is, now)
-	applyEdits(fresh, req)
+	p := s.Prefs(ctx)
+	lang := nonEmpty(locale.Lang(req.Language), p.Lang)
+	is := pickIssue(tg.issues(now, locale.EN, p.SLA), req.IssueKey)
+	fresh, _ := s.newTicket(ctx, tg, is, now, p)
+	n := tg.notice(now, is.Key, p, lang)
+	if err := applyEdits(fresh, req, n); err != nil {
+		return nil, err
+	}
 
 	var id string
 	created := false
 	err = s.Repo.Update(ctx, func(ts []Ticket) ([]Ticket, error) {
 		if ex := findActive(ts, fresh.HostID, fresh.ServiceID, fresh.IssueKey); ex != nil {
-			applyEdits(ex, req)
+			if err := applyEdits(ex, req, n); err != nil {
+				return nil, err
+			}
 			ex.UpdatedAt = now
 			id = ex.ID
 			return ts, nil
@@ -271,7 +331,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest, by string) (*Se
 	return res, nil
 }
 
-func applyEdits(t *Ticket, req CreateRequest) {
+// applyEdits copies the dialog's edits onto t. n is the notice used when the request
+// carries no subject or body.
+func applyEdits(t *Ticket, req CreateRequest, n Notice) error {
 	if v := strings.TrimSpace(req.Owner); v != "" {
 		t.Owner = v
 	}
@@ -284,23 +346,45 @@ func applyEdits(t *Ticket, req CreateRequest) {
 	}
 	if strings.TrimSpace(req.Subject) != "" {
 		t.Subject = strings.TrimSpace(req.Subject)
+		t.Language = n.Lang
 	}
 	if strings.TrimSpace(req.Body) != "" {
 		t.Body = req.Body
+		t.Language = n.Lang
 	}
-	if req.DueAt != nil && !req.DueAt.IsZero() {
-		d := req.DueAt.UTC()
-		t.DueAt = &d
+	if due, err := requestedDue(req.DueDate, req.DueAt, n.Loc); err != nil {
+		return err
+	} else if due != nil {
+		t.DueAt = due
 	}
 	if t.Subject == "" || t.Body == "" {
-		d := BuildDraft(t, "", time.Time{})
+		d := BuildDraft(t, n)
 		if t.Subject == "" {
 			t.Subject = d.Subject
 		}
 		if t.Body == "" {
 			t.Body = d.Body
 		}
+		t.Language = n.Lang
 	}
+	return nil
+}
+
+// requestedDue is the due time a request asks for: a YYYY-MM-DD day (23:59 in loc) or an
+// absolute time; nil when neither is set.
+func requestedDue(day string, at *time.Time, loc *time.Location) (*time.Time, error) {
+	if strings.TrimSpace(day) != "" {
+		d, err := locale.EndOfDay(day, loc)
+		if err != nil {
+			return nil, fmt.Errorf("%w: due %v", ErrInvalid, err)
+		}
+		return &d, nil
+	}
+	if at != nil && !at.IsZero() {
+		d := at.UTC()
+		return &d, nil
+	}
+	return nil, nil
 }
 
 // NotifyRequest re-sends the stored (or edited) message.
@@ -308,7 +392,9 @@ type NotifyRequest struct {
 	Channel string `json:"channel"`
 	Subject string `json:"subject"`
 	Body    string `json:"body"`
-	To      string `json:"to"`
+	// Language of an edited Subject / Body ("": unchanged).
+	Language string `json:"language"`
+	To       string `json:"to"`
 }
 
 // Notify delivers the ticket message. A delivered message (or a manual send confirmed by
@@ -331,13 +417,22 @@ func (s *Service) Notify(ctx context.Context, id string, req NotifyRequest, by s
 	if strings.TrimSpace(req.To) != "" {
 		t.OwnerEmail = strings.TrimSpace(req.To)
 	}
+	if l := locale.Lang(req.Language); l != "" && (strings.TrimSpace(req.Subject) != "" || strings.TrimSpace(req.Body) != "") {
+		t.Language = l
+	}
+	// Card facts in the language of the message (tickets of older versions: English).
+	tx := textFor(nonEmpty(t.Language, locale.EN))
+	loc := s.Prefs(ctx).Loc
 	msg := outbound.Message{
 		Subject: t.Subject,
 		Body:    t.Body,
 		Facts: [][2]string{
-			{"Where", t.Where()}, {"Owner", nonEmpty(t.Owner, "unknown")}, {"Due", dueText(t)},
+			{tx.factWhere, t.Where()}, {tx.factOwner, nonEmpty(t.Owner, tx.ownerUnknown)}, {tx.factDue, dueText(t, tx, loc)},
 		},
-		Data: map[string]any{"ticket_id": t.ID, "host_ip": t.HostIP, "port": t.Port, "kind": t.Kind, "owner": t.Owner, "due_at": t.DueAt},
+		Data: map[string]any{
+			"ticket_id": t.ID, "host_ip": t.HostIP, "port": t.Port, "kind": t.Kind, "severity": t.Severity,
+			"owner": t.Owner, "due_at": t.DueAt, "due_date": dueText(t, tx, loc), "language": nonEmpty(t.Language, locale.EN),
+		},
 	}
 	if t.OwnerEmail != "" {
 		msg.To = []string{t.OwnerEmail}
@@ -364,7 +459,7 @@ func (s *Service) Notify(ctx context.Context, id string, req NotifyRequest, by s
 				continue
 			}
 			cur := &ts[i]
-			cur.Subject, cur.Body, cur.OwnerEmail = t.Subject, t.Body, t.OwnerEmail
+			cur.Subject, cur.Body, cur.OwnerEmail, cur.Language = t.Subject, t.Body, t.OwnerEmail, t.Language
 			cur.UpdatedAt = now
 			if res.Delivered {
 				cur.Channel = res.Channel
@@ -396,37 +491,43 @@ func (s *Service) Notify(ctx context.Context, id string, req NotifyRequest, by s
 	return &SendResult{Ticket: &saved, Delivery: res}, nil
 }
 
-func dueText(t *Ticket) string {
+func dueText(t *Ticket, tx *texts, loc *time.Location) string {
 	if t.DueAt == nil {
-		return "not set"
+		return tx.dueNotSet
 	}
-	return t.DueAt.Format("2006-01-02")
+	return locale.DueDay(*t.DueAt, loc)
 }
 
 // StatusRequest changes status, due date or adds a note.
 type StatusRequest struct {
-	Status string     `json:"status"`
-	Note   string     `json:"note"`
-	DueAt  *time.Time `json:"due_at"`
+	Status string `json:"status"`
+	Note   string `json:"note"`
+	// DueDate (YYYY-MM-DD, instance timezone) wins over DueAt.
+	DueDate string     `json:"due_date"`
+	DueAt   *time.Time `json:"due_at"`
 }
 
 // UpdateStatus applies a manual status change and/or a new due date.
 func (s *Service) UpdateStatus(ctx context.Context, id string, req StatusRequest, by string) (*Ticket, error) {
 	now := s.Now()
+	loc := s.Prefs(ctx).Loc
+	due, err := requestedDue(req.DueDate, req.DueAt, loc)
+	if err != nil {
+		return nil, err
+	}
 	var saved Ticket
 	var from string
-	err := s.Repo.Update(ctx, func(ts []Ticket) ([]Ticket, error) {
+	err = s.Repo.Update(ctx, func(ts []Ticket) ([]Ticket, error) {
 		for i := range ts {
 			if ts[i].ID != id {
 				continue
 			}
 			t := &ts[i]
 			from = t.Status
-			if req.DueAt != nil && !req.DueAt.IsZero() {
-				d := req.DueAt.UTC()
-				t.DueAt = &d
+			if due != nil {
+				t.DueAt = due
 				t.Overdue = t.PastDue(now)
-				t.History = append(t.History, HistoryEntry{At: now, By: by, Action: "due_changed", Note: "due " + d.Format("2006-01-02")})
+				t.History = append(t.History, HistoryEntry{At: now, By: by, Action: "due_changed", Note: "due " + locale.DueDay(*due, loc)})
 				t.UpdatedAt = now
 			}
 			if req.Status != "" && req.Status != t.Status {
@@ -453,6 +554,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, req StatusRequest
 // VerifyScan checks every ticket against the inventory after scan scanID completed.
 func (s *Service) VerifyScan(ctx context.Context, scanID string) ([]Outcome, error) {
 	now := s.Now()
+	loc := s.Prefs(ctx).Loc
 	var outcomes []Outcome
 	byID := map[string]Ticket{}
 	err := s.Repo.Update(ctx, func(ts []Ticket) ([]Ticket, error) {
@@ -468,7 +570,7 @@ func (s *Service) VerifyScan(ctx context.Context, scanID string) ([]Outcome, err
 				return nil, false
 			}
 			return h, true
-		}, scanID, now)
+		}, scanID, now, loc)
 		for _, t := range ts {
 			byID[t.ID] = t
 		}
@@ -479,7 +581,12 @@ func (s *Service) VerifyScan(ctx context.Context, scanID string) ([]Outcome, err
 	}
 	for _, o := range outcomes {
 		t := byID[o.TicketID]
-		s.audit(ctx, SystemUser, "remediation."+o.Action, &t, map[string]any{"scan_run_id": scanID, "reason": o.Reason})
+		details := map[string]any{"scan_run_id": scanID, "reason": o.Reason}
+		if o.FixedReason != "" {
+			details["fixed_reason"] = o.FixedReason
+			details["outcome"] = t.FixOutcome()
+		}
+		s.audit(ctx, SystemUser, "remediation."+o.Action, &t, details)
 		if o.Action == "verified_fixed" && s.OnVerifiedFix != nil {
 			s.OnVerifiedFix(ctx, t, scanID)
 		}
@@ -521,12 +628,14 @@ type Stats struct {
 	FixedLast24h int            `json:"fixed_last_24h"`
 	AcceptedRisk int            `json:"accepted_risk"`
 	ByStatus     map[string]int `json:"by_status"`
-	MedianDays   float64        `json:"median_days_to_fix"`
+	// FixedBy counts fixed tickets by outcome (Fixed* constants).
+	FixedBy    map[string]int `json:"fixed_by"`
+	MedianDays float64        `json:"median_days_to_fix"`
 }
 
 // ComputeStats counts tickets at now.
 func ComputeStats(ts []Ticket, now time.Time) Stats {
-	st := Stats{ByStatus: map[string]int{}}
+	st := Stats{ByStatus: map[string]int{}, FixedBy: map[string]int{}}
 	var days []float64
 	for i := range ts {
 		t := &ts[i]
@@ -539,6 +648,7 @@ func ComputeStats(ts []Ticket, now time.Time) Stats {
 			}
 		case t.Status == StatusFixed:
 			st.Fixed++
+			st.FixedBy[nonEmpty(t.FixedReason, FixedManual)]++
 			if t.FixedAt != nil {
 				if now.Sub(*t.FixedAt) <= 24*time.Hour {
 					st.FixedLast24h++

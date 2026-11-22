@@ -13,7 +13,11 @@ export interface TicketHistory {
   to?: string;
   note?: string;
   scan_id?: string;
+  fixed_reason?: FixReason;
 }
+
+/** What closed a fixed ticket. Only "upgraded" means the software was patched. */
+export type FixReason = 'service_removed' | 'upgraded' | 'issue_gone' | 'manual';
 
 export interface Ticket {
   id: string;
@@ -36,8 +40,16 @@ export interface Ticket {
   overdue: boolean;
   verified: boolean;
   due_at?: string;
+  /** Due day in the instance timezone (YYYY-MM-DD). */
+  due_date?: string;
+  fixed_reason?: FixReason;
+  /** Product and version seen after an upgrade ("nginx 1.30.1"). */
+  fixed_detail?: string;
+  fix_outcome?: string;
   subject?: string;
   body?: string;
+  /** Language of subject and body (pl, en). */
+  language?: string;
   channel?: string;
   created_by: string;
   created_at: string;
@@ -62,6 +74,7 @@ export interface TicketStats {
   fixed_last_24h: number;
   accepted_risk: number;
   by_status: Record<string, number>;
+  fixed_by?: Record<string, number>;
   median_days_to_fix: number;
 }
 
@@ -83,6 +96,17 @@ export interface Channels {
   webhook_format: string;
 }
 
+/** How the default due date was derived (DefectDojo SLA). */
+export interface SlaInfo {
+  severity: string;
+  days: number;
+  start: string;
+  expires: string;
+  from_defectdojo: boolean;
+  expired: boolean;
+  due: string;
+}
+
 export interface Draft {
   host_id: string;
   host_ip: string;
@@ -97,8 +121,15 @@ export interface Draft {
   issue_key: string;
   action: string;
   due_at: string;
+  /** Due day in the instance timezone (YYYY-MM-DD): shown and sent back as is. */
+  due_date: string;
+  sla: SlaInfo;
   subject: string;
   body: string;
+  language: string;
+  default_language: string;
+  languages: string[];
+  timezone: string;
   channels: Channels;
   existing?: Ticket;
 }
@@ -125,6 +156,19 @@ export interface DeliverySettings {
   webhook_masked?: string;
   webhook_format: string;
   use_alert_webhook: boolean;
+  notice_language?: string;
+  timezone?: string;
+  /** Overrides only; empty means the DefectDojo defaults. */
+  sla_days?: Record<string, number>;
+}
+
+/** Non-secret notice settings every role can read. */
+export interface NoticeSettings {
+  notice_language: string;
+  languages: string[];
+  timezone: string;
+  sla_days: Record<string, number>;
+  default_sla_days: Record<string, number>;
 }
 
 export interface DigestCounts {
@@ -175,7 +219,10 @@ export interface DigestTicket {
   title: string;
   owner?: string;
   due_at?: string;
+  due_date?: string;
   note?: string;
+  fixed_reason?: FixReason;
+  outcome?: string;
 }
 
 export interface DigestOwner {
@@ -267,14 +314,15 @@ export const remediationApi = {
       if (v !== undefined && v !== '' && v !== false) qs.set(k, String(v));
     });
     const q = qs.toString();
-    return call<{ tickets: Ticket[]; stats: TicketStats; owners: string[] }>(
+    return call<{ tickets: Ticket[]; stats: TicketStats; owners: string[]; timezone?: string }>(
       `/api/v1/remediation/tickets${q ? `?${q}` : ''}`
     );
   },
-  draft: (hostId: string, serviceId?: string, issueKey?: string) => {
+  draft: (hostId: string, serviceId?: string, issueKey?: string, lang?: string) => {
     const qs = new URLSearchParams({ host_id: hostId });
     if (serviceId) qs.set('service_id', serviceId);
     if (issueKey) qs.set('issue_key', issueKey);
+    if (lang) qs.set('lang', lang);
     return call<Draft>(`/api/v1/remediation/draft?${qs}`);
   },
   create: (payload: {
@@ -285,19 +333,23 @@ export const remediationApi = {
     owner_email?: string;
     subject: string;
     body: string;
-    due_at?: string;
+    language?: string;
+    /** YYYY-MM-DD in the instance timezone. */
+    due_date?: string;
     channel: string;
   }) => post<SendResult>('/api/v1/remediation/tickets', payload),
   notify: (id: string, payload: { channel: string; subject?: string; body?: string; to?: string }) =>
     post<SendResult>(`/api/v1/remediation/tickets/${id}/notify`, payload),
-  setStatus: (id: string, payload: { status?: string; note?: string; due_at?: string }) =>
+  setStatus: (id: string, payload: { status?: string; note?: string; due_date?: string }) =>
     post<Ticket>(`/api/v1/remediation/tickets/${id}/status`, payload),
-  verify: () => post<{ scan_run_id: string; outcomes: { ticket_id: string; action: string; reason: string }[] }>(
+  verify: () =>
+    post<{ scan_run_id: string; outcomes: { ticket_id: string; action: string; reason: string; fixed_reason?: FixReason }[] }>(
     '/api/v1/remediation/verify'
   ),
-  channels: () => call<{ available: Channels; settings?: DeliverySettings }>('/api/v1/remediation/channels'),
+  channels: () =>
+    call<{ available: Channels; notices?: NoticeSettings; settings?: DeliverySettings }>('/api/v1/remediation/channels'),
   saveChannels: (payload: Partial<DeliverySettings> & { clear_password?: boolean; clear_webhook?: boolean }) =>
-    call<{ available: Channels; settings?: DeliverySettings }>('/api/v1/remediation/channels', {
+    call<{ available: Channels; notices?: NoticeSettings; settings?: DeliverySettings }>('/api/v1/remediation/channels', {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
@@ -379,6 +431,53 @@ export const KIND_LABEL: Record<string, string> = {
 };
 
 export const ACTION_LABEL: Record<string, string> = { patch: 'Patch', remove: 'Remove', restrict: 'Restrict' };
+
+export const LANGUAGE_LABEL: Record<string, string> = { pl: 'Polski', en: 'English' };
+
+export const SEVERITY_LABEL: Record<string, string> = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  info: 'Info',
+};
+
+/** What each fix outcome means, for tooltips. A closed port is not a patch. */
+export const FIX_REASON_HINT: Record<FixReason, string> = {
+  service_removed:
+    'The scanner no longer reaches the service (port closed or filtered, or the host is gone). It may be firewalled rather than removed, so this is not a confirmed patch.',
+  upgraded: 'The service still answers, now with a supported version (or one outside the affected range).',
+  issue_gone: 'The service still answers but the issue is no longer detected.',
+  manual: 'An analyst marked it fixed; no scan confirmed it.',
+};
+
+/** Status label of a fixed ticket: "Fixed: service removed", "Fixed: upgraded to nginx 1.30.1". */
+export function fixLabel(t: { fixed_reason?: FixReason | string; fixed_detail?: string; verified?: boolean }): string {
+  switch (t.fixed_reason) {
+    case 'service_removed':
+      return 'Fixed: service removed';
+    case 'upgraded':
+      return t.fixed_detail ? `Fixed: upgraded to ${t.fixed_detail}` : 'Fixed: upgraded';
+    case 'issue_gone':
+      return 'Fixed: issue no longer detected';
+    case 'manual':
+      return 'Fixed (marked by an analyst)';
+  }
+  return t.verified ? 'Fix verified' : 'Fixed';
+}
+
+/** History label of a status change, with the fix outcome for verified fixes. */
+export function fixHistoryLabel(reason?: FixReason | string): string {
+  switch (reason) {
+    case 'service_removed':
+      return 'Verified: service no longer reachable';
+    case 'upgraded':
+      return 'Verified: upgraded';
+    case 'issue_gone':
+      return 'Verified: issue no longer detected';
+  }
+  return 'Verified fixed';
+}
 
 /* ---------- shared ticket index (badges) ---------- */
 

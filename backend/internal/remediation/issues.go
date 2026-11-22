@@ -6,9 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/defectdojo"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/eol"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 )
 
 // Issue is one thing on a service the owner should fix.
@@ -19,8 +21,10 @@ type Issue struct {
 	Evidence string `json:"evidence"`
 	Action   string `json:"action"`
 	Advice   string `json:"advice"` // what to do, one sentence
+	// Severity is the one DefectDojo gets for the same condition (internal/defectdojo), so
+	// the SLA days, the ticket due date and DefectDojo's SLA agree.
 	Severity string `json:"severity"`
-	DueDays  int    `json:"due_days"`
+	DueDays  int    `json:"due_days"` // SLA days of the severity
 }
 
 // cleartextAdmin maps ports / service names of management protocols that send credentials
@@ -40,144 +44,196 @@ func CleartextAdmin(port int, serviceName string) (string, bool) {
 	return "", false
 }
 
-// ServiceIssues lists the issues of an open service, most urgent first. svc is annotated
-// with EOL data in place.
+func lower(severity string) string { return strings.ToLower(severity) }
+
+// ServiceIssues lists the issues of an open service, most urgent first, in English (the
+// analyst UI and the digest). svc is annotated with EOL data in place.
 func ServiceIssues(svc *domain.Service, now time.Time) []Issue {
+	return ServiceIssuesIn(svc, now, locale.EN)
+}
+
+// ServiceIssuesIn is ServiceIssues with titles, evidence and advice in a notice language.
+// Keys, kinds, actions and severities do not depend on the language.
+func ServiceIssuesIn(svc *domain.Service, now time.Time, lang string) []Issue {
 	if svc == nil {
 		return nil
 	}
+	tx := textFor(lang)
 	eol.Annotate(svc, now)
-	where := fmt.Sprintf("%s:%d/%s", svc.HostIP, svc.Port, nonEmpty(svc.Protocol, "tcp"))
+	proto := nonEmpty(svc.Protocol, "tcp")
+	where := fmt.Sprintf("%s:%d/%s", svc.HostIP, svc.Port, proto)
 	var out []Issue
+	add := func(is Issue) {
+		is.DueDays = DefaultSLA.Days(is.Severity)
+		out = append(out, is)
+	}
 	for _, v := range svc.KnownVulns {
-		ev := fmt.Sprintf("Version-only hint: %s %s is in the range affected by %s (%s). Nothing was sent to the service to confirm it.", v.Product, v.Version, v.ID, v.Affected)
-		if v.DistroPackaged {
-			ev += " Distribution build: the fix may be backported, check the package version."
-		}
-		out = append(out, Issue{
-			Kind:     KindKnownVuln,
-			Key:      KindKnownVuln + ":" + v.ID,
-			Title:    fmt.Sprintf("%s %s may be affected by %s (%s)", v.Product, shortVersion(v.Version), v.ID, v.Name),
-			Evidence: ev,
-			Action:   ActionPatch,
-			Advice:   "Install the vendor fix (or the distribution update that carries it), or take the service off the network.",
-			Severity: "high",
-			DueDays:  7,
-		})
+		add(vulnIssue(tx, v))
 	}
 	for _, o := range svc.Outdated {
-		advice := "Upgrade to a supported release"
+		advice := tx.eolAdvice
 		if o.SupportedBranch != "" {
-			advice = "Upgrade to " + o.Product + " " + o.UpgradeTarget() + " or newer" // nginx: "1.30 (stable)", not mainline 1.31
+			advice = fmt.Sprintf(tx.eolAdviceTo, o.Product, o.UpgradeTarget()) // nginx: "1.30 (stable)", not mainline 1.31
 		}
-		advice += ", or remove the service if nobody needs it."
-		out = append(out, Issue{
+		add(Issue{
 			Kind:     KindEOL,
 			Key:      KindEOL + ":" + strings.ToLower(o.Product) + ":" + o.Branch,
-			Title:    fmt.Sprintf("%s %s is end of life since %s", o.Product, shortVersion(o.Version), o.EOLDate),
-			Evidence: eolEvidence(o),
+			Title:    fmt.Sprintf(tx.eolTitle, o.Product, shortVersion(o.Version), o.EOLDate),
+			Evidence: eolEvidence(tx, o),
 			Action:   ActionPatch,
 			Advice:   advice,
-			Severity: "medium",
-			DueDays:  30,
+			Severity: lower(defectdojo.EOLSeverity(o)),
 		})
 	}
 	if label, ok := CleartextAdmin(svc.Port, svc.ServiceName); ok {
-		out = append(out, Issue{
+		// DefectDojo files it as a risky exposure when the port is a known one (Telnet, FTP:
+		// High); rexec / rlogin / rsh have no DefectDojo finding and stay High.
+		sev := "high"
+		if dl, risky := ingest.RiskyExposure(svc.Port, svc.ServiceName); risky {
+			sev = lower(defectdojo.ExposureSeverity(dl))
+		}
+		add(Issue{
 			Kind:     KindCleartextAdmin,
 			Key:      KindCleartextAdmin + ":" + strings.ToLower(label),
-			Title:    fmt.Sprintf("%s (cleartext login) open on %s", label, where),
-			Evidence: fmt.Sprintf("Port %d answers as %s. Passwords sent over it can be read by anyone on the path.", svc.Port, label),
+			Title:    fmt.Sprintf(tx.clearTitle, label, where),
+			Evidence: fmt.Sprintf(tx.clearEvidence, svc.Port, label),
 			Action:   ActionRemove,
-			Advice:   fmt.Sprintf("Turn off %s and use an encrypted alternative (SSH, SFTP).", label),
-			Severity: "high",
-			DueDays:  14,
+			Advice:   fmt.Sprintf(tx.clearAdvice, label),
+			Severity: sev,
 		})
 	} else if label, ok := ingest.RiskyExposure(svc.Port, svc.ServiceName); ok {
-		out = append(out, Issue{
+		add(Issue{
 			Kind:     KindExposure,
 			Key:      KindExposure + ":" + strings.ToLower(label),
-			Title:    fmt.Sprintf("%s reachable on %s", label, where),
-			Evidence: fmt.Sprintf("Port %d/%s (%s) answers from the scanning network.", svc.Port, nonEmpty(svc.Protocol, "tcp"), nonEmpty(svc.ServiceName, label)),
+			Title:    fmt.Sprintf(tx.expTitle, label, where),
+			Evidence: fmt.Sprintf(tx.expEvidence, svc.Port, proto, nonEmpty(svc.ServiceName, label)),
 			Action:   ActionRestrict,
-			Advice:   "Close the port, or allow it only from the networks that need it (firewall, VPN).",
-			Severity: "medium",
-			DueDays:  14,
+			Advice:   tx.expAdvice,
+			Severity: lower(defectdojo.ExposureSeverity(label)),
 		})
 	}
 	if svc.IsAdminPanel {
-		name := adminName(svc)
-		ev := "Admin login or management console detected"
+		ev := tx.adminEvidence
 		if svc.HTTP != nil && svc.HTTP.URL != "" {
-			ev += " at " + svc.HTTP.URL
+			ev += fmt.Sprintf(tx.adminAt, svc.HTTP.URL)
 		}
 		if svc.HTTP != nil && svc.HTTP.Title != "" {
-			ev += fmt.Sprintf(" (page title %q)", svc.HTTP.Title)
+			ev += fmt.Sprintf(tx.adminPageTitle, svc.HTTP.Title)
 		}
-		out = append(out, Issue{
+		add(Issue{
 			Kind:     KindAdminPanel,
 			Key:      KindAdminPanel,
-			Title:    fmt.Sprintf("%s exposed on %s", name, where),
+			Title:    adminTitle(tx, svc, where),
 			Evidence: ev + ".",
 			Action:   ActionRestrict,
-			Advice:   "Allow the admin panel only from VPN or an allowlist, or remove it from this network.",
-			Severity: "medium",
-			DueDays:  14,
+			Advice:   tx.adminAdvice,
+			Severity: lower(defectdojo.SeverityAdminPanel),
 		})
 	}
 	if svc.IsStagingEnv {
-		out = append(out, Issue{
+		add(Issue{
 			Kind:     KindStaging,
 			Key:      KindStaging,
-			Title:    fmt.Sprintf("Test or staging instance exposed on %s", where),
-			Evidence: "The service looks like a development or staging instance (name, title or headers).",
+			Title:    fmt.Sprintf(tx.stagingTitle, where),
+			Evidence: tx.stagingEvidence,
 			Action:   ActionRemove,
-			Advice:   "Remove the instance if it is not needed, or put it behind VPN.",
-			Severity: "low",
-			DueDays:  30,
+			Advice:   tx.stagingAdvice,
+			Severity: lower(defectdojo.SeverityStaging),
 		})
 	}
 	return out
 }
 
+// vulnIssue is the issue of a passive, version-only CVE hint (one the vulnerability
+// database did not match itself).
+func vulnIssue(tx *texts, v domain.VulnHint) Issue {
+	ev := fmt.Sprintf(tx.vulnEvidence, v.Product, v.Version, v.ID, v.Affected)
+	if v.DistroPackaged {
+		ev += tx.vulnDistro
+	}
+	sev := lower(defectdojo.SeverityPassiveHint)
+	return Issue{
+		Kind:     KindKnownVuln,
+		Key:      KindKnownVuln + ":" + v.ID,
+		Title:    fmt.Sprintf(tx.vulnTitle, v.Product, shortVersion(v.Version), v.ID, tx.vulnName(v.ID, v.Name)),
+		Evidence: ev,
+		Action:   ActionPatch,
+		Advice:   tx.vulnAdvice,
+		Severity: sev,
+		DueDays:  DefaultSLA.Days(sev),
+	}
+}
+
 // GenericIssue is the fallback when the service has no specific issue (the analyst still
-// wants to ask the owner about it).
+// wants to ask the owner about it), in English.
 func GenericIssue(svc *domain.Service, host *domain.Host) Issue {
+	return GenericIssueIn(svc, host, locale.EN)
+}
+
+// GenericIssueIn is GenericIssue in a notice language. It has no DefectDojo finding; its
+// severity is Low.
+func GenericIssueIn(svc *domain.Service, host *domain.Host, lang string) Issue {
+	tx := textFor(lang)
 	if svc == nil {
 		return Issue{
-			Kind: KindOther, Key: KindOther, Title: "Host " + host.IP + " needs review",
-			Evidence: "Seen on the network by CBI AGH monitoring.",
-			Action:   ActionRestrict, Advice: "Confirm the host is needed and patched, or remove it.",
-			Severity: "low", DueDays: 30,
+			Kind: KindOther, Key: KindOther, Title: fmt.Sprintf(tx.hostTitle, host.IP),
+			Evidence: tx.hostEvidence,
+			Action:   ActionRestrict, Advice: tx.hostAdvice,
+			Severity: "low", DueDays: DefaultSLA.Days("low"),
 		}
 	}
 	what := strings.TrimSpace(strings.Join([]string{svc.ServiceName, svc.Product, svc.Version}, " "))
 	return Issue{
 		Kind:     KindOther,
 		Key:      KindOther,
-		Title:    fmt.Sprintf("Service %s on %s:%d needs review", nonEmpty(what, "unknown"), svc.HostIP, svc.Port),
-		Evidence: fmt.Sprintf("Port %d/%s is open (%s).", svc.Port, nonEmpty(svc.Protocol, "tcp"), nonEmpty(what, "unidentified service")),
+		Title:    fmt.Sprintf(tx.svcTitle, nonEmpty(what, tx.unknownService), svc.HostIP, svc.Port),
+		Evidence: fmt.Sprintf(tx.svcEvidence, svc.Port, nonEmpty(svc.Protocol, "tcp"), nonEmpty(what, tx.unidentifiedService)),
 		Action:   ActionRestrict,
-		Advice:   "Confirm the service is needed and patched; otherwise close the port.",
+		Advice:   tx.svcAdvice,
 		Severity: "low",
-		DueDays:  30,
+		DueDays:  DefaultSLA.Days("low"),
 	}
 }
 
-func adminName(s *domain.Service) string {
-	generic := func(n string) bool {
-		l := strings.ToLower(n)
-		return n == "" || strings.Contains(l, "admin panel") || strings.Contains(l, "management console")
+func adminTitle(tx *texts, svc *domain.Service, where string) string {
+	if tx.lang == locale.EN {
+		return fmt.Sprintf(tx.adminTitleNamed, adminName(svc), where)
 	}
+	if name := adminProduct(svc); name != "" {
+		return fmt.Sprintf(tx.adminTitleNamed, name, where)
+	}
+	return fmt.Sprintf(tx.adminTitle, where)
+}
+
+func genericAdminName(n string) bool {
+	l := strings.ToLower(n)
+	return n == "" || strings.Contains(l, "admin panel") || strings.Contains(l, "management console")
+}
+
+// adminProduct is the product behind an admin panel ("phpMyAdmin", "Jenkins"), "" when
+// only a generic panel was detected.
+func adminProduct(s *domain.Service) string {
 	for _, t := range s.Technologies {
-		if t.Category == "admin_panel" && !generic(t.Name) {
+		if t.Category == "admin_panel" && !genericAdminName(t.Name) {
 			return t.Name
 		}
 	}
 	for _, t := range s.Technologies {
-		if t.Confidence >= 50 && !generic(t.Name) && t.Category != "server" && t.Category != "framework" {
-			return t.Name + " admin panel"
+		if t.Confidence >= 50 && !genericAdminName(t.Name) && t.Category != "server" && t.Category != "framework" {
+			return t.Name
 		}
+	}
+	return ""
+}
+
+func adminName(s *domain.Service) string {
+	for _, t := range s.Technologies {
+		if t.Category == "admin_panel" && !genericAdminName(t.Name) {
+			return t.Name
+		}
+	}
+	if name := adminProduct(s); name != "" {
+		return name + " admin panel"
 	}
 	return "Admin panel"
 }
@@ -201,13 +257,13 @@ func ExtractEmail(texts ...string) string {
 	return ""
 }
 
-func eolEvidence(o domain.OutdatedComponent) string {
-	ev := fmt.Sprintf("%s %s seen via %s. Branch %s stopped getting security fixes on %s.", o.Product, o.Version, o.Via, o.Branch, o.EOLDate)
+func eolEvidence(tx *texts, o domain.OutdatedComponent) string {
+	ev := fmt.Sprintf(tx.eolEvidence, o.Product, o.Version, tx.viaLabel(o.Via), o.Branch, o.EOLDate)
 	if o.DistroPackaged {
-		ev += " Distribution build: fixes may be backported, but the upstream branch is unsupported."
+		ev += tx.eolDistro
 	}
 	if o.Source != "" {
-		ev += " Source: " + o.Source
+		ev += tx.source + o.Source
 	}
 	return ev
 }
