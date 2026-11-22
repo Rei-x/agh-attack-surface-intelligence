@@ -242,7 +242,6 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 		return vs.Backported[i].Applicability == domain.ApplicabilityFixedByDistro && vs.Backported[j].Applicability != domain.ApplicabilityFixedByDistro
 	})
 	vs.BackportedCount = len(vs.Backported)
-	// Confidence of the version match.
 	label := nonEmpty(viaLabels[c.via], c.via)
 	exactParts := numericParts(nv) >= c.def.FullParts || hasSuffix(nv)
 	switch {
@@ -372,9 +371,8 @@ func hintFixedByDistro(svc *domain.Service, h domain.VulnHint) bool {
 // Factors converts the summaries into interestingness factors (one per kind, strongest
 // product first). Matches on distribution packages are in VulnSummary.Backported and never
 // reach the counts used here (a summary with only those has Total 0, DistroBackport set);
-// incomplete-version matches count as "possible". The
-// EPSS factor names a CVE other than the KEV ones: a KEV entry's high EPSS is the same
-// evidence and is not counted twice.
+// incomplete-version matches count as "possible". The EPSS factor names a CVE other than
+// the KEV ones: a KEV entry's high EPSS is the same evidence and is not counted twice.
 func Factors(vulns []domain.VulnSummary) []domain.InterestingnessFactor {
 	var kevIDs, kevPossible []string
 	var maxEPSS, maxCVSS float64

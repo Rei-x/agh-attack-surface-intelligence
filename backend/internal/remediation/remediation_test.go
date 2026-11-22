@@ -273,8 +273,7 @@ func TestServiceNotifyFallbacksAndVerification(t *testing.T) {
 		t.Fatalf("undelivered ticket must stay open: %s", res.Ticket.Status)
 	}
 
-	// Alert webhook configured: the next send goes there (Teams format) and the same
-	// ticket is reused.
+	// Alert webhook configured: the next send goes there (Teams format) and reuses the ticket.
 	h := &hook{}
 	srv := httptest.NewServer(http.HandlerFunc(h.handler))
 	defer srv.Close()
@@ -320,8 +319,7 @@ func TestServiceNotifyFallbacksAndVerification(t *testing.T) {
 	if got.Status != StatusFixed || got.FixedScanID != "scan-b" || !got.Verified {
 		t.Fatalf("ticket: %+v", got)
 	}
-	// A closed port is not a patch: the outcome says the service is out of the scanner's
-	// reach, and so does the history line.
+	// A closed port is not a patch: outcome and history say the service is out of reach.
 	if got.FixedReason != FixedServiceRemoved || got.FixOutcome() != "Closed: not reachable" {
 		t.Fatalf("outcome: %q / %q", got.FixedReason, got.FixOutcome())
 	}

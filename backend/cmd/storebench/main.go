@@ -110,8 +110,6 @@ func newPipeline(store db.Store) *ingest.Pipeline {
 	return p
 }
 
-// ---------- synthetic lab ----------
-
 type uService struct {
 	Port    int
 	Name    string
@@ -454,8 +452,6 @@ func obsIP(obs []domain.ObservedHost, i int) string {
 	return obs[i%len(obs)].IP
 }
 
-// ---------- measurement ----------
-
 type sample struct {
 	peakHeapAlloc atomic.Uint64
 	peakHeapInuse atomic.Uint64
@@ -559,8 +555,6 @@ func heapNow() runtime.MemStats {
 	runtime.ReadMemStats(&ms)
 	return ms
 }
-
-// ---------- subcommands ----------
 
 func cmdGen(dir string, m meta) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {

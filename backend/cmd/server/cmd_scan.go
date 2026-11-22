@@ -103,7 +103,6 @@ func cmdScan(args []string) error {
 	store := rt.Store
 	bg := context.Background()
 
-	// Build the profile: stored profile (optional) overridden by explicit flags.
 	var stored *domain.ScanProfile
 	if *profileRef != "" {
 		if stored, err = findProfile(bg, store, *profileRef); err != nil {
@@ -442,10 +441,6 @@ func writeJSONFile(path string, v any) error {
 	return os.WriteFile(path, append(raw, '\n'), 0o600)
 }
 
-// ---------------------------------------------------------------------------
-// Live progress line
-// ---------------------------------------------------------------------------
-
 type progress struct {
 	w           io.Writer
 	tty         bool
@@ -584,10 +579,6 @@ func fmtDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%d:%02d", m, s)
 }
-
-// ---------------------------------------------------------------------------
-// Report
-// ---------------------------------------------------------------------------
 
 type scanFinding struct {
 	Score    int      `json:"score"`

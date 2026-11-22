@@ -19,8 +19,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/signatures"
 )
 
-// IntelligenceAnalyzer bridges scanner-engine's signatures + intelligence packages
-// into backend-core's unified ingest.Analyzer interface.
+// IntelligenceAnalyzer adapts the signatures and intelligence packages to ingest.Analyzer.
 type IntelligenceAnalyzer struct{}
 
 func NewIntelligenceAnalyzer() *IntelligenceAnalyzer {
@@ -189,8 +188,8 @@ func (a *IntelligenceAnalyzer) RetroactiveTest(sig domain.Signature, services []
 	return hits
 }
 
-// LiveScanRunner bridges scanner.Engine into api.ScanRunner with async execution,
-// checkpoint persistence, Pause/Resume across time windows, and unified pipeline ingestion.
+// LiveScanRunner implements api.ScanRunner on scanner.Engine: async runs, chunk checkpoints,
+// pause/resume across time windows and ingestion through the pipeline.
 type LiveScanRunner struct {
 	store    db.Store
 	pipeline *ingest.Pipeline
@@ -438,17 +437,14 @@ func (r *LiveScanRunner) launchAsync(
 			},
 		})
 
-		// Check if user requested pause vs stop.
 		r.mu.Lock()
 		wasPause := handle.pauseReq
 		r.mu.Unlock()
 
-		// Persist observations of the chunks finished in THIS segment through the unified
-		// ingestion pipeline - also when the segment ended by window/user pause or stop,
-		// because DONE chunks are skipped on resume and would otherwise never be ingested.
-		// Ingest gets its own generous deadline: it scales with the number of live hosts, and a
-		// short shared deadline (60 s) silently cut large scans off mid-way while the run still
-		// reported COMPLETED (seen on the /18 lab: 42% of hosts persisted).
+		// Ingest the chunks finished in THIS segment also when it ended by a window/user pause
+		// or a stop: DONE chunks are skipped on resume and would otherwise never be ingested.
+		// Ingest gets its own long deadline because it scales with the number of live hosts; a
+		// short shared one cut large scans off while the run still reported COMPLETED.
 		ingestCtx, ingestCancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		ingestErr := r.ingestSegment(ingestCtx, &runCopy, profile, res)
 		ingestCancel()

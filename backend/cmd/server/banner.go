@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-// woodpecker is the compact ASCII bird shown by `serve` and `version`: crest, barred
-// wing (=) and the beak on the trunk (||), knock knock. {r}...{d} marks what turns red on a
-// terminal (crest and the knocking); the markers are stripped otherwise.
+// woodpecker is the ASCII bird shown by `serve` and `version`: crest, barred wing (=) and
+// the beak on the trunk (||). {r}...{d} marks what turns red on a terminal (crest and the
+// "knock" text); the markers are stripped otherwise.
 var woodpecker = []string{
 	`    {r},/\{d}          ||`,
 	`   /  o\========>||`,
@@ -36,7 +36,8 @@ func printWoodpecker(w io.Writer, text ...string) {
 	}
 }
 
-// useColor: only on a character device, and never when NO_COLOR is set (no-color.org).
+// useColor reports whether w is a character device, with NO_COLOR (no-color.org) unset and
+// TERM not dumb.
 func useColor(w io.Writer) bool {
 	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return false

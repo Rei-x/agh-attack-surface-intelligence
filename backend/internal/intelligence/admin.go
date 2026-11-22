@@ -9,24 +9,14 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/signatures"
 )
 
-// Admin panel and staging/dev environment classification.
-//
-// "Admin panel" = an unauthenticated management console or the login page of an admin
+// An admin panel is an unauthenticated management console or the login page of an admin
 // tool reachable over HTTP: CMS back-ends (wp-login.php, Joomla /administrator/), dev/ops
 // consoles (Jenkins, Grafana, Kibana, Zabbix, phpMyAdmin, Adminer, Portainer, Tomcat
 // manager, Keycloak admin console), device management UIs of routers, NAS and BMCs, and
-// custom /admin consoles. A login form on its own is NOT an admin panel: GitLab, Roundcube,
+// custom /admin consoles. A login form on its own is not an admin panel: GitLab, Roundcube,
 // Moodle, Drupal /user/login and ASP.NET /Account/Login are end-user logins, and almost
-// every app redirects /admin to its generic login, so redirects never count either.
-//
-// The decision is made from evidence the console itself put on the wire:
-//  1. identity of an admin tool (technology detected with >= minAdminToolConfidence);
-//  2. tools whose console lives elsewhere need the console response too
-//     (Tomcat /manager/html 401|200, WordPress /wp-login.php login form,
-//     Joomla /administrator/ login form, Keycloak welcome page / admin console);
-//  3. generic consoles: a 200 page whose title names administration
-//     ("Panel administracyjny", "Administration", "Control Panel"…), a login form served
-//     at /admin itself, or a 401 whose realm names a manager/admin area.
+// every app redirects /admin to its generic login, so redirects never count either. Only
+// evidence the console itself put on the wire decides.
 
 const minAdminToolConfidence = 50
 

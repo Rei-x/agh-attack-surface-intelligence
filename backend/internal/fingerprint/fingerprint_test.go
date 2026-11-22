@@ -22,7 +22,7 @@ func TestMurmurHash3AndShodanFavicon(t *testing.T) {
 		t.Fatalf("MurmurHash3_32(\"\", 0) = %d, want 0", got)
 	}
 
-	// Verify ShodanBase64 wraps at 76 chars with trailing newline.
+	// ShodanBase64 wraps at 76 chars with a trailing newline.
 	raw := bytes.Repeat([]byte("Dzieciol-Favicon-Test-"), 5)
 	b64 := ShodanBase64(raw)
 	if !bytes.HasSuffix(b64, []byte("\n")) {
@@ -33,14 +33,13 @@ func TestMurmurHash3AndShodanFavicon(t *testing.T) {
 		t.Fatalf("ShodanBase64 expected 76-char line wrapping, got lines=%d firstLen=%d", len(lines), len(lines[0]))
 	}
 
-	// Deterministic Shodan favicon MMH3 & SHA256.
 	ico := []byte{0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10, 0x00, 0x00, 0x01, 0x00}
 	mmh3Hash := FaviconMMH3(ico)
 	sha := FaviconSHA256(ico)
 	if mmh3Hash == "" || len(sha) != 64 {
 		t.Fatalf("invalid favicon hashes: mmh3=%q sha=%q", mmh3Hash, sha)
 	}
-	// Verify mmh3 matches direct computation over ShodanBase64(ico).
+	// The favicon hash is mmh3 over ShodanBase64(ico).
 	wantMMH3 := strconv.FormatInt(int64(MurmurHash3_32(ShodanBase64(ico), 0)), 10)
 	if mmh3Hash != wantMMH3 {
 		t.Fatalf("FaviconMMH3 = %s, want %s", mmh3Hash, wantMMH3)
@@ -151,15 +150,14 @@ func TestHTTPProbeExtractsFullEvidenceAndEnforcesReadOnly(t *testing.T) {
 	if len(fp.RedirectChain) != 1 || fp.RedirectChain[0].StatusCode != http.StatusFound {
 		t.Fatalf("RedirectChain = %+v, want 1 hop with 302", fp.RedirectChain)
 	}
-	// Missing security headers should contain HSTS, CSP, X-Frame-Options (not X-Content-Type-Options).
+	// Missing: HSTS, CSP, X-Frame-Options (X-Content-Type-Options is set).
 	if len(fp.MissingSecHeaders) != 3 {
 		t.Fatalf("MissingSecHeaders = %v, want 3 entries", fp.MissingSecHeaders)
 	}
-	// Interesting headers should include Server, X-Powered-By, X-Debug-Mode.
+	// Server, X-Powered-By, X-Debug-Mode.
 	if len(fp.InterestingHeaders) < 3 {
 		t.Fatalf("InterestingHeaders = %v, expected >= 3", fp.InterestingHeaders)
 	}
-	// Cookies parsed with security flags.
 	if len(fp.Cookies) != 2 {
 		t.Fatalf("Cookies count = %d, want 2", len(fp.Cookies))
 	}
@@ -179,19 +177,17 @@ func TestHTTPProbeExtractsFullEvidenceAndEnforcesReadOnly(t *testing.T) {
 	if !phpCookieFound {
 		t.Fatalf("PHPSESSID cookie not found")
 	}
-	// Favicon hashes.
 	if fp.FaviconMMH3 != FaviconMMH3(icoBytes) {
 		t.Fatalf("FaviconMMH3 = %q, want %q", fp.FaviconMMH3, FaviconMMH3(icoBytes))
 	}
 	if fp.FaviconSHA256 != FaviconSHA256(icoBytes) {
 		t.Fatalf("FaviconSHA256 = %q, want %q", fp.FaviconSHA256, FaviconSHA256(icoBytes))
 	}
-	// Safe path hits.
 	if len(fp.SafePathHits) != 2 {
 		t.Fatalf("SafePathHits = %+v, want 2 (/admin and /robots.txt)", fp.SafePathHits)
 	}
 
-	// Verify strictly read-only methods and custom User-Agent.
+	// Only read-only methods, with the custom User-Agent.
 	mu.Lock()
 	defer mu.Unlock()
 	if seenUA != "Dzieciol-Test/1.0" {
@@ -263,7 +259,7 @@ func TestHTTPProbeBodySizeLimitAndMaxRedirects(t *testing.T) {
 			http.Redirect(w, r, "/loop?next=1", http.StatusFound)
 			return
 		}
-		// Return 400KB body to verify 256KB cap.
+		// 400 KB body against the 256 KB cap.
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("<title>Big</title>"))
 		_, _ = w.Write(bytes.Repeat([]byte("X"), 400*1024))
@@ -287,7 +283,7 @@ func TestHTTPProbeBodySizeLimitAndMaxRedirects(t *testing.T) {
 		t.Fatalf("BodySnippet exceeded cap: %d", len(fp.BodySnippet))
 	}
 
-	// Verify redirect loop stops at MaxRedirects = 5.
+	// A redirect loop stops at MaxRedirects = 5.
 	loopSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/next", http.StatusFound)
 	}))

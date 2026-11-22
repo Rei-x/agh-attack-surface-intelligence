@@ -182,7 +182,7 @@ func TestLivenessForgettingHalfLife(t *testing.T) {
 	if f := decayFactor(livenessT0, livenessT0.Add(336*time.Hour), 336); math.Abs(f-0.5) > 1e-9 {
 		t.Fatalf("decay after one half-life = %v, want 0.5", f)
 	}
-	// Legacy host (pre-Bayes) is seeded from Seen/Total counters.
+	// A host without a stored posterior is seeded from its Seen/Total counters.
 	h := domain.Host{TimeOfDayStats: []domain.TimeSlotStat{{Slot: domain.SlotMorning, Seen: 8, Total: 10}}}
 	a, b := decayedPosterior(h.TimeOfDayStats[0], livenessT0, normalizeLivenessConfig(LifecycleConfig{}))
 	if a != 10 || b != 2.5 {

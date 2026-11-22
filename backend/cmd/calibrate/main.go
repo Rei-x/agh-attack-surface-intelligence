@@ -38,7 +38,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/signatures"
 )
 
-// Minimal subset of lab/scale/internal/truth (separate module).
+// truthDoc is the subset of lab/scale/internal/truth that calibrate reads (separate module).
 type truthDoc struct {
 	Hosts []struct {
 		IP        string `json:"ip"`
@@ -166,8 +166,7 @@ func load(path string) []record {
 	return out
 }
 
-// ---- name normalisation, mirrors lab/scale/cmd/scorer normTech ----
-
+// genericTech, techAlias and normTech mirror normTech in lab/scale/cmd/scorer; keep them in sync.
 var genericTech = map[string]bool{
 	"admin panel / management console": true, "authentication / login portal": true, "exposed database service": true,
 	"exposed docker engine api": true, "admin console": true, "staging / debug environment": true,
@@ -199,8 +198,6 @@ func normTech(name, category string) (string, bool) {
 	}
 	return strings.Trim(nonAlnum.ReplaceAllString(n, "-"), "-"), true
 }
-
-// ---- report ----
 
 type pred struct {
 	conf    int

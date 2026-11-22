@@ -90,7 +90,7 @@ type DraftResponse struct {
 	SLA     SLAInfo `json:"sla"`
 	Subject string  `json:"subject"`
 	Body    string  `json:"body"`
-	// Language of Subject and Body; DefaultLanguage is the instance setting.
+	// Language is the language of Subject and Body; DefaultLanguage is the instance setting.
 	Language        string             `json:"language"`
 	DefaultLanguage string             `json:"default_language"`
 	Languages       []string           `json:"languages"`
@@ -266,13 +266,13 @@ type CreateRequest struct {
 	Action     string `json:"action"`
 	Subject    string `json:"subject"`
 	Body       string `json:"body"`
-	// Language of Subject and Body (pl, en); "" is the instance default.
+	// Language is the language of Subject and Body (pl, en); "" is the instance default.
 	Language string `json:"language"`
 	// DueDate (YYYY-MM-DD, instance timezone) wins over DueAt.
 	DueDate string     `json:"due_date"`
 	DueAt   *time.Time `json:"due_at"`
-	// Channel: auto (email, else webhook), email, webhook, manual (the analyst copied the
-	// message or used the mail app), none (only record the ticket).
+	// Channel is auto (email, else webhook), email, webhook, manual (the analyst copied the
+	// message or used the mail app) or none (only record the ticket).
 	Channel string `json:"channel"`
 }
 
@@ -392,7 +392,7 @@ type NotifyRequest struct {
 	Channel string `json:"channel"`
 	Subject string `json:"subject"`
 	Body    string `json:"body"`
-	// Language of an edited Subject / Body ("": unchanged).
+	// Language is the language of an edited Subject or Body; "" leaves it unchanged.
 	Language string `json:"language"`
 	To       string `json:"to"`
 }
@@ -420,7 +420,7 @@ func (s *Service) Notify(ctx context.Context, id string, req NotifyRequest, by s
 	if l := locale.Lang(req.Language); l != "" && (strings.TrimSpace(req.Subject) != "" || strings.TrimSpace(req.Body) != "") {
 		t.Language = l
 	}
-	// Card facts in the language of the message (tickets of older versions: English).
+	// Card facts follow the message language; a ticket without one is English.
 	tx := textFor(nonEmpty(t.Language, locale.EN))
 	loc := s.Prefs(ctx).Loc
 	msg := outbound.Message{

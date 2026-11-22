@@ -142,7 +142,7 @@ type Ticket struct {
 
 	Subject string `json:"subject,omitempty"`
 	Body    string `json:"body,omitempty"`
-	// Language of Subject and Body (pl, en; empty for tickets of older versions: en).
+	// Language is the language of Subject and Body (pl, en); empty means en.
 	Language string `json:"language,omitempty"`
 	Channel  string `json:"channel,omitempty"` // email, webhook, manual (last delivery)
 

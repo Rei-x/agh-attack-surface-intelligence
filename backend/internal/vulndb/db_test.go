@@ -97,8 +97,7 @@ func TestAssessApacheKEV(t *testing.T) {
 	if v.Top[0].ID != "CVE-2021-41773" || !v.Top[0].KEV || v.Top[0].URL != "https://nvd.nist.gov/vuln/detail/CVE-2021-41773" {
 		t.Fatalf("top ordering (KEV, then EPSS): %+v", v.Top)
 	}
-	// Both high-EPSS CVEs are the KEV ones: their EPSS is the same evidence and adds no
-	// separate factor.
+	// Both high-EPSS CVEs are in KEV, so EPSS adds no separate factor.
 	f := Factors(vs)
 	if len(f) != 2 || f[0].Points != PointsKEV || f[1].Points != PointsCVSSCritical {
 		t.Fatalf("factors: %+v", f)

@@ -43,8 +43,8 @@ type Product struct {
 	Branches   []Branch `json:"branches"`
 }
 
-// StableEvenMinor: even minor branches are stable, odd ones are the development (mainline)
-// line, as in nginx (1.30 stable, 1.31 mainline).
+// StableEvenMinor marks a product whose even minor branches are stable and odd ones are the
+// development (mainline) line, as in nginx (1.30 stable, 1.31 mainline).
 const StableEvenMinor = "even-minor"
 
 type vulnRange struct {
@@ -448,7 +448,7 @@ func compareVersions(a, b string) int {
 	return 0
 }
 
-// Age renders a day count in Polish ("7 lat", "2 lata", "1 rok", "5 mies.", "12 dni").
+// Age renders a day count in English ("7 years", "1 year", "5 months", "12 days").
 func Age(days int) string {
 	if days < 0 {
 		days = 0

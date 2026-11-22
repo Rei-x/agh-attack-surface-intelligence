@@ -114,22 +114,18 @@ func ValidateSignature(sig domain.Signature) ValidationResult {
 			continue
 		}
 
-		// Block CRLF / null bytes anywhere in keys.
 		if strings.ContainsAny(m.Key, "\r\n\x00") || strings.ContainsAny(m.Pattern, "\x00") {
 			addErr(fmt.Sprintf("%s: control characters (CRLF/NUL) are forbidden", prefix))
 		}
 
-		// Block mutating HTTP methods (strictly GET/HEAD read-only).
 		if reMutatingMethod.MatchString(m.Key) || reMutatingMethod.MatchString(m.Pattern) {
 			addErr(fmt.Sprintf("%s: mutating HTTP methods (POST/PUT/DELETE/PATCH/TRACE/CONNECT) are forbidden", prefix))
 		}
 
-		// Block credential, login-attempt, or exploit payloads.
 		if reCredPayload.MatchString(m.Key) || reCredPayload.MatchString(m.Pattern) {
 			addErr(fmt.Sprintf("%s: credential, login-submission, or active exploit payloads are forbidden", prefix))
 		}
 
-		// Path safety checks for safe_path matchers.
 		if mt == "safe_path" {
 			checkPath := strings.TrimSpace(m.Key)
 			if checkPath == "" {
@@ -149,12 +145,10 @@ func ValidateSignature(sig domain.Signature) ValidationResult {
 			}
 		}
 
-		// JARM equality matchers must be a 62-char lowercase-hex fingerprint.
 		if mt == "jarm" && !m.Regex && !reJARM.MatchString(strings.TrimSpace(m.Pattern)) {
 			addErr(fmt.Sprintf("%s: jarm pattern must be a 62-character hex JARM fingerprint (or set regex=true)", prefix))
 		}
 
-		// Validate regex safety and capture groups.
 		if m.Regex {
 			if len(m.Pattern) > 512 {
 				addErr(fmt.Sprintf("%s: regex pattern exceeds 512 characters", prefix))
@@ -179,7 +173,6 @@ func ValidateSignature(sig domain.Signature) ValidationResult {
 			addWarn(fmt.Sprintf("%s: version_group is ignored when regex=false", prefix))
 		}
 
-		// Validate status codes if provided.
 		for _, code := range m.StatusCodes {
 			if code < 100 || code > 599 {
 				addErr(fmt.Sprintf("%s: invalid HTTP status code %d", prefix, code))

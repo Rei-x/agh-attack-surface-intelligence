@@ -27,8 +27,8 @@ type Issue struct {
 	DueDays  int    `json:"due_days"` // SLA days of the severity
 }
 
-// cleartextAdmin maps ports / service names of management protocols that send credentials
-// in clear text.
+// cleartextPorts and cleartextNames map the ports and service names of management
+// protocols that send credentials in clear text.
 var cleartextPorts = map[int]string{21: "FTP", 23: "Telnet", 512: "rexec", 513: "rlogin", 514: "rsh"}
 var cleartextNames = map[string]string{"ftp": "FTP", "telnet": "Telnet", "exec": "rexec", "login": "rlogin", "shell": "rsh"}
 

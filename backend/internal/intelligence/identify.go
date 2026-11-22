@@ -293,8 +293,8 @@ func ParseCPE(cpe string) (product, version string) {
 	return strings.Join(words, " "), version
 }
 
-// sameProductFamily reports whether two product names refer to the same software
-// (first significant word matches: "Apache httpd" ~ "Apache Tomcat" is NOT the same).
+// sameProductFamily reports whether two product names refer to the same software: one
+// normalised name is a prefix of the other, so "Apache httpd" and "Apache Tomcat" differ.
 func sameProductFamily(a, b string) bool {
 	a, b = strings.ToLower(NormalizeProductName(a)), strings.ToLower(NormalizeProductName(b))
 	if a == "" || b == "" {

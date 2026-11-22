@@ -41,10 +41,6 @@ func warnIfServerRunning(rt *appRuntime) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// import
-// ---------------------------------------------------------------------------
-
 const importUsage = `Usage: dzieciol import <file> [flags]
 
 Imports scan results into the store through the same pipeline as live scans
@@ -167,10 +163,6 @@ func detectImportFormat(path string, data []byte) string {
 	return "csv"
 }
 
-// ---------------------------------------------------------------------------
-// export
-// ---------------------------------------------------------------------------
-
 const exportUsage = `Usage: dzieciol export [flags]
 
 Exports the current inventory (decrypted) as JSON, CSV, nmap XML, a URL list
@@ -273,10 +265,6 @@ func hasTag(tags []string, t string) bool {
 	return false
 }
 
-// ---------------------------------------------------------------------------
-// runs
-// ---------------------------------------------------------------------------
-
 func cmdRuns(args []string) error {
 	fs := newFlagSet("runs", "Usage: dzieciol runs [flags]\n\nLists recent scan runs (newest first).")
 	limit := fs.Int("n", 20, "number of runs to show")
@@ -345,10 +333,6 @@ func resolveRunID(ctx context.Context, store db.Store, ref string) (string, erro
 	}
 	return "", fmt.Errorf("scan run prefix %q is ambiguous", ref)
 }
-
-// ---------------------------------------------------------------------------
-// diff
-// ---------------------------------------------------------------------------
 
 const diffUsage = `Usage: dzieciol diff [runA runB] [flags]
 

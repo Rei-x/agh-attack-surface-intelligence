@@ -189,8 +189,6 @@ func (c *Capturer) Close() {
 	}
 }
 
-// ---- process-wide capturer -------------------------------------------------------------
-
 // EnvScreenshots set to false/0/off disables screenshots on this host.
 const EnvScreenshots = "DZIECIOL_SCREENSHOTS"
 

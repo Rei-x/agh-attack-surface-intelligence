@@ -106,7 +106,6 @@ func ClassifyTimeAvailability(stats []domain.TimeSlotStat, slot string, observed
 	}
 
 	if !observedAlive {
-		// Host is OFF right now.
 		if current.Ratio <= 0.25 && otherWithData > 0 && maxOtherRatio >= 0.70 {
 			// Historically off during this time slot (e.g. night lab shutdown) and active in other slots.
 			return true, false
@@ -118,9 +117,8 @@ func ClassifyTimeAvailability(stats []domain.TimeSlotStat, slot string, observed
 		return false, false
 	}
 
-	// Host is ON right now.
 	if current.Ratio <= 0.20 && otherWithData > 0 && maxOtherRatio >= 0.70 {
-		// Host is normally shut down in this slot, yet suddenly appeared -> TIME_ANOMALY!
+		// Normally shut down in this slot, yet it answers: a time anomaly.
 		return false, true
 	}
 	return false, false
@@ -204,7 +202,7 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 			elapsedSinceLastSeen = observedAt.Sub(host.LastSeen)
 		}
 
-		// Minimum guards from the scan profile (kept for operator control / backward compat).
+		// Minimum guards from the scan profile, for operator control.
 		meetsMisses := host.ConsecutiveMisses >= cfg.MissingThreshold
 		meetsGrace := host.LastSeen.IsZero() || elapsedSinceLastSeen >= graceDuration
 		// Principled criterion: posterior probability that the host still exists.
@@ -246,7 +244,6 @@ func EvaluateHostLifecycle(host *domain.Host, observedAlive bool, observedAt tim
 		}
 	}
 
-	// Update Time-of-Day Availability Matrix slot counters.
 	for i := range host.TimeOfDayStats {
 		if host.TimeOfDayStats[i].Slot == slot {
 			host.TimeOfDayStats[i].Total++

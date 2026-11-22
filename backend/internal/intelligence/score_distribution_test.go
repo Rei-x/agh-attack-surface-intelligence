@@ -149,9 +149,7 @@ func population(r *rand.Rand) []domain.Host {
 }
 
 // TestScoreDistributionIsSpread: on a realistic population the host score must separate
-// the few hosts to fix today from the many that are merely untidy. Before the
-// recalibration (additive points capped at 100) the jury lab had 40% of hosts at 90 or more
-// and every /22 block at 100.
+// the few hosts to fix today from the many that are merely untidy.
 func TestScoreDistributionIsSpread(t *testing.T) {
 	hosts := population(rand.New(rand.NewSource(7)))
 	var scores []int
@@ -212,7 +210,7 @@ func TestScoreOrderingSignals(t *testing.T) {
 	}
 
 	// The lab false positive: nginx 1.20.1 on plain HTTP. With HTTP/2 off the Rapid Reset
-	// KEV match no longer drives the score.
+	// KEV match must not drive the score.
 	off := svcScore(web(80, "nginx/1.20.1", "nginx", "1.20.1", http2(domain.ProtoNo)), 0)
 	unknown := svcScore(web(80, "nginx/1.20.1", "nginx", "1.20.1", http2(domain.ProtoUnknown)), 0)
 	for _, f := range off.InterestingFactors {

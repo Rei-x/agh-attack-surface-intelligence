@@ -550,7 +550,7 @@ func emptyJARMRaw() []string {
 
 // jarmSend writes one ClientHello and reads the first server flight.
 // Unlike a single recv() we keep reading until the first TLS record is complete
-// (or 1484 bytes / timeout), which is more robust on segmented paths and gives
+// (or 1484 bytes / timeout), which copes with segmented paths and gives
 // identical results whenever jarm.py receives the full ServerHello.
 func jarmSend(ctx context.Context, addr string, pkt []byte, opts JARMOptions) ([]byte, error) {
 	pctx, cancel := context.WithTimeout(ctx, opts.ProbeTimeout)

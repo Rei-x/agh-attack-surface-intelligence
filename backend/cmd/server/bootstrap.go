@@ -28,7 +28,7 @@ type bootstrapResult struct {
 //     demo mode off actually closes them;
 //   - if no active administrator remains (fresh install without demo accounts), an "admin"
 //     account is created (or re-enabled) with DZIECIOL_ADMIN_PASSWORD or a random password that is
-//     printed once to the terminal. Without this, DZIECIOL_SEED_DEMO=false meant nobody could log in.
+//     printed once to the terminal, so DZIECIOL_SEED_DEMO=false never locks everyone out.
 func secureAccounts(ctx context.Context, store db.Store, seedDemo bool) (bootstrapResult, error) {
 	var res bootstrapResult
 	if seedDemo {
