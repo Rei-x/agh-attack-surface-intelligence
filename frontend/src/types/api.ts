@@ -951,13 +951,27 @@ export interface DefectDojoFindingRef {
   pushed_at: string;
 }
 
+/** A per-profile "Dzięcioł changes: <profile>" test of an older version, closed by a sync. */
+export interface DefectDojoLegacyTest {
+  test_id: number;
+  title: string;
+  url: string;
+  closed: number;
+  notes_carried: number;
+  triage_carried: number;
+  retired_at: string;
+}
+
 export interface DefectDojoSyncState {
   last_sync_at?: string;
   last_status?: string;
   last_error?: string;
   last_run_id?: string;
+  /** The one "Dzięcioł changes" test (whole inventory). */
   test_id?: number;
   test_url?: string;
+  changes_context?: string;
+  legacy_tests?: DefectDojoLegacyTest[];
   product_id?: number;
   product_url?: string;
   findings: number;

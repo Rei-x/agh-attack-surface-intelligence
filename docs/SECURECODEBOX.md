@@ -99,9 +99,22 @@ Engagement i Test. Nazwy odpowiadają sobie tak:
 | `minimum_severity` | brak | `DZIECIOL_DEFECTDOJO_MINIMUM_SEVERITY` | `Info` |
 
 Produkt lub engagement przypięty po ID w ustawieniach (Admin → DefectDojo) ma pierwszeństwo
-przed nazwami. Jeden profil skanowania odpowiada jednemu testowi w DefectDojo, tak jak
-ScheduledScan w SCB. Każdy kolejny przebieg robi reimport do tego samego testu z
-`close_old_findings=true`, więc usługi, które zniknęły, są zamykane jako mitigated.
+przed nazwami. Surowy XML nmapa trafia do testu `Dzięcioł Nmap: <nazwa profilu>`: jeden profil
+skanowania odpowiada jednemu testowi, tak jak ScheduledScan w SCB. Każdy kolejny przebieg robi
+reimport do tego samego testu z `close_old_findings=true`, więc usługi, które zniknęły, są
+zamykane jako mitigated.
+
+Findingi do działania (ryzykowne usługi, panele administracyjne, wersje po końcu wsparcia,
+nowe usługi, znikające hosty, z właścicielem z reguł CIDR) mają jeden test `Dzięcioł changes`
+na cały inwentarz, a nie test na profil. Profile się nakładają (szybki /22 wewnątrz nocnego
+/18) i zmieniają nazwy, a test na profil miał wtedy ten sam finding dwa razy albo zostawiał
+otwarte findingi starej nazwy. Teraz każdy host jest w teście raz. Dzięcioł zapamiętuje id
+testu i robi reimport po id, więc zmiana nazwy testu w DefectDojo niczego nie psuje.
+Starsze wersje miały testy `Dzięcioł changes: <profil>`: pierwsza synchronizacja po
+aktualizacji przejmuje ten z nich, który ma najwięcej dzisiejszych findingów (zmienia mu
+nazwę, findingi zachowują id, notatki i powiązania z JIRA), a pozostałe zamyka pustym
+reimportem, wcześniej przenosząc notatki analityków oraz stany false positive i risk accepted
+ustawione w DefectDojo. Szczegóły: `docs/ARCHITECTURE.md`, sekcja 5.
 
 ## 4. „Cascading scans” w Dzięcioł
 

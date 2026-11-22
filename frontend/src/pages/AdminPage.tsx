@@ -272,7 +272,7 @@ export function AdminPage() {
     setDdSyncing(true);
     try {
       await api.syncDefectDojoNow();
-      toast.success('DefectDojo synced', 'Change findings and triage decisions pushed for every profile');
+      toast.success('DefectDojo synced', 'Change findings of the whole inventory and triage decisions pushed');
       loadDefectDojo();
     } catch (err) {
       toast.error('DefectDojo sync failed', (err as Error).message);
@@ -554,10 +554,11 @@ export function AdminPage() {
                   <CardContent className="space-y-3 text-xs">
                     <p className="text-muted-foreground">
                       After every completed run (local or agent) Dzięcioł reimports the run&apos;s nmap XML into
-                      &quot;Dzięcioł Nmap: &lt;profile&gt;&quot; and the actionable change findings (risky exposures, admin
-                      panels, end-of-life versions, new services, gone hosts, with owner) into &quot;Dzięcioł changes:
-                      &lt;profile&gt;&quot;. Fixed items are closed in DefectDojo. Analyst decisions are mirrored: false
-                      positive becomes false_p, accepted risk becomes risk accepted with the reason and expiry as a note.
+                      &quot;Dzięcioł Nmap: &lt;profile&gt;&quot; and the actionable change findings of the whole inventory
+                      (risky exposures, admin panels, end-of-life versions, new services, gone hosts, with owner) into
+                      one &quot;Dzięcioł changes&quot; test, so a host covered by several profiles gives one finding. Fixed
+                      items are closed in DefectDojo. Analyst decisions are mirrored: false positive becomes false_p,
+                      accepted risk becomes risk accepted with the reason and expiry as a note.
                     </p>
                     {ddStatus?.sync?.last_sync_at ? (
                       <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
@@ -589,12 +590,12 @@ export function AdminPage() {
                     <div className="flex flex-wrap gap-3">
                       {ddStatus?.sync?.test_url && (
                         <a href={ddStatus.sync.test_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
-                          Changes test <RiExternalLinkLine className="size-3" />
+                          Dzięcioł changes test{ddStatus.sync.test_id ? ` #${ddStatus.sync.test_id}` : ''} <RiExternalLinkLine className="size-3" />
                         </a>
                       )}
                       {ddStatus?.sync?.nmap_test_url && (
                         <a href={ddStatus.sync.nmap_test_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
-                          nmap test <RiExternalLinkLine className="size-3" />
+                          Last nmap test <RiExternalLinkLine className="size-3" />
                         </a>
                       )}
                       {ddStatus?.sync?.product_url && (
@@ -603,6 +604,28 @@ export function AdminPage() {
                         </a>
                       )}
                     </div>
+                    {ddStatus?.sync?.legacy_tests && ddStatus.sync.legacy_tests.length > 0 && (
+                      <div className="space-y-1 border-t pt-3">
+                        <p className="text-muted-foreground">
+                          Superseded per-profile tests from an older version, closed so no finding is open twice. Analyst
+                          notes and false positive / risk accepted states set in DefectDojo were copied to the change test.
+                        </p>
+                        <ul className="space-y-0.5">
+                          {ddStatus.sync.legacy_tests.map((lt) => (
+                            <li key={`${lt.test_id}-${lt.retired_at}`} className="flex flex-wrap items-center gap-x-2">
+                              <a href={lt.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:underline">
+                                #{lt.test_id} {lt.title} <RiExternalLinkLine className="size-3" />
+                              </a>
+                              <span className="font-mono text-muted-foreground">
+                                {lt.closed} closed, {lt.notes_carried} notes and {lt.triage_carried} decisions carried
+                                {' · '}
+                                {formatDateTime(lt.retired_at)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card size="sm">
