@@ -175,7 +175,11 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 	// Close the other change tests of the product (the per-profile ones of older versions),
 	// carrying analyst notes and DefectDojo-side triage over first. Needs the links above.
 	if imp.ProductID > 0 {
-		retired, warns := c.retireLegacyTests(ctx, cfg, imp, findings, out.Refs, existing, listed)
+		previous := 0 // this instance's change test before the context changed
+		if knownContext != "" && knownContext != out.Context {
+			previous = knownTestID
+		}
+		retired, warns := c.retireLegacyTests(ctx, cfg, imp, findings, out.Refs, existing, listed, previous)
 		out.Retired = retired
 		out.Warnings = append(out.Warnings, warns...)
 	}

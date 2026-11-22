@@ -383,6 +383,39 @@ func TestRealDefectDojoMigration(t *testing.T) {
 	t.Logf("change test %s: %d findings, %d tests retired", res.Import.ExternalURL, len(all), len(res.Retired))
 }
 
+// Moving the sync to another engagement of the same product (DZIECIOL_DEFECTDOJO_ENGAGEMENT_NAME)
+// closes this instance's previous change test there, but never the change test of another
+// engagement it did not write (a second instance sharing the product).
+func TestSyncChangesContextChangeRetiresOwnPreviousTest(t *testing.T) {
+	sim, srv := newDojoSim(t)
+	cfg := &domain.DefectDojoConfig{URL: srv.URL, APIToken: "t"}
+	store := newFixtureStore(t, inventoryHosts(), overlappingProfiles())
+	t.Setenv("DZIECIOL_DEFECTDOJO_ENGAGEMENT_NAME", "Discovery A")
+	syncOnce(t, store, cfg, "1")
+	first := sim.testByTitle(ChangesTest)[0]
+	peerEng := sim.addEngagement(sim.products[0], "Discovery of another instance")
+	peer := sim.addTest(peerEng, ChangesTest, genericScanType)
+	sim.seed(peer, []ChangeFinding{{genericFinding: genericFinding{Title: "Peer", Description: "peer", UniqueIDFromTool: "aegis-peer"}}})
+
+	t.Setenv("DZIECIOL_DEFECTDOJO_ENGAGEMENT_NAME", "Discovery B")
+	res := syncOnce(t, store, cfg, "2")
+	if res.Import.TestID == first.ID || len(res.Retired) != 1 || res.Retired[0].TestID != first.ID {
+		t.Fatalf("want the change test of engagement A retired, got %+v:\n%s", res.Retired, sim.summary())
+	}
+	if activeIn(sim, first) != 0 || activeIn(sim, peer) != 1 {
+		t.Fatalf("own previous test must be closed, the peer's kept:\n%s", sim.summary())
+	}
+	for uid, ids := range sim.activeByUID(sim.products[0].ID) {
+		if uid != "aegis-peer" && len(ids) > 1 {
+			t.Errorf("unique id %s active %d times", uid, len(ids))
+		}
+	}
+	// The next sync does not touch the peer either.
+	if res := syncOnce(t, store, cfg, "3"); len(res.Retired) != 0 || activeIn(sim, peer) != 1 {
+		t.Fatalf("peer touched: %+v", res.Retired)
+	}
+}
+
 // A per-profile test written again by an older binary after the upgrade (or an integration
 // run) is closed by the next sync too: retirement does not depend on the one-off adoption.
 func TestSyncChangesRetiresLateLegacyTest(t *testing.T) {

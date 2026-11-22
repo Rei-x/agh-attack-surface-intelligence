@@ -30,9 +30,10 @@ import (
 //     description name the test that superseded it. Decisions made in Dzięcioł need no copy:
 //     SyncTriage applies them to the change test anyway.
 //
-// Outside the change test's engagement only "Dzięcioł changes: ..." tests are retired, never
-// a plain "Dzięcioł changes": that is the change test of another engagement (a second
-// Dzięcioł instance sharing the product), not a leftover.
+// Outside the change test's engagement only "Dzięcioł changes: ..." tests are retired, not a
+// plain "Dzięcioł changes": that is the change test of another engagement (a second
+// Dzięcioł instance sharing the product), not a leftover. The exception is this instance's
+// own previous change test, after the engagement it syncs to was changed.
 
 const (
 	genericScanType = "Generic Findings Import"
@@ -234,8 +235,9 @@ func (c *Client) adoptChangesTest(ctx context.Context, cfg *domain.DefectDojoCon
 // retireLegacyTests closes the change tests of the product other than the change test (see
 // the file comment) and returns what it retired. findings and refs are the payload just
 // pushed and its links (refs[i] for findings[i]; carried triage updates refs in place),
-// existing the findings of the change test, listed the findings the adoption listed.
-func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoConfig, imp *ImportResult, findings []ChangeFinding, refs []FindingRef, existing []dojoFinding, listed map[int][]dojoFinding) ([]domain.DefectDojoLegacyTest, []string) {
+// existing the findings of the change test, listed the findings the adoption listed,
+// previous the change test this instance used before its context changed (0 if none).
+func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoConfig, imp *ImportResult, findings []ChangeFinding, refs []FindingRef, existing []dojoFinding, listed map[int][]dojoFinding, previous int) ([]domain.DefectDojoLegacyTest, []string) {
 	var warnings []string
 	engs, err := listPaged[dojoEngagement](ctx, c, cfg, fmt.Sprintf("/api/v2/engagements/?product=%d", imp.ProductID), 100)
 	if err != nil {
@@ -249,7 +251,8 @@ func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoCo
 			continue
 		}
 		for _, t := range tests {
-			if t.ID == imp.TestID || (t.Title == ChangesTest && e.ID != imp.EngagementID && imp.EngagementID > 0) {
+			peer := t.Title == ChangesTest && e.ID != imp.EngagementID && imp.EngagementID > 0 && t.ID != previous
+			if t.ID == imp.TestID || peer {
 				continue
 			}
 			legacy = append(legacy, t)
