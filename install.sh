@@ -1,26 +1,49 @@
 #!/bin/sh
-# Dzięcioł installer - downloads the single `dzieciol` binary from GitHub Releases.
+# Dzięcioł installer: downloads the single `dzieciol` binary, verifies its SHA-256 checksum
+# from checksums.txt and installs it.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Rei-x/agh-attack-surface-intelligence/main/install.sh | sh
+#   curl -fsSL https://<your instance>/install.sh | sh
+#
+# This file downloads from GitHub Releases. A Dzięcioł instance serves its own copy at
+# /install.sh that downloads the instance's own build from /download/ instead.
 #
 # Environment:
-#   DZIECIOL_VERSION        release tag to install (default: latest), e.g. v1.2.0
+#   DZIECIOL_VERSION        GitHub release tag to install (default: latest), e.g. v1.2.0
 #   DZIECIOL_INSTALL_DIR    target directory (default: /usr/local/bin as root, else ~/.local/bin)
 #   DZIECIOL_DOWNLOAD_BASE  alternative base URL holding dzieciol-<os>-<arch> + checksums.txt (mirror)
 #
-# The script verifies the SHA-256 checksum from checksums.txt and never uses sudo.
+# The script never calls sudo itself.
 #
-# Remote scanning agent (Linux + systemd, run as root): install the binary and the
-# dzieciol-agent service in one go. Arguments after --agent go to `dzieciol agent install`:
+# Remote scanning agent: install the binary and start the agent in one go. Arguments after
+# --agent go to the agent (--server, --token, --name, --allow-cidr ...).
 #
-#   curl -fsSL .../install.sh | sudo sh -s -- --agent --server https://dzieciol.example.edu \
-#        --token aet_... [--name wydzial-x] [--allow-cidr 10.20.0.0/16]
+#   Linux with systemd, as root: installs and starts the dzieciol-agent service.
+#     curl -fsSL https://<instance>/install.sh | sudo sh -s -- --agent --server https://<instance> --token aet_...
+#
+#   macOS, or Linux without root or systemd (or with --foreground): runs the agent in this
+#   terminal until Ctrl+C. Running the same command again resumes with the saved credential.
+#     curl -fsSL https://<instance>/install.sh | sh -s -- --agent --foreground --server https://<instance> --token aet_...
+#
+# Without --allow-cidr the agent only scans the private networks of its own interfaces.
 set -eu
 
+# Filled in by the Dzięcioł instance that serves this script (GET /install.sh).
+SERVER_DOWNLOAD_BASE=""
+
 AGENT=0
+FOREGROUND=0
 if [ "${1:-}" = "--agent" ]; then
   AGENT=1
   shift
+  for arg do
+    shift
+    if [ "$arg" = "--foreground" ]; then
+      FOREGROUND=1
+    else
+      set -- "$@" "$arg"
+    fi
+  done
 fi
 
 REPO="Rei-x/agh-attack-surface-intelligence"
@@ -52,12 +75,17 @@ ext=""
 [ "$os" = windows ] && ext=".exe"
 asset="dzieciol-${os}-${arch}${ext}"
 
+if [ "$VERSION" = latest ]; then
+  github="https://github.com/$REPO/releases/latest/download"
+else
+  github="https://github.com/$REPO/releases/download/$VERSION"
+fi
 if [ -n "$DOWNLOAD_BASE" ]; then
   base="${DOWNLOAD_BASE%/}"
-elif [ "$VERSION" = latest ]; then
-  base="https://github.com/$REPO/releases/latest/download"
+elif [ -n "$SERVER_DOWNLOAD_BASE" ] && [ -z "${DZIECIOL_VERSION:-}" ]; then
+  base="$SERVER_DOWNLOAD_BASE"
 else
-  base="https://github.com/$REPO/releases/download/$VERSION"
+  base="$github"
 fi
 
 if command -v curl >/dev/null 2>&1; then
@@ -90,8 +118,13 @@ mkdir -p "$dir" || die "cannot create $dir (set DZIECIOL_INSTALL_DIR)"
 tmp=$(mktemp -d 2>/dev/null || mktemp -d -t dzieciol)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-say "downloading $asset ($VERSION) from $base"
-fetch "$base/$asset" "$tmp/$asset" || die "download failed: $base/$asset"
+say "downloading $asset from $base"
+if ! fetch "$base/$asset" "$tmp/$asset"; then
+  [ "$base" = "$SERVER_DOWNLOAD_BASE" ] || die "download failed: $base/$asset"
+  say "this server does not offer $asset, trying GitHub Releases ($VERSION)"
+  base="$github"
+  fetch "$base/$asset" "$tmp/$asset" || die "download failed: $base/$asset"
+fi
 fetch "$base/checksums.txt" "$tmp/checksums.txt" || die "download failed: $base/checksums.txt"
 
 expected=$(awk -v f="$asset" '{ name=$2; sub(/^\*/, "", name); if (name == f) print $1 }' "$tmp/checksums.txt")
@@ -107,15 +140,20 @@ say "installed $target"
 "$target" version || true
 
 if [ "$AGENT" = 1 ]; then
-  [ "$os" = linux ] || die "--agent installs a systemd service (Linux); elsewhere run: dzieciol agent --server ... --token ..."
-  [ "$(id -u)" = 0 ] || die "--agent must run as root (pipe into: sudo sh -s -- --agent ...)"
-  command -v nmap >/dev/null 2>&1 || say "note: nmap not found - the agent uses its built-in TCP connect scanner (apt install nmap for richer fingerprints)"
-  exec "$target" agent install "$@"
+  command -v nmap >/dev/null 2>&1 || say "note: nmap not found, the agent uses its built-in TCP connect scanner (install nmap for richer fingerprints)"
+  if [ "$FOREGROUND" = 0 ] && [ "$os" = linux ] && [ "$(id -u)" = 0 ] && [ -d /run/systemd/system ]; then
+    exec "$target" agent install "$@"
+  fi
+  if [ "$FOREGROUND" = 0 ]; then
+    say "a service needs Linux, root and systemd; running the agent in this terminal instead"
+  fi
+  say "starting the agent; it keeps running until you press Ctrl+C"
+  exec "$target" agent "$@"
 fi
 
 case ":$PATH:" in
   *":$dir:"*) ;;
-  *) say "note: $dir is not on your PATH - add it, e.g.: echo 'export PATH=\"$dir:\$PATH\"' >> ~/.profile" ;;
+  *) say "note: $dir is not on your PATH; add it, e.g.: echo 'export PATH=\"$dir:\$PATH\"' >> ~/.profile" ;;
 esac
 
 if ! command -v nmap >/dev/null 2>&1; then
