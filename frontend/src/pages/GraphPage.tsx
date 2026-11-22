@@ -45,10 +45,6 @@ import { AssetInspectorDrawer } from '@/components/AssetInspectorDrawer';
 import type { GraphHostRef, GraphMode, GraphNode, GraphQuery, GraphResponse } from '@/types/api';
 import { PeckSpinner } from '@/components/Woodpecker';
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/* Types & helpers                                                           */
-/* ────────────────────────────────────────────────────────────────────────── */
-
 type Column = 'scope' | 'host' | 'service' | 'tech';
 type FlowNodeData = { g: GraphNode; column?: Column; title?: string };
 type FlowNode = Node<FlowNodeData>;
@@ -191,10 +187,7 @@ function nodeFacts(n: GraphNode): { label: string; value: string }[] {
   return out;
 }
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/* Layout: Scope → Host/Subnet → Service → Tech, sorted by risk, no overlap   */
-/* ────────────────────────────────────────────────────────────────────────── */
-
+/** Columns scope → host/subnet → service → tech, sorted by risk, without overlaps. */
 function layoutGraph(data: GraphResponse): { nodes: FlowNode[]; edges: Edge[] } {
   const byId = new Map(data.nodes.map((n) => [n.id, n]));
   const parentsOf = new Map<string, string[]>();
@@ -327,10 +320,6 @@ function layoutGraph(data: GraphResponse): { nodes: FlowNode[]; edges: Edge[] } 
   return { nodes, edges };
 }
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/* Aggregated levels: grid of block / subnet cards + technology lane          */
-/* ────────────────────────────────────────────────────────────────────────── */
-
 const BLOCK_W = 232;
 const BLOCK_H = 128;
 const BLOCK_GAP = 16;
@@ -435,10 +424,6 @@ function layoutAggregate(data: GraphResponse, view: { w: number; h: number }): {
     .map((e) => ({ id: e.id, source: e.source, target: e.target, data: { weight: e.weight || 0 } }));
   return { nodes, edges };
 }
-
-/* ────────────────────────────────────────────────────────────────────────── */
-/* Node components                                                            */
-/* ────────────────────────────────────────────────────────────────────────── */
 
 interface GraphCtx {
   isFresh: (n: GraphNode) => boolean;
@@ -889,10 +874,6 @@ const NODE_TYPES: NodeTypes = {
   lanetech: LaneTechNode,
 };
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/* Page                                                                       */
-/* ────────────────────────────────────────────────────────────────────────── */
-
 export function GraphPage() {
   return (
     <ReactFlowProvider>
@@ -929,7 +910,6 @@ function GraphCanvas() {
   const [inspectHostId, setInspectHostId] = useState<string | null>(null);
   const [pushing, setPushing] = useState(false);
 
-  // Live: fresh node detection
   const { recentIPs } = useLiveEvents();
   const knownIds = useRef<Set<string> | null>(null);
   const [freshIds, setFreshIds] = useState<Record<string, number>>({});
@@ -1275,7 +1255,6 @@ function GraphCanvas() {
           />
           )}
 
-          {/* Floating toolbar */}
           <Panel position="top-left" className={cn('!m-3', selected ? 'max-w-[calc(100%-22.5rem)]' : 'max-w-[calc(100%-1.5rem)]')}>
             <div className="flex flex-wrap items-center gap-2 border border-border bg-card/95 p-1.5 shadow-sm backdrop-blur">
               <div className="relative w-52">
@@ -1403,7 +1382,6 @@ function GraphCanvas() {
             </div>
           </Panel>
 
-          {/* Node inspector overlay */}
           {selected && (
             <Panel position="top-right" className="!m-3 w-80">
               <div className="flex max-h-[calc(100vh-14rem)] flex-col border border-border bg-card/95 shadow-md backdrop-blur">

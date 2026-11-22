@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError, getStoredToken } from '@/lib/api';
 
-/* ---------- types ---------- */
-
 export type TicketStatus = 'open' | 'notified' | 'acknowledged' | 'fixed' | 'reopened' | 'accepted_risk';
 
 export interface TicketHistory {
@@ -281,8 +279,6 @@ export interface DigestSettings {
   last_delivered_day?: string;
 }
 
-/* ---------- requests ---------- */
-
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers || {});
   const token = getStoredToken();
@@ -385,8 +381,6 @@ export const remediationApi = {
   },
 };
 
-/* ---------- labels ---------- */
-
 export const STATUS_META: Record<TicketStatus, { label: string; tone: 'neutral' | 'info' | 'warning' | 'success' | 'violet' | 'orange' }> = {
   open: { label: 'Open', tone: 'neutral' },
   notified: { label: 'Notified', tone: 'info' },
@@ -478,8 +472,6 @@ export function fixHistoryLabel(reason?: FixReason | string): string {
   }
   return 'Verified fixed';
 }
-
-/* ---------- shared ticket index (badges) ---------- */
 
 let indexPromise: Promise<Ticket[]> | null = null;
 let indexAt = 0;

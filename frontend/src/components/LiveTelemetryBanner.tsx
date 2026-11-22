@@ -116,7 +116,7 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
         toast.success('Scan resumed', name);
       } else {
         await api.stopScan(scanId);
-        toast.warning('Emergency Stop', name);
+        toast.warning('Scan stopped', name);
       }
       onScanUpdated?.();
     } catch (err) {
@@ -185,7 +185,7 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
               </ControlButton>
             )}
             <ControlButton
-              label="Emergency Stop"
+              label="Emergency stop"
               destructive
               disabled={busyAction !== null}
               onClick={() => handleControl('stop')}
@@ -196,7 +196,6 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
         )}
       </div>
 
-      {/* Progress rail */}
       <div className="relative h-0.5 w-full bg-muted">
         <div
           className={cn(
@@ -205,7 +204,6 @@ export function LiveTelemetryBanner({ activeScan, onScanUpdated }: Props) {
           )}
           style={{ width: `${Math.max(pct, isRunning ? 1 : 0)}%` }}
         />
-        {/* knock knock: a red ripple where the scan is knocking right now */}
         {isRunning && (
           <span
             aria-hidden

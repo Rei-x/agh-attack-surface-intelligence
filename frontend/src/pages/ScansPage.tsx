@@ -170,13 +170,11 @@ export function ScansPage() {
   const [loading, setLoading] = useState(true);
   const [launchProfileId, setLaunchProfileId] = useState('');
 
-  // Target & exclusion forms
   const [newTarget, setNewTarget] = useState('');
   const [newTargetLabel, setNewTargetLabel] = useState('');
   const [newExclusion, setNewExclusion] = useState('');
   const [newExclusionReason, setNewExclusionReason] = useState('');
 
-  // Estimator state
   const [estTargets, setEstTargets] = useState('172.28.0.0/24\n10.0.0.0/18');
   const [estExclusions, setEstExclusions] = useState('10.0.0.1/32');
   const [estPorts, setEstPorts] = useState('22,80,443,8080,8443');
@@ -187,21 +185,18 @@ export function ScansPage() {
   const [estimate, setEstimate] = useState<TargetEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
 
-  // Profile editor (create, or edit when editingProfileId is set)
   const [profileForm, setProfileForm] = useState<ProfileFormState>(EMPTY_PROFILE_FORM);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const profileFormRef = useRef<HTMLDivElement>(null);
   // Defaults for a new profile come from the configured scope and an online agent, once.
   const defaultsApplied = useRef(false);
 
-  // Coverage Ledger selected scan & metadata editor
   const [expandedScanId, setExpandedScanId] = useState<string | null>(null);
   const [scanDetail, setScanDetail] = useState<ScanRun | null>(null);
   const [editingScanId, setEditingScanId] = useState<string | null>(null);
   const [editScanName, setEditScanName] = useState('');
   const [editScanNotes, setEditScanNotes] = useState('');
 
-  // Manual Ingest Form
   const [manualForm, setManualForm] = useState({
     scan_name: 'Analyst manual entry',
     ip: '',
@@ -221,14 +216,12 @@ export function ScansPage() {
   });
   const [submittingManual, setSubmittingManual] = useState(false);
 
-  // File Import state
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importFormat, setImportFormat] = useState<'csv' | 'json' | 'nmap' | 'scb'>('csv');
   const [importScanName, setImportScanName] = useState('');
   const [importPreview, setImportPreview] = useState<string>('');
   const [importing, setImporting] = useState(false);
 
-  // Export state
   const [exportScanId, setExportScanId] = useState('');
   const [exportState, setExportState] = useState('');
   const [exportTag, setExportTag] = useState('');
@@ -676,7 +669,6 @@ export function ScansPage() {
           <TabsTrigger value="agents">Agents ({agents.length})</TabsTrigger>
         </TabsList>
 
-        {/* ───────────── RUNS & COVERAGE LEDGER ───────────── */}
         <TabsContent value="runs" className="pt-4">
           <Card size="sm" className="py-0">
             {scans.length === 0 ? (
@@ -856,7 +848,6 @@ export function ScansPage() {
                           </TableCell>
                         </TableRow>
 
-                        {/* Inline metadata editor (any status) */}
                         {isEditing && canWriteScans && (
                           <TableRow
                             className={cn('bg-muted/30 hover:bg-muted/30', isExpanded && 'border-b-0')}
@@ -892,7 +883,6 @@ export function ScansPage() {
                           </TableRow>
                         )}
 
-                        {/* Coverage Ledger chunk grid */}
                         {isExpanded && (
                           <TableRow className="bg-muted/30 hover:bg-muted/30">
                             <TableCell colSpan={11} className="whitespace-normal">
@@ -940,7 +930,6 @@ export function ScansPage() {
           </Card>
         </TabsContent>
 
-        {/* ───────────── PROFILES ───────────── */}
         <TabsContent value="profiles" className="pt-4">
           <div className="grid grid-cols-1 gap-6 2xl:grid-cols-12">
             <Card size="sm" className={cn('py-0', canWriteScans ? '2xl:col-span-7' : '2xl:col-span-12')}>
@@ -1357,10 +1346,8 @@ export function ScansPage() {
           </div>
         </TabsContent>
 
-        {/* ───────────── SCOPES: targets, exclusions, estimator ───────────── */}
         <TabsContent value="scopes" className="space-y-6 pt-4">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* Targets */}
             <Card size="sm">
               <CardHeader>
                 <CardTitle className="text-sm">Targets · {targets.length}</CardTitle>
@@ -1418,7 +1405,6 @@ export function ScansPage() {
               </CardContent>
             </Card>
 
-            {/* Exclusions */}
             <Card size="sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-sm">
@@ -1482,10 +1468,8 @@ export function ScansPage() {
             </Card>
           </div>
 
-          {/* Ownership by CIDR (tag rules applied on ingest) */}
           <TagRulesPanel />
 
-          {/* Estimator */}
           <Card size="sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm">
@@ -1581,10 +1565,8 @@ export function ScansPage() {
           )}
         </TabsContent>
 
-        {/* ───────────── IMPORT / EXPORT ───────────── */}
         <TabsContent value="ingest" className="pt-4">
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            {/* Manual form */}
             <Card size="sm" className="xl:col-span-7">
               <form onSubmit={handleManualSubmit} className="flex flex-col gap-5">
                 <CardHeader>
@@ -1728,7 +1710,6 @@ export function ScansPage() {
             </Card>
 
             <div className="space-y-6 xl:col-span-5">
-              {/* File import */}
               <Card size="sm">
                 <form onSubmit={handleImportSubmit} className="flex flex-col gap-5">
                   <CardHeader>
@@ -1808,7 +1789,6 @@ export function ScansPage() {
                 </form>
               </Card>
 
-              {/* Export */}
               <Card size="sm">
                 <CardHeader>
                   <CardTitle className="text-sm">Export</CardTitle>
@@ -1897,7 +1877,6 @@ export function ScansPage() {
             </div>
           </div>
         </TabsContent>
-        {/* REMOTE AGENTS */}
         <TabsContent value="agents" className="pt-4">
           <AgentsPanel canManage={can(PERMISSIONS.ADMIN_SETTINGS)} />
         </TabsContent>

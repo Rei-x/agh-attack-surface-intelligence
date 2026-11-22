@@ -27,10 +27,8 @@ const HOST_OPTIONS = [
 type SaveState = 'idle' | 'saving' | 'saved';
 
 /**
- * Inline triage decision that saves on change. Accepted risk / false positive need a reason
- * (saved on Enter or when the field loses focus) and may expire; the decision is kept across
- * scans, hides the finding from top findings and alerts, and is synced to DefectDojo on the
- * next push.
+ * Inline triage decision that saves on change. Accepted risk / false positive need a reason,
+ * saved on Enter or when the field loses focus.
  */
 export function TriageEditor({
   status,

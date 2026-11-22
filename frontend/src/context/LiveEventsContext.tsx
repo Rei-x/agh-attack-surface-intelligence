@@ -147,7 +147,6 @@ export function LiveEventsProvider({ children }: { children: React.ReactNode }) 
   const throttleTimer = useRef<number | null>(null);
   const dataTimer = useRef<number | null>(null);
 
-  // Expire "recently discovered" IP highlights
   useEffect(() => {
     if (Object.keys(recentIPs).length === 0) return;
     const t = window.setInterval(() => {

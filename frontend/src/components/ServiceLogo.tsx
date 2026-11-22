@@ -132,7 +132,6 @@ interface Rule {
  * WordPress on Apache shows WordPress and iDRAC built with Angular shows Dell.
  */
 const APP_RULES: Rule[] = [
-  // CMS / web apps
   { keys: ['phpmyadmin'], si: siPhpmyadmin },
   { keys: ['wordpress', 'wp-admin', 'wp-login', 'woocommerce'], si: siWordpress },
   { keys: ['drupal'], si: siDrupal },
@@ -163,23 +162,20 @@ const APP_RULES: Rule[] = [
   { keys: ['proxmox'], si: siProxmox },
   { keys: ['docker', 'docker-registry'], si: siDocker },
   { keys: ['kubernetes', 'k8s', 'kubelet'], si: siKubernetes },
-  // Databases (the product is the listener itself)
+  // Databases count as apps: the product is the listener itself.
   { keys: ['postgresql', 'postgres'], si: siPostgresql },
   { keys: ['mariadb'], si: siMariadb },
   { keys: ['mysql'], si: siMysql },
   { keys: ['redis'], si: siRedis },
   { keys: ['mongodb', 'mongo'], si: siMongodb },
-  // Mail
   { keys: ['dovecot'], si: siDovecot },
   { keys: ['exim'], Icon: RiMailLine, label: 'Exim', color: '#0EA5E9' },
   { keys: ['postfix'], Icon: RiMailLine, label: 'Postfix', color: '#0EA5E9' },
-  // Server management (BMC) and hardware vendors
   { keys: ['idrac', 'idrac9', 'idrac8', 'integrated dell remote access', 'dell'], si: siDell, label: 'Dell iDRAC' },
   { keys: ['ilo', 'hpe', 'integrated lights-out', 'lights-out', 'hp-ilo'], si: siHp, label: 'HPE iLO' },
   { keys: ['supermicro'], si: siSupermicro },
   { keys: ['lenovo', 'xclarity'], si: siLenovo },
   { keys: ['vmware', 'esxi', 'vcenter', 'vsphere'], si: siVmware },
-  // Network / security appliances, NAS
   { keys: ['mikrotik', 'routeros', 'winbox'], si: siMikrotik },
   { keys: ['fortinet', 'fortigate', 'fortios'], si: siFortinet },
   { keys: ['palo alto', 'paloalto', 'pan-os', 'globalprotect'], si: siPaloaltonetworks },
@@ -188,13 +184,11 @@ const APP_RULES: Rule[] = [
   { keys: ['synology', 'diskstation', 'dsm'], si: siSynology },
   { keys: ['qnap'], si: siQnap },
   { keys: ['truenas', 'freenas'], si: siTruenas },
-  // Cameras / printers
   { keys: ['hikvision', 'hik', 'dvr', 'nvr', 'ipcam', 'ip camera', 'rtsp'], Icon: RiWebcamLine, label: 'Hikvision', color: '#E60012', accent: '#E60012' },
   { keys: ['brother'], Icon: RiPrinterLine, label: 'Brother printer', color: '#0D47A1' },
   { keys: ['laserjet', 'officejet', 'hewlett', 'jetdirect', 'hp'], si: siHp },
   { keys: ['cups'], Icon: RiPrinterLine, label: 'CUPS printing', color: '#0EA5E9' },
   { keys: ['printer', 'ipp'], Icon: RiPrinterLine, label: 'Printer', color: '#0EA5E9' },
-  // Windows remote access
   { keys: ['microsoft terminal services', 'terminal services', 'ms-wbt-server', 'rdp'], Icon: RiWindowsFill, label: 'Windows RDP', color: '#0078D4' },
   { keys: ['linux telnetd'], si: siLinux },
 ];
@@ -435,8 +429,6 @@ export function resolveServiceLogo(
   return out;
 }
 
-/* ---------- contrast against the actual theme surface ---------- */
-
 const SURFACE = { light: '#ffffff', dark: '#111413' } as const; // --card in index.css
 
 function hexRgb(hex: string): [number, number, number] | null {
@@ -509,7 +501,6 @@ export function serviceLogoNames(svc: ServiceLike): string[] {
   ].filter((s): s is string => typeof s === 'string' && s.trim() !== '');
 }
 
-/** Convenience wrapper: <ServiceLogo/> from a Service object. */
 export function ServiceLogoFor({
   service,
   size = 'sm',
@@ -533,7 +524,7 @@ export function ServiceLogoFor({
   );
 }
 
-/** Crisp tinted square tile with an official brand SVG (or a Remix fallback icon). */
+/** Tinted square tile with the brand SVG, or a Remix icon when there is none. */
 export const ServiceLogo = React.memo(function ServiceLogo({
   name,
   names,

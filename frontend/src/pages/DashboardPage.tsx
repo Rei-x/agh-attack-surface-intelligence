@@ -91,11 +91,7 @@ function buildRiskRows(products: InventoryProduct[]): InventoryProduct[] {
     .slice(0, 6);
 }
 
-/**
- * Risk by technology as a plain grid: fixed logo slot, truncating name, a bar whose length is
- * the host count (exposure) and whose colour is the risk band, then the score and host count in
- * content-sized columns that never overflow the card.
- */
+/** Bar length is the host count (exposure); bar colour is the risk band. */
 function RiskByTechnology({ rows }: { rows: InventoryProduct[] }) {
   const maxHosts = Math.max(1, ...rows.map((r) => r.host_count));
   return (
@@ -178,7 +174,6 @@ export function DashboardPage() {
     loadSummary();
   }, [loadSummary]);
 
-  // Silent background refresh on live data changes
   useLiveRefresh(loadSummary);
 
   const kpis = summary?.kpis || {};

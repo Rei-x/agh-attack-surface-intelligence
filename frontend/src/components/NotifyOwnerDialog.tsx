@@ -69,7 +69,6 @@ function channelLine(d: Draft, to: string): { text: string; ready: boolean } {
   };
 }
 
-/** text with every occurrence of the ISO day from replaced by to. */
 function withDue(text: string, from: string, to: string): string {
   if (!from || !to || from === to) return text;
   return text.split(from).join(to);

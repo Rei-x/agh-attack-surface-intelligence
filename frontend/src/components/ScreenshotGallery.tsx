@@ -44,7 +44,6 @@ function hostPort(item: GalleryItem): string {
   return `${item.host_ip}:${item.key.port}`;
 }
 
-/** One gallery tile. */
 export function GalleryTile({ item, onOpen }: { item: GalleryItem; onOpen: (item: GalleryItem) => void }) {
   const title = item.shot.title || item.service.http?.title || '';
   const flags = serviceFlags(item.service);

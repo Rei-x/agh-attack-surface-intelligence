@@ -94,7 +94,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 type="button"
                 onClick={() => dismiss(item.id)}
                 className="text-muted-foreground hover:text-foreground"
-                aria-label="Zamknij"
+                aria-label="Close"
               >
                 <RiCloseLine className="size-4" />
               </button>

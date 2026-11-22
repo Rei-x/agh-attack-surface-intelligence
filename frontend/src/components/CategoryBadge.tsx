@@ -20,10 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { OutdatedComponent, VulnHint } from '@/types/api';
 import type { VerifiedFinding, VulnSummary } from '@/lib/vulnintel';
 
-/**
- * Risk categories shown as compact icon badges (icon + tone + tooltip) instead of text pills.
- * Shared by the dashboard, asset list, inspector drawer and (later) the graph.
- */
+/** Risk categories shown as compact icon badges (icon + tone + tooltip) instead of text pills. */
 export type CategoryKind =
   | 'admin'
   | 'staging'
@@ -334,7 +331,6 @@ export function CategoryBadge({
   );
 }
 
-/** Row of badges for a list of flags. */
 export function CategoryBadges({
   flags,
   link,

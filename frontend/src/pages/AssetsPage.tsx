@@ -109,8 +109,6 @@ const fromSel = (v: string) => (v === ALL ? '' : v);
 
 type ViewMode = 'table' | 'products' | 'clusters';
 
-/* ---------- "why did this row match" ---------- */
-
 interface QTerm {
   key: string;
   value: string;
@@ -227,7 +225,6 @@ export function AssetsPage() {
   const [inventory, setInventory] = useState<InventoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Filters
   const [q, setQ] = useState(searchParams.get('q') || '');
   const [debouncedQ, setDebouncedQ] = useState(q.trim());
   const [stateFilter, setStateFilter] = useState(searchParams.get('state') || '');
@@ -291,7 +288,6 @@ export function AssetsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ]);
 
-  // Any filter change resets to the first page.
   useEffect(() => {
     setPage(1);
   }, [debouncedQ, stateFilter, envFilter, minScore, pageSize]);
@@ -482,9 +478,7 @@ export function AssetsPage() {
           </TabsList>
         </div>
 
-        {/* HOSTS */}
         <TabsContent value="table" className="pt-5">
-          {/* Quick filters */}
           <div className="mb-3 flex flex-wrap items-center gap-1.5">
             {QUICK_FILTERS.map((c) => {
               const active = activeChip?.key === c.key;
@@ -677,12 +671,10 @@ export function AssetsPage() {
           </div>
         </TabsContent>
 
-        {/* PRODUCTS */}
         <TabsContent value="products" className="pt-5">
           <ProductInventory products={inventory?.products || null} loading={!inventory} onQuery={applyQuery} />
         </TabsContent>
 
-        {/* CLUSTERS */}
         <TabsContent value="clusters" className="pt-5">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <SimpleSelect

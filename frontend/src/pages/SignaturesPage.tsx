@@ -113,14 +113,12 @@ export function SignaturesPage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
 
-  // Editor state
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<'visual' | 'json'>('visual');
   const [draft, setDraft] = useState<Partial<Signature>>(EMPTY_SIG);
   const [jsonText, setJsonText] = useState(JSON.stringify(EMPTY_SIG, null, 2));
   const [tagsText, setTagsText] = useState('custom');
 
-  // Validator & Retroactive Playground state
   const [validation, setValidation] = useState<SignatureValidationResult | null>(null);
   const [validating, setValidating] = useState(false);
   const [testResult, setTestResult] = useState<SignatureTestResult | null>(null);
@@ -210,7 +208,7 @@ export function SignaturesPage() {
         setTagsText((parsed.tags || []).join(', '));
         setEditorMode('visual');
       } catch (err) {
-        toast.error('Niepoprawny JSON', (err as Error).message);
+        toast.error('Invalid JSON', (err as Error).message);
       }
     }
   };
@@ -224,7 +222,7 @@ export function SignaturesPage() {
       if (res.valid) {
         toast.success('Signature is valid');
       } else {
-        toast.warning('Validator: odrzucono', res.reason || res.errors?.join('; '));
+        toast.warning('Signature rejected', res.reason || res.errors?.join('; '));
       }
     } catch (err) {
       toast.error('Validation failed', (err as Error).message);
@@ -332,7 +330,7 @@ export function SignaturesPage() {
   };
 
   const categoryOptions: SelectOption[] = [
-    { value: 'all', label: `Wszystkie (${signatures.length})` },
+    { value: 'all', label: `All (${signatures.length})` },
     ...CATEGORIES.map((c) => ({ value: c, label: c })),
   ];
 
@@ -576,7 +574,6 @@ export function SignaturesPage() {
           <TabsTrigger value="playground">Playground</TabsTrigger>
         </TabsList>
 
-        {/* LIST */}
         <TabsContent value="list">
           <Card size="sm" className="py-0">
             <div className="flex flex-col gap-3 border-b border-border px-5 py-3 sm:flex-row sm:items-center">
@@ -650,7 +647,6 @@ export function SignaturesPage() {
           </Card>
         </TabsContent>
 
-        {/* EDITOR / VALIDATOR */}
         <TabsContent value="editor">
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
             <div className="xl:col-span-8">{editorCard}</div>
@@ -697,7 +693,6 @@ export function SignaturesPage() {
           </div>
         </TabsContent>
 
-        {/* PLAYGROUND */}
         <TabsContent value="playground">
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             {editorCard}
