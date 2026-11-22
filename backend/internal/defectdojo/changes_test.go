@@ -97,7 +97,7 @@ func TestBuildChangeFindingsPayload(t *testing.T) {
 	if e.Severity != "Medium" || e.ComponentName != "nginx" || e.ComponentVersion != "1.14.2" || e.Date != "2026-11-11" {
 		t.Errorf("EOL fields: %+v", e.genericFinding)
 	}
-	for _, s := range []string{"**Owner (CIDR rule):** admin@wi.agh.edu.pl", "**First seen:** 2026-11-11 12:00 UTC", "2019-04-23", "endoflife.date/nginx", "Supported branch: 1.31"} {
+	for _, s := range []string{"**Owner (CIDR rule):** admin@wi.agh.edu.pl", "**First seen:** 2026-11-11 12:00 UTC", "2019-04-23", "endoflife.date/nginx", "Supported branch: 1.30"} {
 		if !strings.Contains(e.Description, s) {
 			t.Errorf("EOL description lacks %q:\n%s", s, e.Description)
 		}

@@ -111,16 +111,22 @@ func TestAssessApacheKEV(t *testing.T) {
 
 func TestAssessDistroBackport(t *testing.T) {
 	d := joined()
-	svc := &domain.Service{Port: 22, ServiceName: "ssh", Product: "OpenSSH", Version: "8.9p1 Ubuntu 3ubuntu0.6", Banner: "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6"}
+	// Ubuntu 22.04 at 3ubuntu0.10 carries the regreSSHion fix (USN-6859-1).
+	svc := &domain.Service{Port: 22, ServiceName: "ssh", Product: "OpenSSH", Version: "8.9p1 Ubuntu 3ubuntu0.10", Banner: "Ubuntu Linux; protocol 2.0"}
 	vs := d.Assess(svc)
-	if len(vs) != 1 || vs[0].Confidence != "low" || !vs[0].DistroBackport || !strings.Contains(vs[0].ConfidenceNote, "distro backport") {
+	if len(vs) != 1 || vs[0].Confidence != "low" || !vs[0].DistroBackport || vs[0].Total != 0 || vs[0].BackportedCount != 1 ||
+		vs[0].Backported[0].Applicability != domain.ApplicabilityFixedByDistro || !strings.Contains(vs[0].ConfidenceNote, "Ubuntu 22.04") {
 		t.Fatalf("distro: %+v", vs)
 	}
-	// Possible matches add no CVSS / EPSS points.
-	for _, f := range Factors(vs) {
-		if strings.HasPrefix(f.Reason, FactorCVSS) || strings.HasPrefix(f.Reason, FactorEPSS) {
-			t.Fatalf("distro build scored as definite: %+v", f)
-		}
+	// Backported matches add no points at all.
+	if f := Factors(vs); len(f) != 0 {
+		t.Fatalf("distro build scored: %+v", f)
+	}
+	// 3ubuntu0.6 predates the fix: the match is confirmed and counted.
+	svc.Version = "8.9p1 Ubuntu 3ubuntu0.6"
+	vs = d.Assess(svc)
+	if len(vs) != 1 || vs[0].Total != 1 || vs[0].DistroBackport || vs[0].Confidence != "high" || vs[0].Top[0].Applicability != domain.ApplicabilityDistroUnfixed {
+		t.Fatalf("unfixed distro: %+v", vs)
 	}
 }
 

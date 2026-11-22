@@ -11,13 +11,22 @@ type OutdatedComponent struct {
 	EOLDate         string `json:"eol_date"`                   // YYYY-MM-DD
 	DaysSinceEOL    int    `json:"days_since_eol"`             // at evaluation time
 	LatestInBranch  string `json:"latest_in_branch,omitempty"` // last release of that branch
-	SupportedBranch string `json:"supported_branch,omitempty"` // newest supported branch (upgrade target)
+	SupportedBranch string `json:"supported_branch,omitempty"` // upgrade target: newest supported (stable) branch
+	SupportedTrack  string `json:"supported_track,omitempty"`  // "stable" when the product also ships a mainline branch (nginx)
 	Via             string `json:"via"`                        // where the version came from (nmap, http-server-header, x-powered-by, technology)
 	DistroPackaged  bool   `json:"distro_packaged,omitempty"`  // distro build (Ubuntu/Debian/RHEL...): fixes may be backported
 	Label           string `json:"label"`                      // short badge text, e.g. "nginx 1.14: branch EOL since 2019-04"
 	Evidence        string `json:"evidence"`                   // full explanation with source and data date
 	Source          string `json:"source"`                     // citation URL of the EOL date
 	DataAsOf        string `json:"data_as_of"`                 // date the EOL table was curated
+}
+
+// UpgradeTarget is the supported branch as advice text names it: "1.30 (stable)" or "2.4".
+func (o OutdatedComponent) UpgradeTarget() string {
+	if o.SupportedBranch == "" || o.SupportedTrack == "" {
+		return o.SupportedBranch
+	}
+	return o.SupportedBranch + " (" + o.SupportedTrack + ")"
 }
 
 // VulnHint is a passive, version-only hint at a well-known critical CVE. Nothing was sent

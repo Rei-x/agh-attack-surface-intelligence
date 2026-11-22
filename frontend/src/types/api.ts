@@ -379,6 +379,8 @@ export interface OutdatedComponent {
   days_since_eol: number;
   latest_in_branch?: string;
   supported_branch?: string;
+  /** "stable" when the product also ships a mainline branch (nginx 1.30 stable, 1.31 mainline). */
+  supported_track?: string;
   via: string;
   distro_packaged?: boolean;
   label: string;

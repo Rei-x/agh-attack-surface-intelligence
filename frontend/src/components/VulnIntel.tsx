@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Link } from 'react-router-dom';
 import {
+  RiArrowRightSLine,
   RiExternalLinkLine,
   RiFireLine,
   RiLoader4Line,
@@ -18,6 +19,8 @@ import { assetsLink, formatRelativeTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   applicabilityLabel,
+  backportedCount,
+  backportedLabel,
   checkedTime,
   cvssSeverity,
   liveVulns,
@@ -44,10 +47,14 @@ function Heading({ children, aside }: { children: React.ReactNode; aside?: React
   );
 }
 
-/** Compact "23 CVE 9.8" chip for the service row; tone follows the worst CVSS. */
+/**
+ * Compact "23 CVE 9.8" chip for the service row; tone follows the worst CVSS. Matches on a
+ * distribution package (likely backported) are not counted and alone show no chip.
+ */
 export function VulnChip({ service }: { service: VulnService }) {
   const v = worstVuln(service.vulns);
   const suppressed = suppressedCount(service.vulns);
+  const backported = backportedCount(service.vulns);
   if (!v) {
     if (suppressed === 0) return null;
     return (
@@ -95,10 +102,11 @@ export function VulnChip({ service }: { service: VulnService }) {
             </span>
             : {x.total} CVEs ({x.critical} critical, {x.high} high), max CVSS {x.max_cvss.toFixed(1)}
             {x.kev > 0 && `, ${x.kev} exploited in the wild`}
-            {x.confidence === 'low' && ', possible (distro backport)'}
+            {x.package && `, ${x.package.label || 'distribution'} package predates the fix`}
           </span>
         ))}
         {suppressed > 0 && <span className="opacity-80">{suppressed} suppressed: {suppressedLine(service.vulns)}</span>}
+        {backported > 0 && <span className="opacity-80">{backportedLabel(service.vulns)}, not counted</span>}
       </TooltipContent>
     </Tooltip>
   );
@@ -114,8 +122,8 @@ function suppressedLine(vulns: VulnSummary[] | undefined): string {
 
 /** Applicability of a protocol-dependent CVE that still counts (on, or not checked). */
 function ApplicabilityTag({ c }: { c: CVERef }) {
-  if (!c.applicability || c.applicability === 'not_applicable') return null;
-  const on = c.applicability === 'applicable';
+  if (!c.applicability || ['not_applicable', 'backport_possible', 'fixed_by_distro'].includes(c.applicability)) return null;
+  const on = c.applicability === 'applicable' || c.applicability === 'distro_unfixed';
   return (
     <Tooltip>
       <TooltipTrigger
@@ -171,6 +179,69 @@ function SuppressedList({ refs }: { refs: CVERef[] }) {
   );
 }
 
+/**
+ * Version matches on a distribution package, grouped and collapsed: greyed, struck through
+ * when the distribution fixed it (fix table), the reason on hover. Not counted anywhere.
+ */
+function BackportedList({ v }: { v: VulnSummary }) {
+  const refs = v.backported || [];
+  const n = v.backported_count ?? refs.length;
+  if (!n) return null;
+  const fixed = refs.filter((c) => c.applicability === 'fixed_by_distro').length;
+  const head = (
+    <>
+      <span className="font-medium">{backportedLabel([v])}</span>
+      {fixed > 0 && <span>· {fixed} fixed by the distribution</span>}
+    </>
+  );
+  if (!refs.length) {
+    return <p className="flex items-center gap-1.5 border-t border-dashed border-border pt-1.5 text-[11px] text-muted-foreground">{head}</p>;
+  }
+  return (
+    <details className="group/bp border-t border-dashed border-border pt-1.5">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-muted-foreground">
+        <RiArrowRightSLine className="size-3.5 shrink-0 transition-transform group-open/bp:rotate-90" />
+        {head}
+      </summary>
+      <ul className="mt-1 space-y-0.5 pl-5" aria-label="Likely backported CVEs">
+        {refs.map((c) => {
+          const done = c.applicability === 'fixed_by_distro';
+          return (
+            <li key={c.id} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/80">
+              <a
+                href={c.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  'shrink-0 font-mono underline-offset-2 hover:underline',
+                  done && 'line-through decoration-muted-foreground/60'
+                )}
+              >
+                {c.id}
+              </a>
+              <span className="shrink-0 font-mono text-[10px] tabular-nums opacity-70">{c.cvss.toFixed(1)}</span>
+              {c.kev && (
+                <span
+                  className="shrink-0 text-[10px] opacity-70"
+                  title={`In CISA KEV since ${c.kev_date_added}; not counted here: distribution package`}
+                >
+                  KEV
+                </span>
+              )}
+              <Tooltip>
+                <TooltipTrigger render={<span className={cn('min-w-0 flex-1 truncate', done && 'text-foreground/70')} />}>
+                  · {applicabilityLabel(c)}
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm text-left">{c.applicability_note}</TooltipContent>
+              </Tooltip>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
 function SeverityBar({ v }: { v: VulnSummary }) {
   const parts: Array<[string, number]> = [
     ['critical', v.critical],
@@ -199,7 +270,13 @@ function SeverityBar({ v }: { v: VulnSummary }) {
 
 function ConfidenceBadge({ v }: { v: VulnSummary }) {
   const label =
-    v.confidence === 'high' ? 'Exact version' : v.confidence === 'low' ? 'Possible, distro backport' : 'Likely';
+    v.package && v.total > 0
+      ? 'Package predates the fix'
+      : v.confidence === 'high'
+        ? 'Exact version'
+        : v.confidence === 'low'
+          ? 'Possible, distro backport'
+          : 'Likely';
   const tone =
     v.confidence === 'high'
       ? 'border-foreground/30 text-foreground'
@@ -231,10 +308,28 @@ export function VulnEvidence({ service }: { service: VulnService }) {
   const vulns = service.vulns || [];
   if (vulns.length === 0) return null;
   const suppressed = suppressedCount(vulns);
+  const backported = backportedCount(vulns);
   return (
     <div className="space-y-2">
       <Heading aside={`NVD, CISA KEV, FIRST EPSS as of ${vulns[0].data_as_of}`}>
         Known vulnerabilities
+        {backported > 0 && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="ml-2 inline-flex h-4 items-center border border-dashed border-muted-foreground/50 px-1 align-middle text-[10px] font-medium tracking-normal text-muted-foreground normal-case" />
+              }
+            >
+              {backportedLabel(vulns)}
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm text-left">
+              Version matches on a distribution package. Distributions backport security fixes without changing the
+              upstream version, so these matches are not confirmed. Kept for the record; not counted in the score, the
+              KEV badge, queries or DefectDojo. Struck through: fixed by the distribution according to its security
+              tracker.
+            </TooltipContent>
+          </Tooltip>
+        )}
         {suppressed > 0 && (
           <Tooltip>
             <TooltipTrigger
@@ -259,10 +354,16 @@ export function VulnEvidence({ service }: { service: VulnService }) {
               <span className="text-sm font-semibold text-muted-foreground">
                 {v.product} <span className="font-mono text-xs font-normal">{v.version}</span>
               </span>
-              <span className="text-[11px] text-muted-foreground">
-                every match is not applicable on this port
-              </span>
+              <Tooltip>
+                <TooltipTrigger render={<span className="text-[11px] text-muted-foreground" />}>
+                  {(v.backported_count ?? v.backported?.length ?? 0) > 0
+                    ? `distribution package${v.package?.label ? ` (${v.package.label})` : ''}: fixes may be backported, not confirmed`
+                    : 'every match is not applicable on this port'}
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm text-left">{v.confidence_note}</TooltipContent>
+              </Tooltip>
             </div>
+            <BackportedList v={v} />
             <SuppressedList refs={v.suppressed || []} />
           </div>
         ) : (
@@ -335,6 +436,7 @@ export function VulnEvidence({ service }: { service: VulnService }) {
               </Link>
             </p>
           )}
+          <BackportedList v={v} />
           <SuppressedList refs={v.suppressed || []} />
         </div>
         )
