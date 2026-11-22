@@ -191,11 +191,11 @@ func TestImportChangeFindingsRequest(t *testing.T) {
 	defer srv.Close()
 	cfg := &domain.DefectDojoConfig{URL: srv.URL, APIToken: "t"}
 	fs := BuildChangeFindings(fixtureHosts(), changesNow)
-	res, err := NewClient().ImportChangeFindings(context.Background(), cfg, 0, ChangesTestTitle("Kampus"), "run-9", fs)
+	res, err := NewClient().ImportChangeFindings(context.Background(), cfg, 0, ChangesTest, "run-9", fs)
 	if err != nil || res.ExternalURL != srv.URL+"/test/31" {
 		t.Fatalf("import: %+v %v", res, err)
 	}
-	if form["scan_type"] != "Generic Findings Import" || form["test_title"] != "Dzięcioł changes: Kampus" ||
+	if form["scan_type"] != "Generic Findings Import" || form["test_title"] != "Dzięcioł changes" ||
 		form["close_old_findings"] != "true" || form["auto_create_context"] != "true" || form["version"] != "run-9" {
 		t.Fatalf("form: %+v", form)
 	}
@@ -230,7 +230,9 @@ func TestRealDefectDojoChangeFindings(t *testing.T) {
 	c := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	title := ChangesTestTitle("integration-" + time.Now().UTC().Format("20060102-150405"))
+	// A title of its own: the real change test of the instance must not be touched. The
+	// "Dzięcioł changes: " prefix makes a later sync of a real install retire it.
+	title := ChangesTest + ": integration-" + time.Now().UTC().Format("20060102-150405")
 	count := func(testID int, extra string) int {
 		var page struct {
 			Count int `json:"count"`

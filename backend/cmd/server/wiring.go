@@ -520,9 +520,11 @@ func (r *LiveScanRunner) launchAsync(
 
 // autoPushDefectDojo runs after every completed run (local engine and remote agents): it
 // reimports the merged Nmap XML (auto_push_nmap) and the actionable "Dzięcioł changes"
-// findings with analyst triage mirrored (auto_push_findings, on by default). One DefectDojo
-// test per profile, so DefectDojo closes what disappeared since the profile's previous run.
-// Failures are recorded in the export log and never affect the scan itself.
+// findings with analyst triage mirrored (auto_push_findings, on by default). The Nmap XML
+// goes to one test per profile (the raw record of that scope), the change findings of the
+// whole inventory to the one change test; both are reimported with close_old_findings, so
+// DefectDojo closes what disappeared. Failures are recorded in the export log and never
+// affect the scan itself.
 func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 	if r.dojo == nil {
 		return
@@ -536,17 +538,18 @@ func (r *LiveScanRunner) autoPushDefectDojo(ctx context.Context, runID string) {
 		return
 	}
 	profileName := run.Name
-	var profile *domain.ScanProfile
 	if run.ProfileID != "" {
 		if p, perr := r.store.GetProfile(ctx, run.ProfileID); perr == nil && p != nil && p.Name != "" {
-			profileName, profile = p.Name, p
+			profileName = p.Name
 		}
 	}
-	pushCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	// Generous: the first change sync after an upgrade also retires the per-profile change
+	// tests of older versions, which pages through and closes thousands of findings.
+	pushCtx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
 	// Actionable change findings (risky exposures, admin/staging, EOL, new, gone) with owners.
 	if cfg.AutoPushFindings {
-		defer r.pushChangeFindings(pushCtx, cfg, run, profile, profileName)
+		defer r.pushChangeFindings(pushCtx, cfg, run)
 	}
 	if !cfg.AutoPushNmap || strings.TrimSpace(run.RawNmapXML) == "" {
 		return

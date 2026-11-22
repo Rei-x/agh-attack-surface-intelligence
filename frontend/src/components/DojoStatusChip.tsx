@@ -80,7 +80,7 @@ export function DojoStatusChip() {
             </div>
           )}
           {sync.nmap_pushed_at && <div>Last nmap import {ago(sync.nmap_pushed_at)}</div>}
-          <div className="text-muted-foreground">Click to open {sync.test_url ? 'the test' : 'DefectDojo'}</div>
+          <div className="text-muted-foreground">Click to open {sync.test_url ? 'the "Dzięcioł changes" test' : 'DefectDojo'}</div>
         </div>
       </TooltipContent>
     </Tooltip>
