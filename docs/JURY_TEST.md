@@ -33,6 +33,11 @@ Defaults that matter for the lab:
   Larger ranges keep the compact campus list. Override with `-p 1-65535` or `-p 22,80,8080`.
 - **Localhost is scanned.** There is no hidden loopback exclusion any more. Exclusions you add
   yourself (Scans, Scope tab) still apply and the CLI says how many IPs they removed.
+- **The host's own LAN IP works too**, also as root: for this machine's addresses Dziecioł
+  uses connect scans, because raw SYN probes to a local IP do not see Docker-published ports.
+- **Container IPs**: scan the containers' subnet as a /24 (`dzieciol scan 172.18.0.0/24`),
+  not Docker's default /16 (65536 addresses would take a long time). Containers listen on
+  their internal ports (80, 3000, 5432, 5672, 8080, ...), not on the published ones.
 - Each run is stored in `~/.dzieciol` (encrypted). Running the same command again prints
   the changes against the previous run: new, closed and reopened services, version changes
   and response time jumps. `-o report.json` also writes the full JSON report.
@@ -77,6 +82,7 @@ scans in the UI:
 | | 8088 | WordPress 4.7.x on Apache 2.4.10 / PHP 5.6 (PHP end of life), CVE-2017-16510 hint, installer exposed |
 | | 8089 | Adminer, **admin panel** |
 | | 8090 | DVWA 1.10 (intentionally vulnerable app, marked development) |
+| | 21000-21010 | open, `tcpwrapped` (published FTP passive ports, no listener until a transfer) |
 | custom-network | 2223 | ssh, OpenSSH (Gitea) |
 | | 3001 | Gitea, **unfinished installer (admin panel)** |
 | | 5673 | AMQP, RabbitMQ 3.13 |
@@ -85,7 +91,8 @@ scans in the UI:
 | | 15432 | PostgreSQL, exposed database |
 | | 15673 | RabbitMQ Management, **admin panel** |
 
-The SSH server of the Docker host itself (port 22) also appears; it is not part of the lab.
+Ports of the Docker host itself also appear: its SSH server (22), `dzieciol serve` if it runs
+(9080) and any other local listener. They are not part of the lab.
 
 ### Quickstart (8787 disappears and comes back)
 
