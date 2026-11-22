@@ -3,6 +3,7 @@ package vulndb
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,8 +13,9 @@ import (
 // Interestingness factor prefixes (registered with eol.RegisterAnnotator so a re-score
 // replaces them) and their standalone weights (domain.CombineFactors). A KEV CVE that applies
 // (exact upstream version, precondition not ruled out) weighs the most: it says attackers use
-// the hole. A KEV match that is only possible (distro backport, incomplete version) and a
-// high EPSS weigh less; CVSS alone says how bad it would be, not how likely.
+// the hole. A KEV match that is only possible (incomplete version) and a high EPSS weigh
+// less; CVSS alone says how bad it would be, not how likely. Matches on a distribution
+// package (fix possibly backported) weigh nothing: they are listed, not counted.
 const (
 	FactorKEV  = "Exploited in the wild (CISA KEV): "
 	FactorEPSS = "High exploit probability (EPSS): "
@@ -153,16 +155,21 @@ func (d *DB) Assess(svc *domain.Service) []domain.VulnSummary {
 
 func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.VulnSummary {
 	nv := normalizeVersion(c.version)
-	distro := distroBuild(svc, c)
+	pkgVersion, pkgContext := packageEvidence(svc, c)
+	pkg := ParseDistroPackage(c.def.Key, pkgVersion, pkgContext)
+	if pkg == nil && distroBuild(svc, c) {
+		pkg = &domain.DistroPackage{Upstream: nv} // a build marker (-fips) without a distribution name
+	}
 	vs := domain.VulnSummary{
-		Product:        c.def.Name,
-		Version:        c.version,
-		Via:            c.via,
-		CPE:            c.def.CPEs[0],
-		DistroBackport: distro,
-		DataAsOf:       dateOnly(d.snap.GeneratedAt),
+		Product:  c.def.Name,
+		Version:  c.version,
+		Via:      c.via,
+		CPE:      c.def.CPEs[0],
+		Package:  pkg,
+		DataAsOf: dateOnly(d.snap.GeneratedAt),
 	}
 	ps := protocolsOf(svc)
+	var fixed []string
 	for _, h := range hits {
 		app := applicability(RequirementOf(h.CVE), ps)
 		if app.state == domain.ApplicabilityNotApplicable {
@@ -170,6 +177,22 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 			app.apply(&ref)
 			vs.Suppressed = append(vs.Suppressed, ref)
 			continue
+		}
+		// A distribution package: the version says the upstream code was vulnerable, not
+		// whether the distribution's fix is installed. Only a fix-table row can confirm the
+		// package predates the fix; everything else is listed, not counted.
+		distroState, distroNote := "", ""
+		if pkg != nil {
+			distroState, distroNote = distroApplicability(c.def.Key, h.CVE.ID, pkg)
+			if distroState != domain.ApplicabilityDistroUnfixed {
+				ref := cveRef(h)
+				ref.Applicability, ref.ApplicabilityNote = distroState, distroNote
+				vs.Backported = append(vs.Backported, ref)
+				if distroState == domain.ApplicabilityFixedByDistro {
+					fixed = append(fixed, h.CVE.ID)
+				}
+				continue
+			}
 		}
 		if app.state == domain.ApplicabilityUnverified {
 			vs.Unverified++
@@ -207,17 +230,34 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 		if len(vs.Top) < 3 {
 			ref := cveRef(h)
 			app.apply(&ref)
+			if distroState != "" && ref.Applicability == "" {
+				ref.Applicability, ref.ApplicabilityNote = distroState, distroNote
+			}
 			vs.Top = append(vs.Top, ref)
 		}
 	}
 	vs.SuppressedCount = len(vs.Suppressed)
+	// Fixed by the distribution first: the definite answers, then the open questions.
+	sort.SliceStable(vs.Backported, func(i, j int) bool {
+		return vs.Backported[i].Applicability == domain.ApplicabilityFixedByDistro && vs.Backported[j].Applicability != domain.ApplicabilityFixedByDistro
+	})
+	vs.BackportedCount = len(vs.Backported)
 	// Confidence of the version match.
 	label := nonEmpty(viaLabels[c.via], c.via)
 	exactParts := numericParts(nv) >= c.def.FullParts || hasSuffix(nv)
 	switch {
-	case distro:
+	case pkg != nil && vs.Total == 0:
+		vs.DistroBackport = true
 		vs.Confidence = "low"
-		vs.ConfidenceNote = fmt.Sprintf("Possible, distro backport: %s %s is a distribution build (version from %s); distributions backport security fixes without changing the upstream version, so check the package changelog.", c.def.Name, c.version, label)
+		vs.ConfidenceNote = fmt.Sprintf("%s %s is a distribution package (%s). %d version %s listed but not counted: %s",
+			c.def.Name, c.version, packageWhere(pkg, label), vs.BackportedCount, plural(vs.BackportedCount, "match is", "matches are"), backportReason(fixed))
+	case pkg != nil:
+		vs.Confidence = "high"
+		vs.ConfidenceNote = fmt.Sprintf("%s %s is a distribution package (%s) whose revision predates the distribution fix for %s.",
+			c.def.Name, c.version, packageWhere(pkg, label), strings.Join(vs.CVEIDs, ", "))
+		if n := vs.BackportedCount; n > 0 {
+			vs.ConfidenceNote += fmt.Sprintf(" %d other version %s not counted: %s", n, plural(n, "match is", "matches are"), backportReason(fixed))
+		}
 	case !exactParts:
 		vs.Confidence = "medium"
 		vs.ConfidenceNote = fmt.Sprintf("Incomplete version %q (from %s): %d of %d CVEs depend on the missing patch level.", nv, label, vs.Possible, vs.Total)
@@ -229,6 +269,35 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 		vs.ConfidenceNote = fmt.Sprintf("Exact upstream version %s reported by the service (%s).", nv, label)
 	}
 	return vs
+}
+
+// packageWhere is the parenthesised detail of a distribution package note:
+// "Debian 12, revision 2+deb12u3, version from nmap -sV".
+func packageWhere(pkg *domain.DistroPackage, via string) string {
+	var parts []string
+	if pkg.Label != "" {
+		parts = append(parts, pkg.Label)
+	}
+	if pkg.Revision != "" {
+		parts = append(parts, "revision "+pkg.Revision)
+	}
+	return strings.Join(append(parts, "version from "+via), ", ")
+}
+
+// backportReason says why a distribution package's matches are listed but not counted.
+func backportReason(fixed []string) string {
+	s := "fixes may be backported, not confirmed."
+	if len(fixed) > 0 {
+		s += fmt.Sprintf(" Fixed by the distribution according to its security tracker: %s.", strings.Join(fixed, ", "))
+	}
+	return s
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func cveRef(h Hit) domain.CVERef {
@@ -258,7 +327,7 @@ func Annotate(svc *domain.Service, _ time.Time) []domain.InterestingnessFactor {
 		return nil
 	}
 	svc.Vulns = Current().Assess(svc)
-	if len(svc.Vulns) == 0 {
+	if len(svc.Vulns) == 0 && len(svc.KnownVulns) == 0 {
 		return nil
 	}
 	if len(svc.KnownVulns) > 0 {
@@ -270,10 +339,13 @@ func Annotate(svc *domain.Service, _ time.Time) []domain.InterestingnessFactor {
 			for _, c := range v.Suppressed {
 				covered[c.ID] = true // ruled out by the protocol probe: no passive hint either
 			}
+			for _, c := range v.Backported {
+				covered[c.ID] = true // distribution package: listed there, not as a hint
+			}
 		}
 		kept := svc.KnownVulns[:0:0]
 		for _, h := range svc.KnownVulns {
-			if !covered[h.ID] {
+			if !covered[h.ID] && !hintFixedByDistro(svc, h) {
 				kept = append(kept, h)
 			}
 		}
@@ -285,8 +357,22 @@ func Annotate(svc *domain.Service, _ time.Time) []domain.InterestingnessFactor {
 	return Factors(svc.Vulns)
 }
 
+// hintFixedByDistro reports whether a passive eol hint the snapshot did not match is fixed in
+// the service's distribution package according to the fix table.
+func hintFixedByDistro(svc *domain.Service, h domain.VulnHint) bool {
+	def := lookupDef(h.Product)
+	if def == nil || !h.DistroPackaged {
+		return false
+	}
+	c := candidate{def: def, version: h.Version, via: nonEmpty(svc.VersionSource, "nmap")}
+	v, ctx := packageEvidence(svc, c)
+	return fixedByDistro(def.Key, h.ID, ParseDistroPackage(def.Key, v, ctx))
+}
+
 // Factors converts the summaries into interestingness factors (one per kind, strongest
-// product first). Distro builds and incomplete-version matches count as "possible". The
+// product first). Matches on distribution packages are in VulnSummary.Backported and never
+// reach the counts used here (a summary with only those has Total 0, DistroBackport set);
+// incomplete-version matches count as "possible". The
 // EPSS factor names a CVE other than the KEV ones: a KEV entry's high EPSS is the same
 // evidence and is not counted twice.
 func Factors(vulns []domain.VulnSummary) []domain.InterestingnessFactor {

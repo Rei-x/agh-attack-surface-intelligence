@@ -464,7 +464,7 @@ func summarizeHosts(hosts []domain.Host) []summaryHost {
 func slimVulnEvidence(vulns []domain.VulnSummary, verified []domain.VerifiedFinding) ([]domain.VulnSummary, []domain.VerifiedFinding) {
 	var vs []domain.VulnSummary
 	for _, v := range vulns {
-		v.CVEIDs, v.Suppressed = nil, nil // SuppressedCount stays for the badge
+		v.CVEIDs, v.Suppressed, v.Backported = nil, nil, nil // the counts stay for the badges
 		vs = append(vs, v)
 	}
 	var vf []domain.VerifiedFinding

@@ -20,9 +20,10 @@ import (
 //	cvss>=9              highest CVSS score of the matched CVEs
 //	verified:true        confirmed by a safe verification check
 //
-// "possible" matches (distro backports, incomplete versions) count too: the badge in the UI
-// carries the confidence. Matches ruled out by the protocol probe (a Rapid Reset CVE on a
-// server with HTTP/2 off, VulnSummary.Suppressed) never count.
+// "possible" matches on an incomplete version count too: the badge in the UI carries the
+// confidence. Matches ruled out by the protocol probe (a Rapid Reset CVE on a server with
+// HTTP/2 off, VulnSummary.Suppressed) and matches on a distribution package whose fix may be
+// backported (VulnSummary.Backported) never count.
 
 var reComparison = regexp.MustCompile(`^(-?)(epss|cvss)(>=|<=|>|<|=)(.+)$`)
 
