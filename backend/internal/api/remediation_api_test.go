@@ -104,7 +104,7 @@ func TestRemediationLoopVerifiedByNextScan(t *testing.T) {
 		Language    string `json:"language"`
 	}
 	_ = json.Unmarshal(r.Body.Bytes(), &view)
-	if view.FixedReason != remediation.FixedServiceRemoved || view.FixOutcome != "Fixed: service removed" || view.DueDate != draft.DueDate || view.Language != "pl" {
+	if view.FixedReason != remediation.FixedServiceRemoved || view.FixOutcome != "Closed: not reachable" || view.DueDate != draft.DueDate || view.Language != "pl" {
 		t.Fatalf("ticket view: %+v", view)
 	}
 
@@ -140,7 +140,7 @@ func TestRemediationLoopVerifiedByNextScan(t *testing.T) {
 		t.Fatalf("build digest: %d %s", r.Code, r.Body.String())
 	}
 	r = doJSON(h, http.MethodGet, "/api/v1/digest/"+d.ID+"/markdown", viewerTok, nil)
-	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), "Fixed (service removed): Telnet (cleartext login)") {
+	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), "Closed (not reachable): Telnet (cleartext login)") {
 		t.Fatalf("markdown: %d %s", r.Code, r.Body.String())
 	}
 	if r := doJSON(h, http.MethodPut, "/api/v1/digest/settings", analystTok, map[string]any{"enabled": true}); r.Code != http.StatusForbidden {
@@ -163,7 +163,7 @@ func TestMitigationNoteSaysWhatTheScanSaw(t *testing.T) {
 	closed := remediation.Ticket{Status: remediation.StatusFixed, FixedReason: remediation.FixedServiceRemoved, FixedAt: &at,
 		LastCheckNote: "service no longer reachable from the scanner: port 23/tcp is closed (it may be firewalled rather than removed)"}
 	note := mitigationNote(closed, "0123456789abcdef", warsaw)
-	want := "Dzięcioł verification: Fixed: service removed (scan 01234567, 2026-11-22). Service no longer reachable from the scanner: port 23/tcp is closed (it may be firewalled rather than removed). This is not a confirmed patch: the service may only be blocked for the scanner."
+	want := "Dzięcioł verification: Closed: not reachable (scan 01234567, 2026-11-22). Service no longer reachable from the scanner: port 23/tcp is closed (it may be firewalled rather than removed). This is not a confirmed patch: the service may only be blocked for the scanner."
 	if note != want {
 		t.Fatalf("note:\n got %q\nwant %q", note, want)
 	}

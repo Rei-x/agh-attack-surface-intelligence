@@ -243,7 +243,7 @@ func (t *Ticket) setStatus(to, by, note, scanID, fixedReason, fixedDetail string
 }
 
 // FixOutcome is the short English label of a closed fix, as the UI and the digest show it:
-// "Fixed: service removed", "Fixed: upgraded to nginx 1.30.1", "Fixed: issue no longer
+// "Closed: not reachable", "Fixed: upgraded to nginx 1.30.1", "Fixed: issue no longer
 // detected", "Fixed (marked by an analyst)". Empty for tickets that are not fixed.
 func (t *Ticket) FixOutcome() string {
 	if t.Status != StatusFixed {
@@ -256,7 +256,7 @@ func (t *Ticket) FixOutcome() string {
 func FixOutcomeLabel(reason, detail string) string {
 	switch reason {
 	case FixedServiceRemoved:
-		return "Fixed: service removed"
+		return "Closed: not reachable"
 	case FixedUpgraded:
 		if detail != "" {
 			return "Fixed: upgraded to " + detail

@@ -67,7 +67,7 @@ Szczegóły: Wersję nginx 1.20.1 rozpoznano na podstawie wyniku nmap -sV. Gał�
 Pierwsze wykrycie: 2026-11-22
 
 Zalecenie: Zaktualizować nginx do wersji 1.30 (stable) lub nowszej albo wyłączyć usługę, jeśli nie jest potrzebna.
-Prosimy o aktualizację w terminie do 2027-02-19 i o odpowiedź na tę wiadomość po zakończeniu prac. Sprawdzamy ten adres po każdym skanowaniu i zamkniemy zgłoszenie, gdy problem przestanie występować.
+Prosimy o aktualizację w terminie do 2027-02-20 i o odpowiedź na tę wiadomość po zakończeniu prac. Sprawdzamy ten adres po każdym skanowaniu i zamkniemy zgłoszenie, gdy problem przestanie występować.
 
 Jeśli ten host nie należy do Państwa, prosimy o informację, kto nim administruje.
 
@@ -89,7 +89,7 @@ Zespół bezpieczeństwa CBI AGH`
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Hello eaiib.agh.edu.pl,", "First seen: 2026-11-22", "Please patch it by 2027-02-19 and reply when done.", "CBI AGH security team"} {
+	for _, want := range []string{"Hello eaiib.agh.edu.pl,", "First seen: 2026-11-22", "Please patch it by 2027-02-20 and reply when done.", "CBI AGH security team"} {
 		if !strings.Contains(en.Body, want) {
 			t.Errorf("English body misses %q:\n%s", want, en.Body)
 		}
@@ -103,7 +103,7 @@ Zespół bezpieczeństwa CBI AGH`
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Ticket.Language != locale.PL || locale.DueDay(*res.Ticket.DueAt, warsaw) != "2027-02-19" {
+	if res.Ticket.Language != locale.PL || locale.DueDay(*res.Ticket.DueAt, warsaw) != "2027-02-20" {
 		t.Fatalf("ticket: %s %v", res.Ticket.Language, res.Ticket.DueAt)
 	}
 	// The ticket itself stays English for the board.
@@ -282,14 +282,14 @@ func TestSLATableMatchesDefectDojo(t *testing.T) {
 		t.Fatal(err)
 	}
 	ddExpiry, _ := locale.AddDays(defectdojo.FindingDate(svc.FirstSeen, nginxNow), 90)
-	if d.SLA.Days != 90 || d.SLA.Severity != "medium" || d.DueDate != ddExpiry || d.SLA.Start != "2026-11-21" {
+	if d.SLA.Days != 90 || d.SLA.Severity != "medium" || d.DueDate != ddExpiry || d.SLA.Start != "2026-11-22" {
 		t.Fatalf("draft SLA: %+v due %s, DefectDojo %s", d.SLA, d.DueDate, ddExpiry)
 	}
 	// A configured table (another DefectDojo SLA configuration) is used instead.
 	if err := outbound.Save(ctx, s.store, &outbound.Settings{SLADays: map[string]int{"medium": 45}}, false, false); err != nil {
 		t.Fatal(err)
 	}
-	if d, _ = s.Draft(ctx, host.ID, svc.ID, "", ""); d.SLA.Days != 45 || d.DueDate != "2027-01-05" {
+	if d, _ = s.Draft(ctx, host.ID, svc.ID, "", ""); d.SLA.Days != 45 || d.DueDate != "2027-01-06" {
 		t.Fatalf("configured SLA: %+v %s", d.SLA, d.DueDate)
 	}
 
@@ -359,7 +359,7 @@ func TestVerificationOutcomeTypes(t *testing.T) {
 	for _, c := range []struct{ reason, detail string }{{FixedServiceRemoved, ""}, {FixedUpgraded, "nginx 1.30.1"}, {FixedIssueGone, ""}, {FixedManual, ""}} {
 		labels[c.reason] = FixOutcomeLabel(c.reason, c.detail)
 	}
-	if labels[FixedServiceRemoved] != "Fixed: service removed" || labels[FixedUpgraded] != "Fixed: upgraded to nginx 1.30.1" ||
+	if labels[FixedServiceRemoved] != "Closed: not reachable" || labels[FixedUpgraded] != "Fixed: upgraded to nginx 1.30.1" ||
 		labels[FixedIssueGone] != "Fixed: issue no longer detected" || labels[FixedManual] != "Fixed (marked by an analyst)" {
 		t.Fatalf("labels: %v", labels)
 	}
@@ -369,7 +369,7 @@ func TestVerificationOutcomeTypes(t *testing.T) {
 	ts := []Ticket{eolTicket()}
 	hosts := map[string]*domain.Host{"h1": eolHost("1.14.0", "closed")}
 	out := Verify(ts, func(id string) (*domain.Host, bool) { return hosts[id], true }, "scan-9", t0, warsaw)
-	if len(out) != 1 || out[0].FixedReason != FixedServiceRemoved || ts[0].FixOutcome() != "Fixed: service removed" {
+	if len(out) != 1 || out[0].FixedReason != FixedServiceRemoved || ts[0].FixOutcome() != "Closed: not reachable" {
 		t.Fatalf("verify: %+v / %+v", out, ts[0])
 	}
 	h := ts[0].History[len(ts[0].History)-1]

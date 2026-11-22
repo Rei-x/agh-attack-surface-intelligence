@@ -451,11 +451,11 @@ export const FIX_REASON_HINT: Record<FixReason, string> = {
   manual: 'An analyst marked it fixed; no scan confirmed it.',
 };
 
-/** Status label of a fixed ticket: "Fixed: service removed", "Fixed: upgraded to nginx 1.30.1". */
+/** Status label of a fixed ticket: "Closed: not reachable", "Fixed: upgraded to nginx 1.30.1". A closed port is not a patch. */
 export function fixLabel(t: { fixed_reason?: FixReason | string; fixed_detail?: string; verified?: boolean }): string {
   switch (t.fixed_reason) {
     case 'service_removed':
-      return 'Fixed: service removed';
+      return 'Closed: not reachable';
     case 'upgraded':
       return t.fixed_detail ? `Fixed: upgraded to ${t.fixed_detail}` : 'Fixed: upgraded';
     case 'issue_gone':

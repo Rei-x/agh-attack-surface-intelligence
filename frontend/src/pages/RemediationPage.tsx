@@ -62,7 +62,7 @@ function overdue(t: Ticket): boolean {
   return isActive(t.status) && (t.overdue || !!t.past_due);
 }
 
-/** Status, and for a fixed ticket what closed it ("Fixed: service removed" is not a patch). */
+/** Status, and for a fixed ticket what closed it ("Closed: not reachable" is not a patch). */
 export function StatusPill({ t }: { t: Ticket }) {
   if (overdue(t)) return <Pill tone="warning">Overdue</Pill>;
   const meta = STATUS_META[t.status];

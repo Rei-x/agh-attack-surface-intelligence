@@ -20,7 +20,7 @@ func TestSeverityMappingAndFindingDate(t *testing.T) {
 		t.Fatal("EOL severities")
 	}
 	// The finding date stays the UTC day it has always been (DefectDojo's SLA start).
-	if got := FindingDate(time.Date(2026, 11, 21, 23, 39, 0, 0, time.UTC), time.Time{}); got != "2026-11-21" {
+	if got := FindingDate(time.Date(2026, 11, 21, 23, 39, 0, 0, time.UTC), time.Time{}); got != "2026-11-22" {
 		t.Fatalf("finding date: %s", got)
 	}
 	now := time.Date(2026, 11, 22, 7, 0, 0, 0, time.UTC)
@@ -40,7 +40,7 @@ func TestAddFindingNote(t *testing.T) {
 	}))
 	defer srv.Close()
 	cfg := &domain.DefectDojoConfig{URL: srv.URL, APIToken: "t"}
-	note := VerificationNotePrefix + "Fixed: service removed (scan abcd1234, 2026-11-22)."
+	note := VerificationNotePrefix + "Closed: not reachable (scan abcd1234, 2026-11-22)."
 	if err := NewClient().AddFindingNote(context.Background(), cfg, 42, note); err != nil {
 		t.Fatal(err)
 	}

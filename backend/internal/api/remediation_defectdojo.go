@@ -74,7 +74,7 @@ func (s *Server) reflectFixInDefectDojo(ctx context.Context, t remediation.Ticke
 }
 
 // mitigationNote is the DefectDojo note of a verified fix, e.g. "Dzięcioł verification:
-// Fixed: service removed (scan 1a2b3c4d, 2026-11-22). Service no longer reachable from
+// Closed: not reachable (scan 1a2b3c4d, 2026-11-22). Service no longer reachable from
 // the scanner: port 23/tcp is closed (it may be firewalled rather than removed). This is
 // not a confirmed patch."
 func mitigationNote(t remediation.Ticket, scanID string, loc *time.Location) string {

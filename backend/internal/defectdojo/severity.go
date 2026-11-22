@@ -1,6 +1,7 @@
 package defectdojo
 
 import (
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
@@ -40,12 +41,13 @@ func EOLSeverity(o domain.OutdatedComponent) string {
 	return "Medium"
 }
 
-// FindingDate is the "date" of a change finding: the day the service was first seen, in
-// UTC as it has always been sent (changing it would not re-date existing findings).
-// DefectDojo's SLA runs from this day.
+// FindingDate is the "date" of a change finding: the local calendar day (instance default
+// timezone, Europe/Warsaw) the service was first seen. DefectDojo's SLA runs from this day and
+// ticket due dates are computed from the same day, so both agree. A service first seen at
+// 00:39 Warsaw time belongs to that day, not to the previous UTC day.
 func FindingDate(firstSeen, fallback time.Time) string {
 	if firstSeen.IsZero() {
 		firstSeen = fallback
 	}
-	return firstSeen.UTC().Format("2006-01-02")
+	return locale.Date(firstSeen, locale.Location(""))
 }

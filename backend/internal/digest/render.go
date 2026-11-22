@@ -157,9 +157,12 @@ func (d *Digest) Message(link string) outbound.Message {
 	}
 }
 
-// fixedLabel is "Fixed (service removed)", "Fixed (upgraded to nginx 1.30.1)": a port the
+// fixedLabel is "Closed (not reachable)", "Fixed (upgraded to nginx 1.30.1)": a port the
 // scanner no longer reaches is not reported like a patch.
 func fixedLabel(t TicketItem) string {
+	if c, ok := strings.CutPrefix(t.Outcome, "Closed: "); ok {
+		return "Closed (" + c + ")"
+	}
 	o := strings.TrimPrefix(strings.TrimPrefix(t.Outcome, "Fixed: "), "Fixed ")
 	o = strings.Trim(o, "()")
 	if o == "" || o == "Fixed" {

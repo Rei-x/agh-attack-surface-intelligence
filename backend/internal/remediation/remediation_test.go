@@ -322,7 +322,7 @@ func TestServiceNotifyFallbacksAndVerification(t *testing.T) {
 	}
 	// A closed port is not a patch: the outcome says the service is out of the scanner's
 	// reach, and so does the history line.
-	if got.FixedReason != FixedServiceRemoved || got.FixOutcome() != "Fixed: service removed" {
+	if got.FixedReason != FixedServiceRemoved || got.FixOutcome() != "Closed: not reachable" {
 		t.Fatalf("outcome: %q / %q", got.FixedReason, got.FixOutcome())
 	}
 	last := got.History[len(got.History)-1]

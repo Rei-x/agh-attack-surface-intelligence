@@ -96,7 +96,7 @@ func TestBuildDigest(t *testing.T) {
 		t.Fatalf("headline: %q", d.Headline)
 	}
 	md := d.Markdown()
-	for _, want := range []string{"# Dzięcioł digest 2026-11-21", "## Top risks", "## Remediation", "Fixed (service removed): FTP (cleartext login) open", "Window: 2026-11-20 07:30 CET to 2026-11-21 07:30 CET", "Overdue: Telnet open on 10.70.1.5:23/tcp (owner: unknown, due 2026-11-20)", "### wi-it@agh.edu.pl", "### Unassigned"} {
+	for _, want := range []string{"# Dzięcioł digest 2026-11-21", "## Top risks", "## Remediation", "Closed (not reachable): FTP (cleartext login) open", "Window: 2026-11-20 07:30 CET to 2026-11-21 07:30 CET", "Overdue: Telnet open on 10.70.1.5:23/tcp (owner: unknown, due 2026-11-20)", "### wi-it@agh.edu.pl", "### Unassigned"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("markdown misses %q\n%s", want, md)
 		}
@@ -105,7 +105,7 @@ func TestBuildDigest(t *testing.T) {
 		t.Error("markdown must not contain dashes")
 	}
 
-	if d.Fixed[0].Outcome != "Fixed: service removed" || d.Fixed[0].FixedReason != remediation.FixedServiceRemoved {
+	if d.Fixed[0].Outcome != "Closed: not reachable" || d.Fixed[0].FixedReason != remediation.FixedServiceRemoved {
 		t.Fatalf("fixed item: %+v", d.Fixed[0])
 	}
 
