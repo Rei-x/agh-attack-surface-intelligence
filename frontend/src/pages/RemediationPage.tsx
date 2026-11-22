@@ -51,7 +51,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'notified', label: 'Notified' },
   { value: 'acknowledged', label: 'Acknowledged' },
   { value: 'reopened', label: 'Reopened' },
-  { value: 'fixed', label: 'Fixed' },
+  { value: 'fixed', label: 'Closed' },
   { value: 'accepted_risk', label: 'Accepted risk' },
   { value: 'all', label: 'All' },
 ];
@@ -347,7 +347,7 @@ export function RemediationPage() {
         <Stat label="Acknowledged" value={by.acknowledged ?? 0} />
         <Stat label="Overdue" value={stats?.overdue ?? 0} tone={(stats?.overdue || 0) > 0 ? 'warning' : undefined} />
         <Stat
-          label="Fixed"
+          label="Closed"
           value={stats?.fixed ?? 0}
           hint={stats?.fixed_last_24h ? `${stats.fixed_last_24h} in the last 24h` : undefined}
           tone={(stats?.fixed_last_24h || 0) > 0 ? 'success' : undefined}
@@ -454,7 +454,7 @@ export function RemediationPage() {
                         {isActive(t.status) ? (
                           t.due_date ? formatIsoDay(t.due_date) : formatDay(t.due_at)
                         ) : (
-                          <span className="text-muted-foreground">{t.status === 'fixed' ? 'fixed ' : 'closed '}{formatDay(t.fixed_at || t.updated_at)}</span>
+                          <span className="text-muted-foreground">{t.status === 'fixed' && t.fixed_reason !== 'service_removed' ? 'fixed ' : 'closed '}{formatDay(t.fixed_at || t.updated_at)}</span>
                         )}
                       </TableCell>
                       <TableCell className="pr-4 text-right">
