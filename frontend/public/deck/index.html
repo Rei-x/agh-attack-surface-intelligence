@@ -16,7 +16,8 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; -webki
 #deck > section.on { visibility: visible; }
 #deck > section:not(.on) .in, #deck > section:not(.on) .mark, #deck > section:not(.on) .tag { animation: none; }
 #deck aside { display: none; }
-#deck a { color: inherit; text-decoration: none; }
+#deck a { text-decoration: none; }
+#deck a.film { color: inherit; }
 .film iframe { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; }
 #notes { position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; overflow: auto; box-sizing: border-box; padding: 18px 28px; background: rgba(10, 12, 11, 0.95); border-top: 1px solid #2a2f2c; color: #f2efe8; font: 19px/1.55 Inter, Arial, sans-serif; display: none; z-index: 10; }
 body.notes #notes { display: block; }
@@ -29,6 +30,7 @@ body.notes #bar { display: none; }
   #deck { position: static; margin: 0; transform: none !important; height: auto; }
   #deck > section { position: relative; visibility: visible; break-after: page; page-break-after: always; }
   #deck .in, #deck .mark, #deck .tag { animation: none !important; opacity: 1 !important; }
+  #deck .in { position: relative; }
   #notes, #bar { display: none !important; }
 }
 </style>
@@ -193,7 +195,7 @@ body.notes #bar { display: none; }
 <p class="say m in" style="--i:1; font-size:64px">Sprawdźcie sami.</p>
 <div class="in" style="--i:2; display:grid; grid-template-columns:52px 1fr; column-gap:20px; row-gap:32px">
 <p class="clock" style="font-size:56px; line-height:1">1</p>
-<p class="log" style="font-size:30px; white-space:normal; line-height:1.45"><span class="r">dzieciol.suzuya.dev</span><br>login: admin / Admin123!</p>
+<p class="log" style="font-size:30px; white-space:normal; line-height:1.45"><a class="r" href="https://dzieciol.suzuya.dev" target="_blank" rel="noreferrer">dzieciol.suzuya.dev</a><br>login: admin / Admin123!</p>
 <p class="clock" style="font-size:56px; line-height:1">2</p>
 <p class="log" style="font-size:30px; white-space:normal; line-height:1.45">Scans → Quick scan<br>nasz lab: jedno kliknięcie<br><span style="color:#8d918c">albo jedna komenda u Was</span></p>
 </div>
