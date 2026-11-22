@@ -104,6 +104,34 @@ func parseExpiry(s string) (time.Time, error) {
 
 // ---------- Host timeline ----------
 
+// rollupTimelineEntry turns the summary of retention-removed change events into one row:
+// "42 older change events summarized by history retention: 30 HOST_MISSING, 12 ...".
+func rollupTimelineEntry(r *domain.ChangeRollup) domain.HostTimelineEntry {
+	types := make([]string, 0, len(r.ByType))
+	for t := range r.ByType {
+		types = append(types, t)
+	}
+	sort.Slice(types, func(i, j int) bool {
+		if r.ByType[types[i]] != r.ByType[types[j]] {
+			return r.ByType[types[i]] > r.ByType[types[j]]
+		}
+		return types[i] < types[j]
+	})
+	parts := make([]string, 0, len(types))
+	for _, t := range types {
+		parts = append(parts, fmt.Sprintf("%d %s", r.ByType[t], t))
+	}
+	until := r.To
+	return domain.HostTimelineEntry{
+		Kind:    "compacted",
+		At:      r.From,
+		Until:   &until,
+		Count:   r.Count,
+		Summary: fmt.Sprintf("%d older change events summarized by history retention: %s", r.Count, strings.Join(parts, ", ")),
+		Details: map[string]any{"by_type": r.ByType, "by_severity": r.BySeverity, "from": r.From, "to": r.To},
+	}
+}
+
 func (s *Server) handleHostTimeline(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	host, err := s.store.GetHost(ctx, r.PathValue("id"))
@@ -155,6 +183,13 @@ func (s *Server) handleHostTimeline(w http.ResponseWriter, r *http.Request) {
 			ScanRunID: ev.ScanRunID,
 			Details:   details,
 		})
+	}
+
+	// Change events removed by history retention are summarized in one row.
+	if rs, ok := s.store.(db.ChangeRollupStore); ok && portFilter == 0 {
+		if roll, err := rs.GetChangeRollup(ctx, host.ID); err == nil && roll != nil {
+			entries = append(entries, rollupTimelineEntry(roll))
+		}
 	}
 
 	// Observations collapsed into spans of identical state/product/version, so 30 daily scans

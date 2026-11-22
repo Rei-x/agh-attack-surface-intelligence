@@ -6,11 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -39,6 +39,10 @@ type FileStoreOptions struct {
 	Interval time.Duration
 	// ReadOnly loads the snapshot but never writes it back (used by export/diff).
 	ReadOnly bool
+	// Retention, when set, is applied right after loading (writable stores only) and the
+	// compacted state is written back before OpenFileStore returns. Callers apply it again
+	// after every ingest (ingest.Pipeline.SetRetention).
+	Retention *RetentionPolicy
 }
 
 // FileStore is a MemoryStore persisted to a single AES-256-GCM encrypted snapshot file with
@@ -55,6 +59,7 @@ type FileStore struct {
 	savedGen  uint64
 	wroteOnce bool
 	saveErr   error // last persist failure (disk full, read-only dir); nil after a good save
+	lastSize  int   // size of the last file read or written (sizes the next write buffer)
 
 	changeCh  chan struct{}
 	stopCh    chan struct{}
@@ -90,6 +95,11 @@ func OpenFileStore(path string, vault *crypto.Vault, opts FileStoreOptions) (*Fi
 		if err := fs.load(raw); err != nil {
 			return nil, err
 		}
+		if len(raw) > 16<<20 {
+			// The file buffer is garbage now: hand it back to the OS right away instead of
+			// letting it count against a container memory limit until the next GC cycles.
+			debug.FreeOSMemory()
+		}
 	case errors.Is(err, os.ErrNotExist):
 		if opts.ReadOnly {
 			return nil, fmt.Errorf("no Dzięcioł data found at %s (run `dzieciol serve` or `dzieciol scan` first)", path)
@@ -115,10 +125,23 @@ func OpenFileStore(path string, vault *crypto.Vault, opts FileStoreOptions) (*Fi
 		close(fs.doneCh)
 		return fs, nil
 	}
-	if fs.isNew {
-		// Persist immediately so the master key and the wrapped DEKs are paired on disk.
+	if opts.Retention != nil && !fs.isNew {
+		rep, err := fs.Compact(context.Background(), *opts.Retention)
+		switch {
+		case err != nil:
+			log.Printf("[WARN] retention on load: %v", err)
+		case !rep.Empty():
+			log.Printf("[INFO] retention on load (%s): %s", opts.Retention, rep)
+		}
+	}
+	if fs.isNew || fs.Generation() != fs.savedGen {
+		// A new store is persisted immediately so the master key and the wrapped DEKs are
+		// paired on disk; a compacted one so the smaller file replaces the old one now.
 		if err := fs.Flush(); err != nil {
 			return nil, err
+		}
+		if !fs.isNew {
+			debug.FreeOSMemory()
 		}
 	}
 	fs.SetChangeHook(fs.notify)
@@ -134,11 +157,14 @@ func (f *FileStore) Path() string { return f.path }
 
 func (f *FileStore) BackendName() string { return "file-encrypted" }
 
+// load decrypts raw (the whole file) in place and streams the decompressed JSON into the
+// store, so loading holds the file bytes plus the decoded state and nothing in between (it
+// used to hold the file, the decrypted copy and the fully decompressed JSON at once).
 func (f *FileStore) load(raw []byte) error {
 	if len(raw) < len(fileStoreMagic) || !bytes.Equal(raw[:len(fileStoreMagic)], fileStoreMagic) {
 		return fmt.Errorf("%s is not a Dzięcioł store file (bad magic)", f.path)
 	}
-	plain, err := f.vault.OpenBlob(raw[len(fileStoreMagic):], fileStoreAAD)
+	plain, err := f.vault.OpenBlobInPlace(raw[len(fileStoreMagic):], fileStoreAAD)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", f.path, err)
 	}
@@ -146,14 +172,11 @@ func (f *FileStore) load(raw []byte) error {
 	if err != nil {
 		return fmt.Errorf("decompress store: %w", err)
 	}
-	jsonRaw, err := io.ReadAll(zr)
-	if err != nil {
-		return fmt.Errorf("decompress store: %w", err)
-	}
-	keys, active, err := f.ImportState(jsonRaw)
+	keys, active, err := f.ReadState(zr)
 	if err != nil {
 		return err
 	}
+	f.lastSize = len(raw)
 	if len(keys) > 0 {
 		if err := f.vault.LoadWrappedDEKs(keys, active); err != nil {
 			return fmt.Errorf("unwrap data keys: %w", err)
@@ -253,33 +276,35 @@ func (f *FileStore) Flush() error {
 	return err
 }
 
+// flushLocked streams the state through gzip into one buffer laid out as the final file
+// (magic | nonce room | compressed JSON), seals that buffer in place and writes it. Peak
+// extra memory is the compressed file size; it used to be the JSON encoding plus three
+// copies of the compressed file (gzip buffer, sealed blob, magic-prefixed output).
 func (f *FileStore) flushLocked() error {
-
-	raw, gen, err := f.ExportState()
-	if err != nil {
-		return err
-	}
-	if gen == f.savedGen && !f.isNewUnsaved() {
+	if f.Generation() == f.savedGen && !f.isNewUnsaved() {
 		return nil
 	}
 	var buf bytes.Buffer
+	buf.Grow(f.lastSize + f.lastSize/8 + 4096)
+	buf.Write(fileStoreMagic)
+	buf.Write(make([]byte, crypto.BlobNonceSize))
 	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
-	if _, err := zw.Write(raw); err != nil {
+	gen, err := f.WriteState(zw)
+	if err != nil {
 		return err
 	}
 	if err := zw.Close(); err != nil {
 		return err
 	}
-	sealed, err := f.vault.SealBlob(buf.Bytes(), fileStoreAAD)
+	buf.Grow(crypto.BlobTagSize)
+	out, err := f.vault.SealBlobInPlace(buf.Bytes(), len(fileStoreMagic), fileStoreAAD)
 	if err != nil {
 		return err
 	}
-	out := make([]byte, 0, len(fileStoreMagic)+len(sealed))
-	out = append(out, fileStoreMagic...)
-	out = append(out, sealed...)
 	if err := writeFileAtomic(f.path, out, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", f.path, err)
 	}
+	f.lastSize = len(out)
 	f.savedGen = gen
 	f.wroteOnce = true
 	return nil

@@ -51,6 +51,16 @@ type Pipeline struct {
 	screenshots atomic.Value // screenshotSinkBox
 
 	postIngest atomic.Value // postIngestBox (zone policy evaluation)
+	retention  atomic.Value // retentionBox (history compaction after every run)
+}
+
+type retentionBox struct{ p db.RetentionPolicy }
+
+// SetRetention makes every pipeline run end with one compaction pass over the store's
+// history (db.RetentionPolicy), so continuous scanning keeps the store bounded. Without it
+// the pipeline never prunes anything.
+func (p *Pipeline) SetRetention(rp db.RetentionPolicy) {
+	p.retention.Store(retentionBox{p: rp})
 }
 
 // ChangeNotifier receives the change events produced by one pipeline run (e.g. the
@@ -636,6 +646,10 @@ func (p *Pipeline) ProcessObservations(ctx context.Context, req IngestRequest) (
 
 	if box, ok := p.notifier.Load().(notifierBox); ok && box.n != nil && len(changes) > 0 {
 		box.n.NotifyChanges(ctx, run, changes)
+	}
+
+	if box, ok := p.retention.Load().(retentionBox); ok {
+		db.CompactAndLog(ctx, p.store, box.p, "after ingest")
 	}
 
 	return &IngestResult{

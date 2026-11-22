@@ -83,6 +83,10 @@ func cmdServe(args []string) error {
 	vault, store := rt.Vault, rt.Store
 	log.Printf("[INFO] Encryption vault active (algo=%s, kid=%s, key=%s)", vault.Status().Algorithm, vault.ActiveKID(), rt.KeySource)
 	log.Printf("[INFO] Store backend: %s", rt.storeDescription())
+	log.Printf("[INFO] History retention: %s", rt.Retention)
+	if goMemoryLimit > 0 {
+		log.Printf("[INFO] Go soft memory limit: %d MiB (80%% of the container memory limit; set GOMEMLIMIT to override)", goMemoryLimit>>20)
+	}
 
 	hub := api.NewSSEHub()
 	pipeline := rt.newPipeline(hub)
