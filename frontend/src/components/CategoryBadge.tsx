@@ -191,7 +191,8 @@ export function outdatedDetail(o: OutdatedComponent): string {
       (o.days_since_eol > 0 ? ` (${ageText(o.days_since_eol)} ago).` : '.'),
   ];
   if (o.latest_in_branch) parts.push(`Last release in branch: ${o.latest_in_branch}.`);
-  if (o.supported_branch) parts.push(`Supported branch: ${o.supported_branch}.`);
+  if (o.supported_branch)
+    parts.push(`Supported branch: ${o.supported_branch}${o.supported_track ? ` (${o.supported_track})` : ''}.`);
   if (o.distro_packaged) parts.push('Distro package: fixes may be backported, check the OS release.');
   parts.push(`Source: ${o.source} (data as of ${o.data_as_of}).`);
   return parts.join(' ');

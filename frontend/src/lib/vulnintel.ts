@@ -15,10 +15,33 @@ export interface CVERef {
   url: string;
   /** Protocol the vulnerable code needs (http2, http3). */
   requires?: string;
-  /** applicable | not_applicable | unverified (only set when `requires` is). */
-  applicability?: 'applicable' | 'not_applicable' | 'unverified' | string;
+  /**
+   * Protocol precondition (set with `requires`): applicable | not_applicable | unverified.
+   * Distribution package (VulnSummary.package): backport_possible | fixed_by_distro (both in
+   * `backported`) | distro_unfixed (counted: the package predates the distribution fix).
+   */
+  applicability?:
+    | 'applicable'
+    | 'not_applicable'
+    | 'unverified'
+    | 'backport_possible'
+    | 'fixed_by_distro'
+    | 'distro_unfixed'
+    | string;
   applicability_note?: string;
   checked_at?: string;
+}
+
+/** Distribution package read from the banner, e.g. Debian 12, revision 2+deb12u3. */
+export interface DistroPackage {
+  distro?: string;
+  release?: string;
+  codename?: string;
+  revision?: string;
+  upstream?: string;
+  release_inferred?: boolean;
+  /** "Debian 12", "Ubuntu 22.04", "CentOS"; "" when only a build marker was seen. */
+  label: string;
 }
 
 export interface VulnSummary {
@@ -48,6 +71,14 @@ export interface VulnSummary {
   suppressed_count?: number;
   /** Counted CVEs whose protocol precondition was not checked. */
   unverified?: number;
+  /** Set when the version is a distribution build. */
+  package?: DistroPackage;
+  /**
+   * Matches on a distribution package whose fix may be backported (or is, per the distro
+   * fix table); excluded from every count, the KEV badge, the score and queries.
+   */
+  backported?: CVERef[];
+  backported_count?: number;
 }
 
 /** Result of a safe verification check (backend internal/verify). */
@@ -219,6 +250,25 @@ export function suppressedCount(vulns: VulnSummary[] | undefined): number {
   return (vulns || []).reduce((n, v) => n + (v.suppressed_count ?? v.suppressed?.length ?? 0), 0);
 }
 
+/** Matches on distribution packages (fix possibly backported), over all products of a service. */
+export function backportedCount(vulns: VulnSummary[] | undefined): number {
+  return (vulns || []).reduce((n, v) => n + (v.backported_count ?? v.backported?.length ?? 0), 0);
+}
+
+/** "Debian 12 package", or "distribution package" when the release (or the mix) is unknown. */
+export function packageName(vulns: VulnSummary[] | undefined): string {
+  const labels = new Set(
+    (vulns || []).filter((v) => (v.backported_count ?? v.backported?.length ?? 0) > 0).map((v) => v.package?.label || '')
+  );
+  const [only] = [...labels];
+  return labels.size === 1 && only ? `${only} package` : 'distribution package';
+}
+
+/** "33 likely backported (Debian 12 package)". */
+export function backportedLabel(vulns: VulnSummary[] | undefined): string {
+  return `${backportedCount(vulns)} likely backported (${packageName(vulns)})`;
+}
+
 /** Worst summary first: KEV, then CVSS (suppressed-only summaries left out). */
 export function worstVuln(vulns: VulnSummary[] | undefined): VulnSummary | undefined {
   const live = liveVulns(vulns);
@@ -238,6 +288,12 @@ export function applicabilityLabel(c: CVERef): string {
       return `${proto} on`;
     case 'unverified':
       return `version match, unverified (needs ${proto})`;
+    case 'backport_possible':
+      return 'fixes may be backported, not confirmed';
+    case 'fixed_by_distro':
+      return 'fixed by distribution';
+    case 'distro_unfixed':
+      return 'distribution fix not installed';
   }
   return '';
 }
