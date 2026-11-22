@@ -34,7 +34,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import { useLiveEvents, useLiveRefresh } from '@/context/LiveEventsContext';
-import { formatNumber, lifecycleMeta, scoreColor } from '@/lib/format';
+import { formatNumber, lifecycleMeta, plural, scoreColor } from '@/lib/format';
 import { PERMISSIONS } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -77,10 +77,10 @@ const COL_TITLE: Record<Column, string> = {
   tech: 'Technology',
 };
 // Room at the top for the floating toolbar so it never covers the lane headers.
-const FIT_PADDING = { top: '150px', right: '32px', bottom: '32px', left: '32px' } as const;
+const FIT_PADDING = { top: '124px', right: '32px', bottom: '32px', left: '32px' } as const;
 const GAP = 14;
 const GROUP_GAP = 34;
-const RISK_HIGH = '#f43f5e';
+const RISK_CRITICAL = '#f43f5e';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
 const num = (v: unknown): number => (typeof v === 'number' ? v : Number(v) || 0);
@@ -132,6 +132,7 @@ function assetsQueryFor(n: GraphNode): string {
     return `port:${num(m.port)}${sub ? ` cidr:${sub}` : ''}`;
   }
   if (n.kind === 'host' && isCluster(n)) return `cidr:${str(m.subnet)}`;
+  if (n.kind === 'block') return `cidr:${str(m.cidr) || n.label}`;
   if (n.kind === 'scope' && str(m.subnet)) return `cidr:${str(m.subnet)}`;
   return '';
 }
@@ -155,7 +156,14 @@ function nodeFacts(n: GraphNode): { label: string; value: string }[] {
     const v = str(value).trim();
     if (v && v !== '0') out.push({ label, value: v });
   };
-  if (n.kind === 'host' && isCluster(n)) {
+  if (n.kind === 'block') {
+    add('Hosts', formatNumber(num(m.host_count)));
+    add('Active', formatNumber(num(m.active_count)));
+    add('Score 50 or more', formatNumber(num(m.high_risk_count)));
+    if (num(m.prefix) < 24) add('/24 subnets', formatNumber(num(m.subnet_count)));
+    const techs = groupTechs(n);
+    if (techs.length) add('Top technologies', techs.map((t) => t.name.replace(/\s*\(.*\)$/, '')).join(', '));
+  } else if (n.kind === 'host' && isCluster(n)) {
     add('Hosts', formatNumber(num(m.host_count)));
     add('Active', formatNumber(num(m.active_count)));
     add('High risk (score ≥ 50)', formatNumber(num(m.high_risk_count)));
@@ -164,6 +172,8 @@ function nodeFacts(n: GraphNode): { label: string; value: string }[] {
     add('Owner', m.owner || 'none (no CIDR rule)');
     add('Environment', m.environment);
     add('Open services', m.service_count);
+    if (Array.isArray(m.ports)) add('Ports', (m.ports as unknown[]).map(num).join(', '));
+    add('Title', m.title);
     add('Stability', num(m.stability_score) ? `${num(m.stability_score)}%` : '');
   } else if (n.kind === 'service') {
     add('Port', num(m.port) ? `${num(m.port)}/${str(m.protocol) || 'tcp'}` : '');
@@ -179,24 +189,6 @@ function nodeFacts(n: GraphNode): { label: string; value: string }[] {
     add('/24 subnets', m.subnet_count);
   }
   return out;
-}
-
-function mergeGraphs(a: GraphResponse, b: GraphResponse): GraphResponse {
-  const nodes = new Map(a.nodes.map((n) => [n.id, n]));
-  for (const n of b.nodes) if (!nodes.has(n.id)) nodes.set(n.id, n);
-  const edges = new Map(a.edges.map((e) => [e.id, e]));
-  for (const e of b.edges) if (!edges.has(e.id)) edges.set(e.id, e);
-  const subnets = new Map(a.subnets.map((s) => [s.subnet, s]));
-  for (const s of b.subnets) if (!subnets.has(s.subnet)) subnets.set(s.subnet, s);
-  return {
-    ...a,
-    nodes: [...nodes.values()],
-    edges: [...edges.values()],
-    matched_hosts: Math.max(a.matched_hosts, b.matched_hosts),
-    shown_hosts: Math.max(a.shown_hosts, b.shown_hosts),
-    clustered: a.clustered || b.clustered,
-    subnets: [...subnets.values()],
-  };
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -336,14 +328,132 @@ function layoutGraph(data: GraphResponse): { nodes: FlowNode[]; edges: Edge[] } 
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/* Aggregated levels: grid of block / subnet cards + technology lane          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const BLOCK_W = 232;
+const BLOCK_H = 128;
+const BLOCK_GAP = 16;
+const LANE_W = 224;
+const LANE_H = 48;
+const LANE_GAP = 8;
+const LANE_DX = 96;
+
+const HOST_W = 208;
+const HOST_H = 92;
+const HOST_GAP = 12;
+
+/** Card grid + technology lane: overview blocks, the /24s of a block, or the hosts of a /24. */
+function isAggregateLevel(data: GraphResponse | null): boolean {
+  return data?.level === 'overview' || data?.level === 'block' || (data?.level === 'subnet' && data.mode === 'grid');
+}
+
+/**
+ * Lays the cards out in the column count that gives the largest fit-view zoom for the canvas
+ * size (so labels stay readable at 1280 as well as 1920), with the lane on the right.
+ */
+function layoutAggregate(data: GraphResponse, view: { w: number; h: number }): { nodes: FlowNode[]; edges: Edge[] } {
+  const groups = data.nodes.filter((n) => n.kind === 'block' || n.kind === 'host');
+  const techs = data.nodes.filter((n) => n.kind !== 'block' && n.kind !== 'host');
+  const hostGrid = groups.some((n) => n.kind === 'host');
+  const cardW = hostGrid ? HOST_W : BLOCK_W;
+  const cardH = hostGrid ? HOST_H : BLOCK_H;
+  const gap = hostGrid ? HOST_GAP : BLOCK_GAP;
+  const laneH = techs.length ? techs.length * (LANE_H + LANE_GAP) - LANE_GAP : 0;
+  const laneW = techs.length ? LANE_DX + LANE_W : 0;
+  // Canvas minus the fit-view padding (toolbar on top) and the lane header row.
+  const availW = Math.max(320, view.w - 64);
+  const availH = Math.max(240, view.h - 124 - 32 - 44);
+  let cols = 1;
+  let best = 0;
+  for (let c = 1; c <= Math.max(1, groups.length); c++) {
+    const r = Math.ceil(groups.length / c);
+    const w = c * cardW + (c - 1) * gap + laneW;
+    const h = Math.max(r * cardH + (r - 1) * gap, laneH);
+    const zoom = Math.min(availW / w, availH / h);
+    if (zoom > best + 0.001) {
+      best = zoom;
+      cols = c;
+    }
+  }
+  const rows = Math.max(1, Math.ceil(groups.length / cols));
+  const gridW = cols * cardW + (cols - 1) * gap;
+  const gridH = rows * cardH + (rows - 1) * gap;
+  const gridY = Math.max(0, (laneH - gridH) / 2);
+  const laneY = Math.max(0, (gridH - laneH) / 2);
+  const laneX = gridW + LANE_DX;
+
+  const nodes: FlowNode[] = [];
+  groups.forEach((g, i) => {
+    nodes.push({
+      id: g.id,
+      type: g.kind === 'host' ? 'hostcard' : 'block',
+      position: { x: (i % cols) * (cardW + gap), y: gridY + Math.floor(i / cols) * (cardH + gap) },
+      data: { g },
+      width: cardW,
+      height: cardH,
+    });
+  });
+  techs.forEach((t, i) => {
+    nodes.push({
+      id: t.id,
+      type: 'lanetech',
+      position: { x: laneX, y: laneY + i * (LANE_H + LANE_GAP) },
+      data: { g: t },
+      width: LANE_W,
+      height: LANE_H,
+    });
+  });
+  const prefix = data.group_prefix || 24;
+  const headers: { id: string; title: string; x: number; w: number }[] = [
+    {
+      id: 'lane:groups',
+      title: hostGrid ? 'Hosts by risk' : data.level === 'block' ? 'Subnets /24' : `Blocks /${prefix}`,
+      x: 0,
+      w: gridW,
+    },
+  ];
+  if (techs.length) headers.push({ id: 'lane:techs', title: 'Top technologies', x: laneX, w: LANE_W });
+  const top = Math.min(gridY, techs.length ? laneY : gridY);
+  for (const h of headers) {
+    nodes.push({
+      id: h.id,
+      type: 'lane',
+      position: { x: h.x, y: top - 44 },
+      data: { g: { id: h.id, kind: 'lane', label: h.title }, title: h.title },
+      width: h.w,
+      height: 28,
+      draggable: false,
+      selectable: false,
+      focusable: false,
+    });
+  }
+
+  const ids = new Set(nodes.map((n) => n.id));
+  const edges: Edge[] = data.edges
+    .filter((e) => ids.has(e.source) && ids.has(e.target))
+    .map((e) => ({ id: e.id, source: e.source, target: e.target, data: { weight: e.weight || 0 } }));
+  return { nodes, edges };
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /* Node components                                                            */
 /* ────────────────────────────────────────────────────────────────────────── */
 
 interface GraphCtx {
   isFresh: (n: GraphNode) => boolean;
   drill: (subnet: string) => void;
+  /** Open a block (its /24 subnets) or a /24 group card (its hosts). */
+  openGroup: (n: GraphNode) => void;
+  /** Open the asset inspector for a host. */
+  inspect: (hostId: string) => void;
 }
-const GraphContext = createContext<GraphCtx>({ isFresh: () => false, drill: () => {} });
+const GraphContext = createContext<GraphCtx>({
+  isFresh: () => false,
+  drill: () => {},
+  openGroup: () => {},
+  inspect: () => {},
+});
 
 const handleCls = '!size-1.5 !min-w-0 !min-h-0 !rounded-none !border-0 !bg-border';
 
@@ -593,12 +703,190 @@ const TechNode = memo(function TechNode({ data, selected }: NodeProps<FlowNode>)
   );
 });
 
+type Severity = { critical: number; high: number; medium: number; low: number };
+const SEVERITY_BANDS: { key: keyof Severity; label: string; fill: string }[] = [
+  { key: 'critical', label: 'critical', fill: 'bg-rose-500' },
+  { key: 'high', label: 'high', fill: 'bg-orange-400' },
+  { key: 'medium', label: 'medium', fill: 'bg-amber-400' },
+  { key: 'low', label: 'low', fill: 'bg-stone-300 dark:bg-stone-600' },
+];
+
+function severityOf(n: GraphNode): Severity {
+  const s = (n.meta?.severity || {}) as Partial<Severity>;
+  return { critical: num(s.critical), high: num(s.high), medium: num(s.medium), low: num(s.low) };
+}
+
+/** Stacked host-count bar per risk band: red only for the critical share. */
+function SeverityBar({ sev, className }: { sev: Severity; className?: string }) {
+  const total = sev.critical + sev.high + sev.medium + sev.low;
+  return (
+    <div className={cn('flex h-1.5 w-full gap-px bg-muted', className)}>
+      {total > 0 &&
+        SEVERITY_BANDS.map((b) =>
+          sev[b.key] > 0 ? (
+            <span key={b.key} className={b.fill} style={{ width: `${(sev[b.key] / total) * 100}%` }} />
+          ) : null
+        )}
+    </div>
+  );
+}
+
+function groupTechs(n: GraphNode): { name: string; hosts: number }[] {
+  const list = n.meta?.top_techs;
+  return Array.isArray(list)
+    ? list.map((t) => ({ name: str((t as { name?: unknown }).name), hosts: num((t as { hosts?: unknown }).hosts) }))
+    : [];
+}
+
+const BlockNode = memo(function BlockNode({ data, selected }: NodeProps<FlowNode>) {
+  const { openGroup } = useContext(GraphContext);
+  const g = data.g;
+  const m = g.meta || {};
+  const score = g.interestingness || 0;
+  const cidr = str(m.cidr) || g.label;
+  const hostCount = num(m.host_count);
+  const subnets = num(m.subnet_count);
+  const sev = severityOf(g);
+  const isSubnet = num(m.prefix) >= 24;
+  const techs = groupTechs(g);
+  return (
+    <NodeShell selected={selected}>
+      <div className="flex h-full flex-col gap-2 px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-mono text-sm font-semibold" title={cidr}>
+              {cidr}
+            </span>
+            <span className="truncate text-xs text-muted-foreground tabular-nums">
+              {plural(hostCount, 'host')}
+              {isSubnet ? ` · ${formatNumber(num(m.active_count))} active` : ` · ${subnets} × /24`}
+            </span>
+          </div>
+          <Pill className={cn('font-mono tabular-nums', scoreColor(score))} title="Top risk score">
+            {score}
+          </Pill>
+        </div>
+        <div className="flex flex-col gap-1">
+          <SeverityBar sev={sev} />
+          <span className="truncate text-[11px] text-muted-foreground tabular-nums">
+            {formatNumber(sev.critical)} critical · {formatNumber(sev.high)} high
+          </span>
+        </div>
+        <div className="mt-auto flex items-center gap-1.5">
+          {techs.map((t) => (
+            <span key={t.name} title={`${t.name} · ${plural(t.hosts, 'host')}`} className="flex">
+              <ServiceLogo names={[t.name]} size={22} title={false} />
+            </span>
+          ))}
+          <span className="flex-1" />
+          <button
+            type="button"
+            className="nodrag nopan inline-flex items-center gap-0.5 text-xs font-semibold text-foreground hover:underline"
+            onClick={(e) => {
+              e.stopPropagation();
+              openGroup(g);
+            }}
+          >
+            Open <RiArrowRightSLine className="size-3.5" />
+          </button>
+        </div>
+      </div>
+      <Handle type="source" position={Position.Right} className={handleCls} />
+    </NodeShell>
+  );
+});
+
+const LaneTechNode = memo(function LaneTechNode({ data, selected }: NodeProps<FlowNode>) {
+  const g = data.g;
+  const m = g.meta || {};
+  const name = str(m.name) || g.label;
+  const score = num(m.max_score) || g.interestingness || 0;
+  const hosts = num(m.host_count);
+  return (
+    <NodeShell selected={selected}>
+      <Handle type="target" position={Position.Left} className={handleCls} />
+      <div className="grid h-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 px-2.5">
+        <ServiceLogo names={[name, str(m.category)]} size={28} title={false} />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-[13px] font-semibold" title={name}>
+            {name.replace(/\s*\(.*\)$/, '')}
+          </span>
+          <span className="truncate text-[11px] text-muted-foreground tabular-nums">{plural(hosts, 'host')}</span>
+        </div>
+        <Pill className={cn('font-mono tabular-nums', scoreColor(score))} title="Top risk score">
+          {score}
+        </Pill>
+      </div>
+    </NodeShell>
+  );
+});
+
+const HostCardNode = memo(function HostCardNode({ data, selected }: NodeProps<FlowNode>) {
+  const { isFresh, inspect } = useContext(GraphContext);
+  const g = data.g;
+  const m = g.meta || {};
+  const score = g.interestingness || 0;
+  const lc = lifecycleMeta(g.state);
+  const ports = Array.isArray(m.ports) ? (m.ports as unknown[]).map(num) : [];
+  const shown = ports.slice(0, 3);
+  const techs = groupTechs(g).slice(0, 2);
+  const sub = str(m.hostname) || str(m.title) || str(m.owner) || lc.label;
+  return (
+    <NodeShell selected={selected} accent={lc.stroke} fresh={isFresh(g)}>
+      <div className="flex h-full flex-col justify-between gap-1 py-2 pr-2.5 pl-3.5">
+        <div className="flex items-center gap-2">
+          <span className="truncate font-mono text-sm font-semibold">{str(m.ip) || g.label}</span>
+          <span className="flex-1" />
+          <Pill className={cn('font-mono tabular-nums', scoreColor(score))}>{score}</Pill>
+        </div>
+        <span className="truncate text-xs text-muted-foreground" title={sub}>
+          {sub}
+        </span>
+        <div className="flex min-w-0 items-center gap-1">
+          {techs.map((t) => (
+            <span key={t.name} title={t.name} className="flex">
+              <ServiceLogo names={[t.name]} size={20} title={false} />
+            </span>
+          ))}
+          {shown.map((p) => (
+            <span
+              key={p}
+              className="shrink-0 border border-border bg-muted px-1 font-mono text-[11px] leading-[18px] font-semibold tabular-nums"
+            >
+              :{p}
+            </span>
+          ))}
+          {ports.length > shown.length && (
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">+{ports.length - shown.length}</span>
+          )}
+          <span className="flex-1" />
+          <button
+            type="button"
+            aria-label="Host details"
+            className="nodrag nopan inline-flex shrink-0 items-center text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              inspect(str(m.host_id));
+            }}
+          >
+            <RiArrowRightSLine className="size-4" />
+          </button>
+        </div>
+      </div>
+      <Handle type="source" position={Position.Right} className={handleCls} />
+    </NodeShell>
+  );
+});
+
 const NODE_TYPES: NodeTypes = {
+  hostcard: HostCardNode,
   lane: LaneNode,
   scope: ScopeNode,
   host: HostNode,
   service: ServiceNode,
   tech: TechNode,
+  block: BlockNode,
+  lanetech: LaneTechNode,
 };
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -622,6 +910,7 @@ function GraphCanvas() {
   const navigate = useNavigate();
 
   const subnet = searchParams.get('subnet') || '';
+  const block = subnet ? '' : searchParams.get('block') || '';
   const modeParam = searchParams.get('mode');
   const mode: GraphMode = modeParam === 'clustered' || modeParam === 'detailed' ? modeParam : 'auto';
 
@@ -654,13 +943,15 @@ function GraphCanvas() {
     const base: GraphQuery = {
       mode,
       subnet: subnet || undefined,
+      block: block || undefined,
       q: q || undefined,
       limit: subnet || mode === 'detailed' ? 150 : 60,
     };
     if (quick === 'risk') base.min_score = 50;
     if (quick === 'active') base.state = 'ACTIVE';
+    if (quick === 'adminstaging') base.admin_or_staging = true;
     return base;
-  }, [mode, subnet, q, quick]);
+  }, [mode, subnet, block, q, quick]);
 
   const reqSeq = useRef(0);
   const loadGraph = useCallback(
@@ -668,16 +959,7 @@ function GraphCanvas() {
       const seq = ++reqSeq.current;
       if (!silent) setLoading(true);
       try {
-        let data: GraphResponse;
-        if (quick === 'adminstaging') {
-          const [a, s] = await Promise.all([
-            api.graph({ ...query, admin_only: true }),
-            api.graph({ ...query, staging_only: true }),
-          ]);
-          data = mergeGraphs(a, s);
-        } else {
-          data = await api.graph(query);
-        }
+        const data = await api.graph(query);
         if (seq !== reqSeq.current) return;
         if (knownIds.current && silent) {
           const now = Date.now();
@@ -728,12 +1010,15 @@ function GraphCanvas() {
 
   // Layout whenever data changes; refit only when the structural query changes.
   const lastFitKey = useRef('');
+  const canvasRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!graph) return;
-    const { nodes: n, edges: e } = layoutGraph(graph);
+    const el = canvasRef.current;
+    const view = { w: el?.clientWidth || 1200, h: el?.clientHeight || 760 };
+    const { nodes: n, edges: e } = isAggregateLevel(graph) ? layoutAggregate(graph, view) : layoutGraph(graph);
     setNodes(n);
     setEdges(e);
-    const key = JSON.stringify(query) + quick + graph.mode;
+    const key = JSON.stringify(query) + quick + graph.mode + (graph.level || '');
     if (key !== lastFitKey.current) {
       lastFitKey.current = key;
       requestAnimationFrame(() => fitView({ padding: FIT_PADDING, duration: 450, maxZoom: 1.1 }));
@@ -788,50 +1073,63 @@ function GraphCanvas() {
     [nodes, path]
   );
 
+  // Edges stay thin and neutral; only the hovered / selected path is emphasised. Aggregated
+  // edges scale their width with the number of hosts behind them.
+  const maxWeight = useMemo(
+    () => Math.max(1, ...edges.map((e) => num((e.data as { weight?: number } | undefined)?.weight))),
+    [edges]
+  );
   const displayEdges = useMemo(
     () =>
       edges.map((e) => {
         const s = nodeById.get(e.source);
         const t = nodeById.get(e.target);
-        const risky = [s, t].some(
-          (n) => n && (n.kind === 'host' || n.kind === 'service') && (n.interestingness || 0) >= 60
-        );
+        const weight = num((e.data as { weight?: number } | undefined)?.weight);
+        const base = weight ? 0.75 + 2.25 * Math.sqrt(weight / maxWeight) : 1;
         const fresh = Boolean((t && isFresh(t)) || (s && isFresh(s)));
         const lit = path ? path.has(e.source) && path.has(e.target) : false;
         const dim = path && !lit;
         return {
           ...e,
-          animated: risky || fresh || lit,
+          animated: fresh,
           style: {
             stroke: lit ? 'var(--foreground)' : fresh ? '#10b981' : 'var(--muted-foreground)',
-            strokeWidth: lit ? 2 : risky ? 1.5 : 1,
-            opacity: dim ? 0.08 : lit ? 1 : risky ? 0.7 : 0.35,
+            strokeWidth: lit ? Math.max(1.5, base) : base,
+            opacity: dim ? 0.04 : lit ? 0.85 : weight ? 0.1 : 0.3,
             transition: 'opacity 200ms',
           },
           zIndex: lit ? 1 : 0,
         } satisfies Edge;
       }),
-    [edges, nodeById, path, isFresh]
+    [edges, nodeById, path, isFresh, maxWeight]
   );
 
-  const drill = useCallback(
-    (sn: string) => {
+  // Navigation between levels lives in the URL (?block=, ?subnet=) so Back works and a level
+  // can be shared as a link.
+  const goTo = useCallback(
+    (target: { block?: string; subnet?: string }) => {
       setSelectedId(null);
       setHoverId(null);
       const next = new URLSearchParams(searchParams);
-      next.set('subnet', sn);
-      next.set('mode', 'detailed');
+      next.delete('block');
+      next.delete('subnet');
+      if (target.block) next.set('block', target.block);
+      if (target.subnet) next.set('subnet', target.subnet);
       setSearchParams(next);
     },
     [searchParams, setSearchParams]
   );
-
-  const clearSubnet = () => {
-    const next = new URLSearchParams(searchParams);
-    next.delete('subnet');
-    next.delete('mode');
-    setSearchParams(next);
-  };
+  const drill = useCallback((sn: string) => goTo({ subnet: sn }), [goTo]);
+  const openGroup = useCallback(
+    (n: GraphNode) => {
+      const m = n.meta || {};
+      const cidr = str(m.cidr) || n.label;
+      if (str(m.drill) === 'subnet' || num(m.prefix) >= 24) goTo({ subnet: cidr });
+      else goTo({ block: cidr });
+    },
+    [goTo]
+  );
+  const clearSubnet = () => goTo({});
 
   const setMode = (m: GraphMode) => {
     const next = new URLSearchParams(searchParams);
@@ -840,7 +1138,8 @@ function GraphCanvas() {
     setSearchParams(next);
   };
 
-  const ctx = useMemo<GraphCtx>(() => ({ isFresh, drill }), [isFresh, drill]);
+  const inspect = useCallback((id: string) => id && setInspectHostId(id), []);
+  const ctx = useMemo<GraphCtx>(() => ({ isFresh, drill, openGroup, inspect }), [isFresh, drill, openGroup, inspect]);
 
   const selected = selectedId ? nodeById.get(selectedId) || null : null;
   const selectedHostId = hostIdOf(selected);
@@ -884,8 +1183,9 @@ function GraphCanvas() {
     if (g.kind === 'scope') return '#3b82f6';
     const s = g.interestingness || 0;
     if (g.kind === 'host' || g.kind === 'service') {
-      if (s >= 60) return RISK_HIGH;
-      if (s >= 45) return '#f59e0b';
+      if (s >= 90) return RISK_CRITICAL;
+      if (s >= 75) return '#fb923c';
+      if (s >= 50) return '#fbbf24';
       return g.kind === 'host' ? lifecycleMeta(g.state).stroke : '#a8a29e';
     }
     return '#78716c';
@@ -900,14 +1200,24 @@ function GraphCanvas() {
     [graph?.subnets]
   );
 
+  const aggregate = isAggregateLevel(graph);
   const totalHosts = graph?.matched_hosts ?? 0;
+  const groupCount = aggregate ? (graph?.nodes || []).filter((n) => n.kind === 'block').length : 0;
   const statusLabel = graph
-    ? `${formatNumber(totalHosts)} hosts · ${graph.clustered ? 'clustered' : 'detailed'}${
-        !graph.clustered && graph.shown_hosts < graph.matched_hosts
-          ? ` · showing ${formatNumber(graph.shown_hosts)}`
-          : ''
-      }`
+    ? graph.level === 'subnet' && aggregate
+      ? plural(totalHosts, 'host')
+      : aggregate
+      ? `${formatNumber(totalHosts)} hosts · ${groupCount} ${graph.level === 'block' ? 'subnets' : 'blocks'}${
+          graph.hidden_groups ? ` · ${graph.hidden_groups} more hidden` : ''
+        }`
+      : `${formatNumber(totalHosts)} hosts · ${graph.clustered ? 'clustered' : 'detailed'}${
+          !graph.clustered && graph.shown_hosts < graph.matched_hosts
+            ? ` · showing ${formatNumber(graph.shown_hosts)}`
+            : ''
+        }`
     : 'Loading…';
+  // Breadcrumb: All > block > subnet. The server reports the block that holds a subnet.
+  const crumbBlock = block || (subnet ? graph?.block || '' : '');
 
   const memberHosts: GraphHostRef[] = Array.isArray(selected?.meta?.hosts)
     ? (selected!.meta!.hosts as GraphHostRef[])
@@ -918,7 +1228,7 @@ function GraphCanvas() {
   const facts = selected ? nodeFacts(selected) : [];
 
   return (
-    <div className="relative h-[calc(100vh-8.5rem)] w-full overflow-hidden bg-background ring-1 ring-foreground/5">
+    <div ref={canvasRef} className="relative h-[calc(100vh-8.5rem)] w-full overflow-hidden bg-background ring-1 ring-foreground/5">
       <GraphContext.Provider value={ctx}>
         <ReactFlow<FlowNode>
           nodes={displayNodes}
@@ -942,7 +1252,8 @@ function GraphCanvas() {
           onNodeClick={(_, n) => n.type !== 'lane' && setSelectedId(n.id)}
           onNodeDoubleClick={(_, n) => {
             const g = (n.data as FlowNodeData).g;
-            if (isCluster(g) && g.kind === 'host') drill(str(g.meta?.subnet));
+            if (g.kind === 'block') openGroup(g);
+            else if (isCluster(g) && g.kind === 'host') drill(str(g.meta?.subnet));
             else {
               const hid = hostIdOf(g);
               if (hid) setInspectHostId(hid);
@@ -952,6 +1263,7 @@ function GraphCanvas() {
           className="!bg-background"
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="var(--border)" />
+          {!aggregate && (
           <MiniMap
             pannable
             zoomable
@@ -961,6 +1273,7 @@ function GraphCanvas() {
             className="!m-3 !border !border-border !bg-card"
             style={{ width: 180, height: 120 }}
           />
+          )}
 
           {/* Floating toolbar */}
           <Panel position="top-left" className={cn('!m-3', selected ? 'max-w-[calc(100%-22.5rem)]' : 'max-w-[calc(100%-1.5rem)]')}>
@@ -1016,38 +1329,56 @@ function GraphCanvas() {
                     placeholder="Jump to subnet…"
                     onValueChange={(v) => v && drill(v)}
                     options={subnetOptions}
-                    className="h-7 w-40 text-xs"
+                    className="h-7 w-40 border-b-transparent py-0 text-xs data-[size=sm]:h-[26px]"
                   />
                 </div>
               )}
-              <div className="flex h-7 items-center gap-1 border border-border bg-card/95 px-2 text-[11px] backdrop-blur">
+              <nav
+                aria-label="Graph level"
+                className="flex h-7 items-center gap-1 border border-border bg-card/95 px-2 text-[11px] backdrop-blur"
+              >
                 <button
                   type="button"
                   onClick={clearSubnet}
-                  className={cn('font-semibold', subnet ? 'text-primary hover:underline' : 'text-foreground')}
+                  className={cn('font-semibold', crumbBlock || subnet ? 'text-primary hover:underline' : 'text-foreground')}
                 >
-                  All subnets
+                  All
                 </button>
-                {subnet && (
+                {crumbBlock && (
                   <>
-                    <span className="text-muted-foreground">/</span>
-                    <span className="font-mono font-semibold">{subnet}</span>
+                    <RiArrowRightSLine className="size-3.5 text-muted-foreground" />
                     <button
                       type="button"
-                      onClick={clearSubnet}
-                      aria-label="Clear subnet"
-                      className="ml-0.5 text-muted-foreground hover:text-foreground"
+                      onClick={() => goTo({ block: crumbBlock })}
+                      disabled={!subnet}
+                      className={cn('font-mono font-semibold', subnet ? 'text-primary hover:underline' : 'text-foreground')}
                     >
-                      <RiCloseLine className="size-3.5" />
+                      {crumbBlock}
                     </button>
                   </>
                 )}
-              </div>
+                {subnet && (
+                  <>
+                    <RiArrowRightSLine className="size-3.5 text-muted-foreground" />
+                    <span className="font-mono font-semibold">{subnet}</span>
+                  </>
+                )}
+                {(crumbBlock || subnet) && (
+                  <button
+                    type="button"
+                    onClick={clearSubnet}
+                    aria-label="Back to all"
+                    className="ml-0.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <RiCloseLine className="size-3.5" />
+                  </button>
+                )}
+              </nav>
               <span className="flex h-7 items-center gap-1.5 border border-border bg-card/95 px-2 font-mono text-[11px] tabular-nums backdrop-blur">
                 {loading ? (
                   <PeckSpinner className="h-3" />
                 ) : (
-                  <span className={cn('size-1.5', graph?.clustered ? 'bg-primary' : 'bg-emerald-500')} />
+                  <span className={cn('size-1.5', graph?.clustered ? 'bg-muted-foreground' : 'bg-emerald-500')} />
                 )}
                 {statusLabel}
               </span>
@@ -1077,7 +1408,7 @@ function GraphCanvas() {
             <Panel position="top-right" className="!m-3 w-80">
               <div className="flex max-h-[calc(100vh-14rem)] flex-col border border-border bg-card/95 shadow-md backdrop-blur">
                 <div className="flex items-start gap-3 border-b border-border p-3">
-                  {selected.kind === 'host' && isCluster(selected) ? (
+                  {selected.kind === 'block' || (selected.kind === 'host' && isCluster(selected)) ? (
                     <span className="flex size-8 shrink-0 items-center justify-center border border-primary/30 bg-primary/10 text-primary">
                       <RiStackLine className="size-4" />
                     </span>
@@ -1101,7 +1432,13 @@ function GraphCanvas() {
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <h3 className="font-mono text-xs font-semibold break-all">{selected.label}</h3>
                     <div className="flex flex-wrap items-center gap-1">
-                      <Pill>{selected.kind}</Pill>
+                      <Pill>
+                        {selected.kind === 'block'
+                          ? num(selected.meta?.prefix) >= 24
+                            ? 'subnet'
+                            : 'block'
+                          : selected.kind}
+                      </Pill>
                       {selected.state && selected.kind === 'host' && (
                         <Pill className={lifecycleMeta(selected.state).badge}>{lifecycleMeta(selected.state).label}</Pill>
                       )}
@@ -1117,6 +1454,21 @@ function GraphCanvas() {
                   </Button>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+                  {selected.kind === 'block' && (
+                    <div className="flex flex-col gap-1.5">
+                      <SeverityBar sev={severityOf(selected)} className="h-2" />
+                      <div className="grid grid-cols-4 gap-1 text-[10px] text-muted-foreground tabular-nums">
+                        {SEVERITY_BANDS.map((b) => (
+                          <span key={b.key} className="flex min-w-0 items-center gap-1">
+                            <span className={cn('size-1.5 shrink-0', b.fill)} />
+                            <span className="truncate">
+                              {formatNumber(severityOf(selected)[b.key])} {b.label}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {facts.length > 0 && (
                     <dl className="flex flex-col gap-1 text-[11px]">
                       {facts.map((f) => (
@@ -1167,6 +1519,12 @@ function GraphCanvas() {
                   </span>
                 </div>
                 <div className="flex flex-col gap-2 border-t border-border p-3">
+                  {selected.kind === 'block' && (
+                    <Button size="sm" onClick={() => openGroup(selected)}>
+                      <RiArrowRightSLine />
+                      Open {num(selected.meta?.prefix) >= 24 ? 'subnet' : 'block'}
+                    </Button>
+                  )}
                   {selected.kind === 'host' && isCluster(selected) && (
                     <Button size="sm" onClick={() => drill(str(selected.meta?.subnet))}>
                       <RiArrowRightSLine />

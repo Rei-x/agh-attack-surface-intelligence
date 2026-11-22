@@ -14,10 +14,14 @@ type GraphFilter struct {
 	MinScore    int
 	AdminOnly   bool
 	StagingOnly bool
-	Subnet      string
-	Query       string
-	Mode        string // auto (default), clustered, detailed
-	Limit       int    // max detailed hosts before auto-clustering (default 50, max 150)
+	// AdminOrStaging keeps hosts that pass either the admin or the staging check (one request
+	// for the "Admin / staging" quick filter instead of merging two graphs).
+	AdminOrStaging bool
+	Subnet         string
+	Block          string // CIDR of an overview block: shows its /24 subnets
+	Query          string
+	Mode           string // auto (default), clustered, detailed
+	Limit          int    // max detailed hosts before auto-clustering (default 50, max 150)
 }
 
 // SubnetSummary summarizes a /24 subnet for drill-down UI selectors.
@@ -38,16 +42,29 @@ type GraphResponse struct {
 	ShownHosts   int                `json:"shown_hosts"`
 	Clustered    bool               `json:"clustered"`
 	Mode         string             `json:"mode"`
-	Limit        int                `json:"limit"`
-	Subnets      []SubnetSummary    `json:"subnets"`
+	// Level is overview, block, subnet or detailed (see graph_overview.go).
+	Level string `json:"level"`
+	// BlockPrefix is the prefix of overview blocks, stable for a data set so the UI can
+	// build breadcrumbs (e.g. 22 for "10.66.0.0/22").
+	BlockPrefix int `json:"block_prefix"`
+	// GroupPrefix is the prefix of group nodes on an aggregated level (BlockPrefix on the
+	// overview, 24 inside a block).
+	GroupPrefix int `json:"group_prefix,omitempty"`
+	// Block is the block being shown (block level) or holding the subnet (subnet level).
+	Block        string          `json:"block,omitempty"`
+	HiddenGroups int             `json:"hidden_groups,omitempty"`
+	Limit        int             `json:"limit"`
+	Subnets      []SubnetSummary `json:"subnets"`
 }
 
 // BuildGraph constructs the interactive Attack Surface Topology:
-//   - Detailed mode (<= limit hosts or drilled-down /24):
+//   - Detailed (<= limit hosts or mode=detailed):
 //     Scope/Subnet -> Host (state, score) -> Service (port/proto) -> Technology / Signature.
-//   - Clustered mode (> limit hosts, e.g. 10,000+ IPs):
-//     Root Scope -> /24 Subnet Clusters -> Aggregated Service Clusters -> Technologies
-//     keeping rendered node counts crisp (~40-140 nodes) so the UI stays 60 FPS at 10k+ scale!
+//   - Overview (> limit hosts or mode=clustered): one node per address block plus a lane of
+//     the riskiest technologies; block=<cidr> shows the /24 subnets of one block. See
+//     graph_overview.go. Rendered size stays a few dozen nodes at any host count.
+//   - subnet=<cidr>: a grid of host cards (buildHostGrid); mode=detailed gives the tree,
+//     mode=clustered the per-port service clusters (buildClusteredGraph).
 func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter) GraphResponse {
 	limit := filter.Limit
 	if limit <= 0 {
@@ -63,6 +80,15 @@ func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter
 
 	qLower := strings.ToLower(strings.TrimSpace(filter.Query))
 	subnetFilter := strings.TrimSpace(filter.Subnet)
+	blockFilter := strings.TrimSpace(filter.Block)
+	if blockFilter != "" {
+		if n, p, ok := parseCIDR4(blockFilter); ok {
+			blockFilter = formatCIDR(n, p)
+		} else {
+			blockFilter = ""
+		}
+	}
+	blockPrefix := chooseBlockPrefix(hosts, maxBlocks)
 
 	// 1. Filter hosts and compute subnet summaries across all matched hosts.
 	matched := make([]domain.Host, 0, len(hosts))
@@ -75,29 +101,14 @@ func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter
 		if filter.MinScore > 0 && h.Interestingness < filter.MinScore {
 			continue
 		}
-		if filter.AdminOnly {
-			ok := false
-			for _, s := range h.Services {
-				if s.IsAdminPanel {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				continue
-			}
+		if filter.AdminOnly && !hostHasAdmin(h) {
+			continue
 		}
-		if filter.StagingOnly {
-			ok := strings.EqualFold(h.Environment, "staging") || strings.EqualFold(h.Environment, "dev")
-			for _, s := range h.Services {
-				if s.IsStagingEnv {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				continue
-			}
+		if filter.StagingOnly && !hostIsStaging(h) {
+			continue
+		}
+		if filter.AdminOrStaging && !hostHasAdmin(h) && !hostIsStaging(h) {
+			continue
 		}
 		if qLower != "" && !hostMatchesQuery(h, qLower) {
 			continue
@@ -121,6 +132,9 @@ func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter
 		}
 
 		if subnetFilter != "" && sub != subnetFilter {
+			continue
+		}
+		if subnetFilter == "" && blockFilter != "" && !cidrContains(blockFilter, h.IP) {
 			continue
 		}
 		matched = append(matched, h)
@@ -151,15 +165,59 @@ func BuildGraph(hosts []domain.Host, targets []domain.Target, filter GraphFilter
 		return matched[i].IP < matched[j].IP
 	})
 
-	useClustered := mode == "clustered" || (mode == "auto" && len(matched) > limit)
 	var resp GraphResponse
-	if useClustered {
-		resp = buildClusteredGraph(hosts, matched, subnets, targets, limit)
-	} else {
+	switch {
+	case subnetFilter != "":
+		// One /24: a grid of host cards by default; the host, service and technology tree
+		// (detailed) or service clusters (clustered) on request.
+		switch mode {
+		case "clustered":
+			resp = buildClusteredGraph(hosts, matched, subnets, targets, limit)
+		case "detailed":
+			resp = buildDetailedGraph(hosts, matched, subnets, targets, limit)
+		default:
+			resp = buildHostGrid(hosts, matched, subnets, limit)
+		}
+		resp.Level = GraphLevelSubnet
+		if blockPrefix < 24 {
+			resp.Block = blockOf(strings.TrimSuffix(subnetFilter, "/24"), blockPrefix)
+		}
+	case mode == "detailed":
 		resp = buildDetailedGraph(hosts, matched, subnets, targets, limit)
+		resp.Level = GraphLevelDetailed
+	case blockFilter != "":
+		resp = buildAggregateGraph(hosts, matched, subnets, 24, GraphLevelBlock, limit)
+		resp.Block = blockFilter
+	case mode == "clustered" || len(matched) > limit:
+		resp = buildAggregateGraph(hosts, matched, subnets, blockPrefix, GraphLevelOverview, limit)
+	default:
+		resp = buildDetailedGraph(hosts, matched, subnets, targets, limit)
+		resp.Level = GraphLevelDetailed
 	}
+	resp.BlockPrefix = blockPrefix
 	attachTechHosts(resp.Nodes, matched)
 	return resp
+}
+
+func hostHasAdmin(h domain.Host) bool {
+	for _, s := range h.Services {
+		if s.IsAdminPanel {
+			return true
+		}
+	}
+	return false
+}
+
+func hostIsStaging(h domain.Host) bool {
+	if strings.EqualFold(h.Environment, "staging") || strings.EqualFold(h.Environment, "dev") {
+		return true
+	}
+	for _, s := range h.Services {
+		if s.IsStagingEnv {
+			return true
+		}
+	}
+	return false
 }
 
 // maxNodeHosts caps the host list embedded in one cluster/technology node; host_count and

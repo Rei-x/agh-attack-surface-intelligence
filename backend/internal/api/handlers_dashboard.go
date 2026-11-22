@@ -179,14 +179,16 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	targets, _ := s.store.ListTargets(ctx)
 	q := r.URL.Query()
 	filter := GraphFilter{
-		State:       q.Get("state"),
-		MinScore:    queryInt(r, "min_score", 0),
-		AdminOnly:   queryBool(r, "admin_only") || queryBool(r, "has_admin"),
-		StagingOnly: queryBool(r, "staging_only"),
-		Subnet:      q.Get("subnet"),
-		Query:       q.Get("q"),
-		Mode:        q.Get("mode"),
-		Limit:       queryInt(r, "limit", 50),
+		State:          q.Get("state"),
+		MinScore:       queryInt(r, "min_score", 0),
+		AdminOnly:      queryBool(r, "admin_only") || queryBool(r, "has_admin"),
+		StagingOnly:    queryBool(r, "staging_only"),
+		AdminOrStaging: queryBool(r, "admin_or_staging"),
+		Subnet:         q.Get("subnet"),
+		Block:          q.Get("block"),
+		Query:          q.Get("q"),
+		Mode:           q.Get("mode"),
+		Limit:          queryInt(r, "limit", 50),
 	}
 	writeJSON(w, http.StatusOK, BuildGraph(hosts, targets, filter))
 }
