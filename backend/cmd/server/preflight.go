@@ -53,6 +53,7 @@ func isPrivileged() bool {
 
 // printPreflight explains the scanner backend, how to install nmap and privilege caveats.
 func printPreflight(w io.Writer, s scannerInfo) {
+	defer printVulnDBPreflight(w)
 	defer printScreenshotPreflight(w)
 	if s.HasNmap() {
 		v := s.NmapVersion

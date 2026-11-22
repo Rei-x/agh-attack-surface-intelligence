@@ -1,0 +1,25 @@
+id: rabbitmq-default-guest
+info:
+  name: RabbitMQ management accepts the default guest account
+  severity: critical
+  description: The RabbitMQ management API accepted the built-in guest account with its well-known default password. Anyone on the network can read and publish messages and change the broker configuration.
+  remediation: Delete the guest user (rabbitmqctl delete_user guest) or keep loopback_users restricted, create named administrators with strong passwords, and firewall port 15672.
+  reference:
+    - https://www.rabbitmq.com/docs/access-control#default-state
+  tags: rabbitmq,default-login
+requires: default-creds
+match:
+  ports: [15672]
+  techs: [rabbitmq]
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/api/whoami"
+    basic-auth: "guest:guest"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"name":"guest"'

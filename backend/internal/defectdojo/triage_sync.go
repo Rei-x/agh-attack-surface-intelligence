@@ -45,6 +45,7 @@ type dojoFinding struct {
 	FalseP           bool   `json:"false_p"`
 	RiskAccepted     bool   `json:"risk_accepted"`
 	IsMitigated      bool   `json:"is_mitigated"`
+	Verified         bool   `json:"verified"`
 }
 
 func (f dojoFinding) state() string {
@@ -113,6 +114,11 @@ func (c *Client) SyncTriage(ctx context.Context, cfg *domain.DefectDojoConfig, t
 		ref.FindingID, ref.URL = df.ID, fmt.Sprintf("%s/finding/%d", base, df.ID)
 		want, have := desiredState(f.Triage), df.state()
 		ref.State = have
+		// Findings confirmed by a safe check (internal/verify) are marked verified: the reimport
+		// itself sends verified=false (a multipart form cannot leave it unset).
+		if f.Verified && !df.Verified && want == DojoStateActive && have == DojoStateActive {
+			_ = c.patchJSON(ctx, cfg, fmt.Sprintf("/api/v2/findings/%d/", df.ID), map[string]any{"verified": true})
+		}
 		if want != have && !(want == DojoStateActive && have == DojoStateMitigated) {
 			var patch map[string]any
 			switch want {

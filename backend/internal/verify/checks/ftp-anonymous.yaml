@@ -1,0 +1,29 @@
+id: ftp-anonymous
+info:
+  name: FTP accepts anonymous login
+  severity: high
+  description: The FTP server let the "anonymous" user log in. Anyone on the network can list, and often download or upload, files.
+  remediation: Disable anonymous access (vsftpd anonymous_enable=NO, ProFTPD remove the <Anonymous> block) unless the server is a deliberate public mirror; prefer SFTP.
+  reference:
+    - https://cwe.mitre.org/data/definitions/284.html
+  tags: ftp,anonymous,misconfig
+match:
+  ports: [21, 2121]
+  services: [ftp]
+network:
+  - inputs:
+      - read: 1024
+      - data: "USER anonymous\r\n"
+        read: 1024
+      - data: "PASS dzieciol-verify@example.invalid\r\n"
+        read: 1024
+      - data: "QUIT\r\n"
+    matchers-condition: and
+    matchers:
+      - type: regex
+        regex:
+          - "(?m)^230[ -]"
+      - type: regex
+        negative: true
+        regex:
+          - "(?m)^530[ -]"

@@ -15,7 +15,12 @@ const KEYS: Array<{ key: string; desc: string }> = [
   { key: 'title:"admin"', desc: 'HTTP page title' },
   { key: 'cert:expired', desc: 'TLS: expired, expiring, selfsigned, valid' },
   { key: 'eol:true', desc: 'end-of-life version (offline table)' },
-  { key: 'vuln:true', desc: 'known CVE hint (by version, passive)' },
+  { key: 'vuln:true', desc: 'any known CVE (by version, passive)' },
+  { key: 'cve:CVE-2021-41773', desc: 'matched to this CVE (NVD snapshot)' },
+  { key: 'kev:true', desc: 'CVE exploited in the wild (CISA KEV)' },
+  { key: 'epss>0.5', desc: 'EPSS exploit probability (also epss>=10%)' },
+  { key: 'cvss>=9', desc: 'highest CVSS of the matched CVEs' },
+  { key: 'verified:true', desc: 'confirmed by a safe Verify check' },
   { key: 'admin:true', desc: 'admin / management panel' },
   { key: 'db:true', desc: 'exposed database' },
   { key: 'cleartext:true', desc: 'telnet / ftp management' },
@@ -28,6 +33,7 @@ const KEYS: Array<{ key: string; desc: string }> = [
 
 const EXAMPLES = [
   'tech:nginx eol:true',
+  'kev:true epss>0.5',
   'port:3389 -env:prod',
   'tech:wordpress cidr:10.66.0.0/22',
   'admin:true state:new',

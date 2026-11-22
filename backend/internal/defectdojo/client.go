@@ -390,6 +390,20 @@ type genericFinding struct {
 	Service          string            `json:"service,omitempty"`
 	Tags             []string          `json:"tags,omitempty"`
 	Endpoints        []genericEndpoint `json:"endpoints,omitempty"`
+
+	// Vulnerability intelligence and verification evidence (vuln_fields.go). All are
+	// Generic Findings Import fields of DefectDojo 2.x/3.x; none takes part in hash_code, so
+	// volatile evidence goes to steps_to_reproduce.
+	CVE                   string   `json:"cve,omitempty"`
+	VulnerabilityIDs      []string `json:"vulnerability_ids,omitempty"`
+	CVSSv3Score           float64  `json:"cvssv3_score,omitempty"`
+	EPSSScore             float64  `json:"epss_score,omitempty"`
+	EPSSPercentile        float64  `json:"epss_percentile,omitempty"`
+	KnownExploited        bool     `json:"known_exploited,omitempty"`
+	KEVDate               string   `json:"kev_date,omitempty"`
+	RansomwareUsed        bool     `json:"ransomware_used,omitempty"`
+	SeverityJustification string   `json:"severity_justification,omitempty"`
+	StepsToReproduce      string   `json:"steps_to_reproduce,omitempty"`
 }
 
 type genericEndpoint struct {

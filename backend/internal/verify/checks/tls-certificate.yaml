@@ -1,0 +1,10 @@
+id: tls-certificate
+info:
+  name: TLS certificate problem (expired, self-signed or weak)
+  severity: low
+  description: The certificate presented by the service is expired, self-signed, uses a weak key or a SHA-1/MD5 signature, so clients cannot authenticate the server and users learn to click through warnings.
+  remediation: Issue a certificate from the internal or a public CA with an RSA 2048+ or ECDSA P-256 key and SHA-256 signature, and monitor its expiry.
+  reference:
+    - https://cwe.mitre.org/data/definitions/295.html
+  tags: tls,certificate
+builtin: tls-certificate

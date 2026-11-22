@@ -1,0 +1,23 @@
+id: directory-listing
+info:
+  name: Directory listing enabled
+  severity: low
+  description: The web server generates an index of files for the web root, revealing file names, backups and other content that was never meant to be linked.
+  remediation: Disable automatic indexes (Apache Options -Indexes, nginx autoindex off) and add an index page.
+  reference:
+    - https://cwe.mitre.org/data/definitions/548.html
+  tags: exposure,web
+match:
+  any-http: true
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        case-insensitive: true
+        regex:
+          - "<title>\\s*(Index of /|Directory listing for /)"

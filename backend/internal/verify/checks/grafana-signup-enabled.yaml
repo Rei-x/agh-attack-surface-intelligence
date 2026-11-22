@@ -1,0 +1,23 @@
+id: grafana-signup-enabled
+info:
+  name: Grafana allows open sign-up
+  severity: medium
+  description: Grafana's login page advertises self sign-up. New users join the default organisation and can read its dashboards and data sources.
+  remediation: Set [users] allow_sign_up = false (and review auth.anonymous) in grafana.ini.
+  reference:
+    - https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#allow_sign_up
+  tags: grafana,registration,misconfig
+match:
+  ports: [3000]
+  techs: [grafana]
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/login"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"disableUserSignUp":false'

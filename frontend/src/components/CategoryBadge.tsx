@@ -4,10 +4,12 @@ import {
   RiBugLine,
   RiCpuLine,
   RiDatabase2Line,
+  RiFireLine,
   RiFlaskLine,
   RiHourglassLine,
   RiLockUnlockLine,
   RiServerLine,
+  RiShieldCheckLine,
   RiShieldCrossLine,
   RiShieldKeyholeLine,
   RiTerminalLine,
@@ -16,6 +18,7 @@ import { assetsLink, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { OutdatedComponent, VulnHint } from '@/types/api';
+import type { VerifiedFinding, VulnSummary } from '@/lib/vulnintel';
 
 /**
  * Risk categories shown as compact icon badges (icon + tone + tooltip) instead of text pills.
@@ -28,6 +31,8 @@ export type CategoryKind =
   | 'bmc'
   | 'eol'
   | 'cve'
+  | 'kev'
+  | 'verified'
   | 'db'
   | 'cert'
   | 'cleartext'
@@ -40,6 +45,20 @@ export const CATEGORY_META: Record<
   { label: string; icon: Icon; tone: string; query: string; hint: string }
 > = {
   // Woodpecker red is reserved for known CVEs; everything else is amber / neutral tones.
+  verified: {
+    label: 'Verified',
+    icon: RiShieldCheckLine,
+    tone: 'text-rose-700 dark:text-rose-300 border-rose-500/50 bg-rose-500/15',
+    query: 'verified:true',
+    hint: 'Exposure confirmed by a safe verification check, with evidence',
+  },
+  kev: {
+    label: 'Exploited in the wild',
+    icon: RiFireLine,
+    tone: 'text-white border-rose-700 bg-rose-600 dark:bg-rose-500',
+    query: 'kev:true',
+    hint: 'A matched CVE is in the CISA Known Exploited Vulnerabilities catalog',
+  },
   cve: {
     label: 'Known CVE',
     icon: RiBugLine,
@@ -113,7 +132,7 @@ export const CATEGORY_META: Record<
 };
 
 /** Display order (most severe first). */
-export const CATEGORY_ORDER: CategoryKind[] = ['policy', 'cve', 'eol', 'admin', 'db', 'cleartext', 'cert', 'bmc', 'iot', 'staging'];
+export const CATEGORY_ORDER: CategoryKind[] = ['policy', 'verified', 'kev', 'cve', 'eol', 'admin', 'db', 'cleartext', 'cert', 'bmc', 'iot', 'staging'];
 
 export interface CategoryFlag {
   kind: CategoryKind;
@@ -129,6 +148,8 @@ interface FlaggableService {
   is_iot?: boolean;
   outdated?: OutdatedComponent[];
   known_vulns?: VulnHint[];
+  vulns?: VulnSummary[];
+  verified?: VerifiedFinding[];
   matched_signatures?: string[];
   technologies?: Array<{ name: string }>;
   http?: { tls?: { is_expired?: boolean } | null; title?: string } | null;
@@ -197,7 +218,23 @@ export function ageText(days: number): string {
 export function serviceFlags(svc: FlaggableService): CategoryFlag[] {
   const out: CategoryFlag[] = [];
   if (svc.policy_violations?.length) out.push({ kind: 'policy', detail: svc.policy_violations.map((p) => p.summary) });
-  if (svc.known_vulns?.length) out.push({ kind: 'cve', detail: svc.known_vulns.map(vulnDetail) });
+  if (svc.verified?.length) out.push({ kind: 'verified', detail: svc.verified.map((v) => `${v.severity}: ${v.name}`) });
+  const kev = (svc.vulns || []).filter((v) => v.kev > 0);
+  if (kev.length)
+    out.push({
+      kind: 'kev',
+      detail: kev.flatMap((v) => v.top.filter((c) => c.kev).map((c) => `${c.id} (${v.product} ${v.version}), in KEV since ${c.kev_date_added}`)),
+    });
+  if (svc.known_vulns?.length || svc.vulns?.length)
+    out.push({
+      kind: 'cve',
+      detail: [
+        ...(svc.vulns || []).map(
+          (v) => `${v.product} ${v.version}: ${v.total} CVEs, max CVSS ${v.max_cvss.toFixed(1)}, match confidence ${v.confidence}`
+        ),
+        ...(svc.known_vulns || []).map(vulnDetail),
+      ],
+    });
   if (svc.outdated?.length) out.push({ kind: 'eol', detail: svc.outdated.map(outdatedDetail) });
   if (svc.is_admin_panel) out.push({ kind: 'admin', detail: svc.http?.title ? [`“${svc.http.title}”`] : undefined });
   if (isDatabaseService(svc)) out.push({ kind: 'db', detail: [`${svc.service_name || 'database'} on port ${svc.port}`] });

@@ -1,0 +1,32 @@
+id: docker-api-unauth
+info:
+  name: Docker Engine API open without authentication
+  severity: critical
+  description: The Docker Engine API answered /version without TLS client authentication. Anyone who can reach it can start a privileged container and take over the host.
+  remediation: Do not expose the Docker socket over TCP; if remote access is required use TLS with client certificates (tlsverify) or SSH, and firewall ports 2375/2376.
+  reference:
+    - https://docs.docker.com/engine/security/protect-access/
+  tags: docker,unauth,rce
+match:
+  ports: [2375, 2376]
+  services: [docker]
+  techs: [docker engine]
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/version"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"ApiVersion"'
+          - '"KernelVersion"'
+        condition: and
+    extractors:
+      - type: regex
+        name: docker
+        group: 1
+        regex:
+          - '"Version":"([^"]+)"'

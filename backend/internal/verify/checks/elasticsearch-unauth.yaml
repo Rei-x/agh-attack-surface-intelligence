@@ -1,0 +1,25 @@
+id: elasticsearch-unauth
+info:
+  name: Elasticsearch API open without authentication
+  severity: high
+  description: The Elasticsearch REST API answered without credentials, exposing every index for reading, writing and deletion.
+  remediation: Enable Elasticsearch security (xpack.security.enabled true, TLS, users) and keep port 9200 on a private network.
+  reference:
+    - https://www.elastic.co/guide/en/elasticsearch/reference/current/secure-cluster.html
+  tags: elasticsearch,unauth,database
+match:
+  ports: [9200]
+  services: [elasticsearch, wap-wsp]
+  techs: [elasticsearch]
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/_cluster/health"
+      - "{{BaseURL}}/"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - '"cluster_name"'

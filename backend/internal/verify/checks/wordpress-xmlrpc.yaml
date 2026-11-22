@@ -1,0 +1,27 @@
+id: wordpress-xmlrpc
+info:
+  name: WordPress XML-RPC enabled (pingback, multicall)
+  severity: medium
+  description: xmlrpc.php accepts method calls. It allows password guessing with system.multicall (hundreds of attempts per request) and pingback.ping abuse for DDoS and internal port scanning. Only system.listMethods was called.
+  remediation: Block /xmlrpc.php in the web server or disable XML-RPC with a plugin, unless Jetpack or a mobile app needs it.
+  reference:
+    - https://developer.wordpress.org/apis/xml-rpc/
+  tags: wordpress,xmlrpc,web
+match:
+  techs: [wordpress]
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/xmlrpc.php"
+    headers:
+      Content-Type: text/xml
+    body: "<?xml version=\"1.0\"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: word
+        words:
+          - "<methodResponse>"
+          - "pingback.ping"
+        condition: and

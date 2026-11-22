@@ -1,0 +1,31 @@
+id: redis-unauth
+info:
+  name: Redis accepts commands without authentication
+  severity: high
+  description: Redis answered INFO without a password. Unauthenticated Redis allows reading and overwriting all keys and, through CONFIG/MODULE commands, often code execution.
+  remediation: Bind Redis to localhost or a private interface, enable protected-mode, set requirepass or ACL users, and firewall the port.
+  reference:
+    - https://redis.io/docs/latest/operate/oss_and_stack/management/security/
+  tags: redis,unauth,database
+match:
+  ports: [6379]
+  services: [redis]
+network:
+  - inputs:
+      - data: "INFO server\r\n"
+    read-size: 2048
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "redis_version:"
+      - type: word
+        negative: true
+        words:
+          - "NOAUTH"
+    extractors:
+      - type: regex
+        name: redis_version
+        group: 1
+        regex:
+          - "redis_version:([0-9.]+)"

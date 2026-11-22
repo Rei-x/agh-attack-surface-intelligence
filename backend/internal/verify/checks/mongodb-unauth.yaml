@@ -1,0 +1,30 @@
+id: mongodb-unauth
+info:
+  name: MongoDB lists databases without authentication
+  severity: high
+  description: MongoDB answered listDatabases without credentials, so every database on the instance is readable and writable from the network.
+  remediation: Enable authorization (security.authorization enabled), create users, bind to a private interface and firewall port 27017.
+  reference:
+    - https://www.mongodb.com/docs/manual/administration/security-checklist/
+  tags: mongodb,unauth,database
+match:
+  ports: [27017, 27018]
+  services: [mongodb, mongod]
+network:
+  - inputs:
+      # OP_MSG {listDatabases: 1, $db: "admin"}
+      - data: 3c0000000100000000000000dd070000000000000027000000106c697374446174616261736573000100000002246462000600000061646d696e0000
+        type: hex
+    read-size: 4096
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "databases"
+          - "totalSize"
+        condition: and
+      - type: word
+        negative: true
+        words:
+          - "Unauthorized"
+          - "requires authentication"

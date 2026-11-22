@@ -18,6 +18,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/localdata"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/screenshot"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/vulndb"
 )
 
 var errUsage = errors.New("usage")
@@ -96,6 +97,9 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 		}
 	}
 	rt.Dir = dir
+	if dir != nil {
+		vulndb.SetOverlayPath(vulndbOverlayPath(dir.Path)) // `dzieciol vulndb update` output
+	}
 
 	if !rt.Postgres && opts.ReadOnly && !dir.StoreExists() {
 		return nil, fmt.Errorf("no Dzięcioł data in %s yet - run `dzieciol scan ...` or `dzieciol serve` first", dir.Path)

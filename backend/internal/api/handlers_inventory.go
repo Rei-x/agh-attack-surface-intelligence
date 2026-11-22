@@ -381,6 +381,8 @@ type summaryService struct {
 	IsIoT             bool                       `json:"is_iot"`
 	Outdated          []domain.OutdatedComponent `json:"outdated,omitempty"`
 	KnownVulns        []domain.VulnHint          `json:"known_vulns,omitempty"`
+	Vulns             []domain.VulnSummary       `json:"vulns,omitempty"`    // without the full CVE id list
+	Verified          []domain.VerifiedFinding   `json:"verified,omitempty"` // check, name and severity only
 	Interestingness   int                        `json:"interestingness"`
 	TriageStatus      string                     `json:"triage_status"`
 	Triage            *domain.TriageInfo         `json:"triage,omitempty"`
@@ -440,6 +442,7 @@ func summarizeHosts(hosts []domain.Host) []summaryHost {
 				Technologies: make([]summaryTech, 0, len(s.Technologies)),
 			}
 			ss.PolicyViolations = s.PolicyViolations
+			ss.Vulns, ss.Verified = slimVulnEvidence(s.Vulns, s.Verified)
 			for _, t := range s.Technologies {
 				ss.Technologies = append(ss.Technologies, summaryTech{Name: t.Name, Category: t.Category, Version: t.Version, Confidence: t.Confidence})
 			}
@@ -454,4 +457,19 @@ func summarizeHosts(hosts []domain.Host) []summaryHost {
 		out = append(out, sh)
 	}
 	return out
+}
+
+// slimVulnEvidence keeps what the list badges need (counts, KEV, top CVEs, verified check
+// names) and drops the full CVE id lists and request/response evidence.
+func slimVulnEvidence(vulns []domain.VulnSummary, verified []domain.VerifiedFinding) ([]domain.VulnSummary, []domain.VerifiedFinding) {
+	var vs []domain.VulnSummary
+	for _, v := range vulns {
+		v.CVEIDs = nil
+		vs = append(vs, v)
+	}
+	var vf []domain.VerifiedFinding
+	for _, f := range verified {
+		vf = append(vf, domain.VerifiedFinding{CheckID: f.CheckID, Name: f.Name, Severity: f.Severity, ServiceID: f.ServiceID, Port: f.Port, DefaultCreds: f.DefaultCreds, CheckedAt: f.CheckedAt})
+	}
+	return vs, vf
 }

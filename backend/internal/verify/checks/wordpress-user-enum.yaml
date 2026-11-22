@@ -1,0 +1,29 @@
+id: wordpress-user-enum
+info:
+  name: WordPress user enumeration via REST API
+  severity: low
+  description: /wp-json/wp/v2/users lists author accounts with their login slugs, which gives an attacker valid user names for password attacks.
+  remediation: Restrict the users endpoint to authenticated requests (a security plugin or a rest_endpoints filter) and enforce strong passwords with rate limiting on wp-login.php.
+  reference:
+    - https://developer.wordpress.org/rest-api/reference/users/
+  tags: wordpress,enumeration,web
+match:
+  techs: [wordpress]
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-json/wp/v2/users"
+      - "{{BaseURL}}/?rest_route=/wp/v2/users"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        regex:
+          - '"slug":"[^"]+"'
+    extractors:
+      - type: regex
+        name: user
+        group: 1
+        regex:
+          - '"slug":"([^"]+)"'

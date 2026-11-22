@@ -1,0 +1,32 @@
+id: dotenv-exposed
+info:
+  name: Environment file exposed (.env)
+  severity: high
+  description: The web server returns the application's .env file, which typically holds database passwords, API keys and signing secrets. Values are redacted in this evidence.
+  remediation: Keep .env outside the document root, deny dotfiles in the web server, and rotate every secret the file contained.
+  reference:
+    - https://cwe.mitre.org/data/definitions/538.html
+  tags: exposure,secrets,web
+match:
+  any-http: true
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+    max-size: 8192
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        regex:
+          - "(?m)^[A-Z][A-Z0-9_]{2,}=\\S*"
+      - type: regex
+        regex:
+          - "(?mi)^(APP_|DB_|DATABASE_|MAIL_|REDIS_|AWS_|SECRET|API_)"
+      - type: word
+        negative: true
+        case-insensitive: true
+        words:
+          - "<html"
+          - "<!doctype"

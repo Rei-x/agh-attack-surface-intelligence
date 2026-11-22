@@ -472,6 +472,8 @@ type Service struct {
 	IsIoT              bool                    `json:"is_iot"`
 	Outdated           []OutdatedComponent     `json:"outdated,omitempty"`    // derived by internal/eol (ingest + read), not stored
 	KnownVulns         []VulnHint              `json:"known_vulns,omitempty"` // derived by internal/eol (ingest + read), not stored
+	Vulns              []VulnSummary           `json:"vulns,omitempty"`       // derived by internal/vulndb (ingest + read), not stored
+	Verified           []VerifiedFinding       `json:"verified,omitempty"`    // derived from internal/verify results on read, not stored
 	ClusterKey         string                  `json:"cluster_key,omitempty"`
 	Interestingness    int                     `json:"interestingness"`
 	InterestingFactors []InterestingnessFactor `json:"interesting_factors,omitempty"`

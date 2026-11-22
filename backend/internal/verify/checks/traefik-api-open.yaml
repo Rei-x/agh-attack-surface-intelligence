@@ -1,0 +1,26 @@
+id: traefik-api-open
+info:
+  name: Traefik API and dashboard open without authentication
+  severity: high
+  description: The Traefik API answered without authentication. It reveals every router, backend service address and middleware, and the dashboard maps the internal network behind the proxy.
+  remediation: Do not set api.insecure=true; expose the dashboard only through a router with an authentication middleware (BasicAuth/ForwardAuth) and an IP allowlist.
+  reference:
+    - https://doc.traefik.io/traefik/operations/api/
+  tags: traefik,unauth,exposure
+# The API answers on any port (api.insecure=true listens on 8080, often remapped), and the
+# matchers below only fire on Traefik's own JSON, so every web service is asked once.
+match:
+  any-http: true
+http:
+  - method: GET
+    schemes: [http, https]
+    path:
+      - "{{BaseURL}}/api/overview"
+      - "{{BaseURL}}/api/rawdata"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+      - type: regex
+        regex:
+          - '"(routers|services|http)"\s*:'
