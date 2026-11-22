@@ -51,7 +51,7 @@ export function LiveIndicator() {
                   ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
                   : 'text-muted-foreground'
               )}
-              aria-label="Live Stream"
+              aria-label="Live stream"
             />
           }
         >
@@ -74,7 +74,7 @@ export function LiveIndicator() {
           <SheetHeader className="border-b">
             <SheetTitle className="flex items-center gap-2 text-xs font-semibold tracking-widest uppercase">
               <RiPulseLine className="size-4 text-primary" />
-              Live Stream
+              Live stream
               <LiveDot live={connected} className="ml-1" />
             </SheetTitle>
           </SheetHeader>

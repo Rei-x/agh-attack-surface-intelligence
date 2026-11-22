@@ -123,10 +123,10 @@ export function TagRulesPanel() {
           <div className="divide-y divide-border border-y border-border">
             <div className="grid grid-cols-[minmax(8rem,1fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_6rem_2.5rem_2rem] gap-2 py-1.5 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
               <span>CIDR</span>
-              <span>Tagi</span>
+              <span>Tags</span>
               <span>Owner</span>
               <span>Env.</span>
-              <span>Aktywna</span>
+              <span>Active</span>
               <span />
             </div>
             {rows.map((r, idx) => (

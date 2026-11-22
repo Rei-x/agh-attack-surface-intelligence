@@ -123,7 +123,7 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    let message = `Błąd HTTP ${res.status}`;
+    let message = `HTTP error ${res.status}`;
     let parsed: unknown = undefined;
     try {
       const text = await res.text();
@@ -141,7 +141,7 @@ async function request<T>(
       // ignore
     }
     if (res.status === 403 && !message.includes('403') && !message.toLowerCase().includes('uprawnie')) {
-      message = `Brak uprawnień (403 Forbidden): ${message}`;
+      message = `Missing permission (403 Forbidden): ${message}`;
     }
     throw new ApiError(res.status, message, parsed);
   }
@@ -196,7 +196,6 @@ function saveBlob(blob: Blob, filename: string): void {
 }
 
 export const api = {
-  // Health & Auth
   // 503 = degraded (DB down / disk full): still return the body so the UI can show why.
   health: () =>
     request<HealthResponse>('/api/v1/health', { skipAuth: true }).catch((e: unknown) => {
@@ -221,7 +220,6 @@ export const api = {
     return res as User;
   },
 
-  // Dashboard, Graph & Clusters
   dashboardSummary: () => request<DashboardSummary>('/api/v1/dashboard/summary'),
   graph: async (params?: GraphQuery): Promise<GraphResponse> => {
     const res = await request<Partial<GraphResponse> | undefined>(
@@ -249,7 +247,6 @@ export const api = {
     return unwrapList<ServiceCluster>(res, ['clusters', 'items', 'data']);
   },
 
-  // Targets & Exclusions
   listTargets: async (): Promise<Target[]> => {
     const res = await request<unknown>('/api/v1/targets');
     return unwrapList<Target>(res, ['targets', 'items', 'data']);
@@ -287,7 +284,6 @@ export const api = {
     }),
   deleteExclusion: (id: string) => request<void>(`/api/v1/exclusions/${id}`, { method: 'DELETE' }),
 
-  // Scan Profiles & Runs
   listProfiles: async (): Promise<ScanProfile[]> => {
     const res = await request<unknown>('/api/v1/profiles');
     return unwrapList<ScanProfile>(res, ['profiles', 'items', 'data']);
@@ -324,7 +320,6 @@ export const api = {
   stopScan: (id: string) => request<ScanRun>(`/api/v1/scans/${id}/stop`, { method: 'POST' }),
   deleteScan: (id: string) => request<void>(`/api/v1/scans/${id}`, { method: 'DELETE' }),
 
-  // Hosts & Services & Preserved Overrides
   listHosts: async (params?: {
     q?: string;
     state?: string;
@@ -405,7 +400,6 @@ export const api = {
     return unwrapList<HostTimelineEntry>(res, ['entries', 'items', 'data']);
   },
 
-  // CIDR tag rules (ownership) & alert webhook
   listTagRules: async (): Promise<TagRule[]> => {
     const res = await request<unknown>('/api/v1/tag-rules');
     return unwrapList<TagRule>(res, ['rules', 'items', 'data']);
@@ -437,7 +431,6 @@ export const api = {
       body: JSON.stringify(url ? { url } : {}),
     }),
 
-  // Diff & Changes
   listChanges: async (params?: {
     scan_id?: string;
     severity?: string;
@@ -452,7 +445,6 @@ export const api = {
   acknowledgeChange: (id: string) =>
     request<ChangeEvent>(`/api/v1/changes/${id}/acknowledge`, { method: 'POST' }),
 
-  // Ingest & Export
   ingestManual: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>('/api/v1/ingest/manual', {
       method: 'POST',
@@ -486,7 +478,6 @@ export const api = {
     saveBlob(await res.blob(), `dzieciol-run-${scanId}-nmap.xml`);
   },
 
-  // Signatures Studio
   listSignatures: async (): Promise<Signature[]> => {
     const res = await request<unknown>('/api/v1/signatures');
     return unwrapList<Signature>(res, ['signatures', 'items', 'data']);
@@ -528,7 +519,6 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
-  // DefectDojo v2
   getDefectDojoConfig: () => request<DefectDojoConfig>('/api/v1/integrations/defectdojo'),
   updateDefectDojoConfig: (payload: Partial<DefectDojoConfig>) =>
     request<DefectDojoConfig>('/api/v1/integrations/defectdojo', {
@@ -560,7 +550,6 @@ export const api = {
     return unwrapList<DefectDojoExport>(res, ['exports', 'history', 'items', 'data']);
   },
 
-  // Remote scanning agents
   listAgents: async (): Promise<{ agents: Agent[]; offline_after_sec: number }> => {
     const res = await request<{ agents?: Agent[]; offline_after_sec?: number }>('/api/v1/agents');
     return { agents: res?.agents ?? [], offline_after_sec: res?.offline_after_sec ?? 90 };
@@ -576,7 +565,6 @@ export const api = {
     request<CreatedAgentToken>('/api/v1/agents/tokens', { method: 'POST', body: JSON.stringify(payload) }),
   revokeAgentToken: (id: string) => request<void>(`/api/v1/agents/tokens/${id}`, { method: 'DELETE' }),
 
-  // Admin: Users, Roles, Permissions, Crypto, Audit
   listUsers: async (): Promise<User[]> => {
     const res = await request<unknown>('/api/v1/admin/users');
     return unwrapList<User>(res, ['users', 'items', 'data']);
@@ -665,7 +653,6 @@ export const api = {
   },
   /** Product inventory, quick-filter counts and de-duplicated scan scope. */
   inventory: () => request<InventoryResponse>('/api/v1/inventory'),
-  // DefectDojo automatic sync: header chip, per-service status, push now.
   defectDojoStatus: () => request<DefectDojoStatus>('/api/v1/integrations/defectdojo/status'),
   defectDojoServiceStatus: (hostId?: string) =>
     request<DefectDojoServiceStatus>(

@@ -1,4 +1,3 @@
-/** Helpers for scan rate-control telemetry and nmap command display. */
 
 /** Human label for a noise-governor backoff reason ("http_429", "timeout_burst_host", ...). */
 export function throttleReasonLabel(reason: string): string {

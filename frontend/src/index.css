@@ -189,7 +189,7 @@
   animation: live-row 2.4s ease-out;
 }
 
-/* ---- Dzięcioł: woodpecker art (components/Woodpecker.tsx) ------------------------- */
+/* Woodpecker art (components/Woodpecker.tsx). */
 .wp-head {
   fill: var(--wp-head);
   stroke: var(--wp-edge);

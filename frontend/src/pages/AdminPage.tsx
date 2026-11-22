@@ -124,7 +124,6 @@ export function AdminPage() {
     tabParam && ['defectdojo', 'users', 'rbac', 'crypto', 'audit', 'alerts'].includes(tabParam) ? tabParam : defaultTab
   );
 
-  // DefectDojo state
   const [ddConfig, setDdConfig] = useState<DefectDojoConfig>({
     url: 'http://lab-defectdojo-mock:8000',
     api_token: '',
@@ -144,7 +143,6 @@ export function AdminPage() {
   const [ddSeverity, setDdSeverity] = useState('High');
   const [ddBusy, setDdBusy] = useState(false);
 
-  // RBAC state
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -161,11 +159,9 @@ export function AdminPage() {
     role_slug: 'analyst',
   });
 
-  // Crypto state
   const [cryptoStatus, setCryptoStatus] = useState<CryptoStatusResponse | null>(null);
   const [rotatingKey, setRotatingKey] = useState(false);
 
-  // Audit state
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [auditStatusFilter, setAuditStatusFilter] = useState('');
 
@@ -232,7 +228,6 @@ export function AdminPage() {
     if (activeTab === 'audit' && canAudit) loadAudit();
   }, [activeTab, canDD, canRBAC, canCrypto, canAudit, loadDefectDojo, loadRBAC, loadCrypto, loadAudit]);
 
-  // DefectDojo handlers
   const handleSaveDDConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     setDdBusy(true);
@@ -320,7 +315,6 @@ export function AdminPage() {
     }
   };
 
-  // RBAC handlers
   const togglePermission = (slug: string) => {
     setRoleForm((prev) => ({
       ...prev,
@@ -370,7 +364,6 @@ export function AdminPage() {
     }
   };
 
-  // Crypto Key Rotation
   const handleRotateKey = async () => {
     if (!window.confirm('Rotate the data encryption key? All encrypted fields are re-encrypted with the new key.')) return;
     setRotatingKey(true);
@@ -413,13 +406,12 @@ export function AdminPage() {
         <TabsList variant="line" className="max-w-full flex-wrap">
           {canDD && <TabsTrigger value="defectdojo">DefectDojo</TabsTrigger>}
           {canRBAC && <TabsTrigger value="users">Users</TabsTrigger>}
-          {canRBAC && <TabsTrigger value="rbac">Role (RBAC)</TabsTrigger>}
+          {canRBAC && <TabsTrigger value="rbac">Roles (RBAC)</TabsTrigger>}
           {canCrypto && <TabsTrigger value="crypto">Encryption</TabsTrigger>}
           {canCrypto && <TabsTrigger value="alerts">Alerts</TabsTrigger>}
-          {canAudit && <TabsTrigger value="audit">Audit Log</TabsTrigger>}
+          {canAudit && <TabsTrigger value="audit">Audit log</TabsTrigger>}
         </TabsList>
 
-        {/* DEFECTDOJO */}
         {canDD && (
           <TabsContent value="defectdojo" className="space-y-6">
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
@@ -441,7 +433,7 @@ export function AdminPage() {
                     <Field
                       label={
                         <span className="flex items-center gap-2">
-                          API Token
+                          API token
                           {ddConfig.has_api_token && (
                             <Pill tone="success">
                               <RiLockLine className="size-3" /> stored encrypted
@@ -799,7 +791,6 @@ export function AdminPage() {
           </TabsContent>
         )}
 
-        {/* USERS */}
         {canRBAC && (
           <TabsContent value="users" className="space-y-6">
             <Card size="sm">
@@ -883,7 +874,7 @@ export function AdminPage() {
                         <TableCell>
                           {u.active !== false ? (
                             <Pill tone="success" dot>
-                              Aktywny
+                              Active
                             </Pill>
                           ) : (
                             <Pill dot>Disabled</Pill>
@@ -915,7 +906,6 @@ export function AdminPage() {
           </TabsContent>
         )}
 
-        {/* ROLES (RBAC) */}
         {canRBAC && (
           <TabsContent value="rbac">
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
@@ -937,7 +927,7 @@ export function AdminPage() {
                         });
                       }}
                     >
-                      <RiAddLine /> Nowa
+                      <RiAddLine /> New
                     </Button>
                   </CardAction>
                 </CardHeader>
@@ -1088,14 +1078,12 @@ export function AdminPage() {
           </TabsContent>
         )}
 
-        {/* ALERT WEBHOOK (admin:settings) */}
         {canCrypto && (
           <TabsContent value="alerts" className="space-y-6">
             <WebhookPanel />
           </TabsContent>
         )}
 
-        {/* ENCRYPTION AT REST */}
         {canCrypto && (
           <TabsContent value="crypto" className="space-y-6">
             <Card size="sm">
@@ -1107,7 +1095,7 @@ export function AdminPage() {
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="font-heading text-sm font-semibold tracking-wider uppercase">
-                        Encryption At Rest
+                        Encryption at rest
                       </h2>
                       <Pill tone="success" dot>
                         Active
@@ -1212,12 +1200,11 @@ export function AdminPage() {
           </TabsContent>
         )}
 
-        {/* AUDIT LOG */}
         {canAudit && (
           <TabsContent value="audit">
             <Card size="sm" className="pb-0">
               <CardHeader>
-                <CardTitle className="text-sm">Audit Log ({auditLogs.length})</CardTitle>
+                <CardTitle className="text-sm">Audit log ({auditLogs.length})</CardTitle>
                 <CardAction className="flex items-center gap-2">
                   <SimpleSelect
                     size="sm"

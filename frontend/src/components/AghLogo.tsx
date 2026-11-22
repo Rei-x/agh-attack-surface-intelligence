@@ -6,7 +6,6 @@ export const AGH_COLORS = {
   crimson: '#A71930',
 } as const;
 
-/** Compact `CBI AGH` badge: emblem + geometric wordmark. */
 export function AghBadge({ className }: { className?: string }) {
   return (
     <span

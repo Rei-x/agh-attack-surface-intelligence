@@ -83,7 +83,6 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
   const targets = useMemo(() => parseTargets(targetsText), [targetsText]);
 
-  // Debounced live estimator
   useEffect(() => {
     if (!open) return;
     if (targets.length === 0) {
@@ -201,7 +200,6 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
             />
           </Field>
 
-          {/* Live estimator strip */}
           <div className="relative grid grid-cols-4 divide-x divide-border border border-border bg-muted/30">
             <EstimateCell label="Effective IPs" value={estimate ? formatNumber(estimate.effective_ips) : 'n/a'} />
             <EstimateCell label="Chunks" value={estimate ? formatNumber(estimate.chunk_count) : 'n/a'} />
@@ -233,7 +231,6 @@ export function QuickScanDialog({ open, onOpenChange }: { open: boolean; onOpenC
           )}
           {estimateError && <Notice tone="danger">{estimateError}</Notice>}
 
-          {/* Advanced */}
           <div className="border border-border">
             <button
               type="button"

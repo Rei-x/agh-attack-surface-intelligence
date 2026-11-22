@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-/** Page title row: title on the left, actions on the right. No subtitles. */
+/** Page title row: title with inline meta on the left (no subtitle line), actions on the right. */
 export function PageHeader({
   title,
   meta,
@@ -36,7 +36,6 @@ export function PageHeader({
   );
 }
 
-/** Small section heading inside a page/card. */
 export function SectionTitle({
   children,
   actions,
@@ -187,7 +186,6 @@ export function Empty({
   );
 }
 
-/** Label + control stacked. */
 export function Field({
   label,
   htmlFor,
@@ -261,7 +259,6 @@ export function SimpleSelect({
   );
 }
 
-/** Monospace inline code chip. */
 export function Code({ className, ...props }: React.ComponentProps<'code'>) {
   return (
     <code
@@ -271,7 +268,6 @@ export function Code({ className, ...props }: React.ComponentProps<'code'>) {
   );
 }
 
-/** Inline alert row for errors / warnings. */
 export function Notice({
   tone = 'neutral',
   icon: Icon,

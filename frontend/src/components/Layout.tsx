@@ -104,7 +104,6 @@ export function Layout() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      {/* Sidebar */}
       <aside
         className={cn(
           'sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r bg-sidebar transition-[width] duration-200',
@@ -163,14 +162,14 @@ export function Layout() {
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5">
                   <RiLockLine className="size-3 text-emerald-600 dark:text-emerald-400" />
-                  At Rest
+                  At rest
                 </span>
                 <span className="font-mono normal-case">{health?.key_version || 'AES-256-GCM'}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span>Nmap</span>
                 <span className="font-mono normal-case">
-                  {health?.nmap_available === false ? 'TCP Fallback' : 'Active'}
+                  {health?.nmap_available === false ? 'TCP fallback' : 'Active'}
                 </span>
               </div>
             </>
@@ -186,7 +185,6 @@ export function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b bg-background/80 px-4 backdrop-blur-md lg:px-8">
           <div className="flex items-center gap-2">

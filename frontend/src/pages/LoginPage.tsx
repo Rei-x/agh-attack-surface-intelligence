@@ -14,15 +14,10 @@ import { Field, Notice } from '@/components/common';
 import type { DemoAccount } from '@/types/api';
 
 const FALLBACK_DEMOS: DemoAccount[] = [
-  { username: 'admin', password: 'Admin123!', role_slug: 'admin', role_name: 'Administracja' },
-  {
-    username: 'operator',
-    password: 'Operator123!',
-    role_slug: 'operator',
-    role_name: 'Dodawanie, usuwanie, modyfikacja',
-  },
-  { username: 'analyst', password: 'Analyst123!', role_slug: 'analyst', role_name: 'Modyfikacja i odczyt' },
-  { username: 'viewer', password: 'Viewer123!', role_slug: 'viewer', role_name: 'Odczyt' },
+  { username: 'admin', password: 'Admin123!', role_slug: 'admin', role_name: 'Administration' },
+  { username: 'operator', password: 'Operator123!', role_slug: 'operator', role_name: 'Add, delete, modify' },
+  { username: 'analyst', password: 'Analyst123!', role_slug: 'analyst', role_name: 'Modify and read' },
+  { username: 'viewer', password: 'Viewer123!', role_slug: 'viewer', role_name: 'Read only' },
 ];
 
 export function LoginPage() {

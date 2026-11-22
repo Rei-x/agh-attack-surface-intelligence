@@ -205,7 +205,7 @@ export function envLabel(env?: string | null): string {
   return ENV_LABELS[env.toLowerCase()] || env;
 }
 
-/** Translate EOL labels produced by the backend in Polish ("nginx 1.14 [dash] gałąź EOL od 2019-04"). */
+/** Translate Polish EOL labels from the backend ("nginx 1.14 - gałąź EOL od 2019-04", en dash or hyphen). */
 export function eolLabel(label: string): string {
   return label.replace(/\s*[\u2013-]\s*gałąź EOL od\s*/i, ' · EOL since ');
 }

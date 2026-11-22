@@ -613,7 +613,7 @@ export function VerifyProfileSettings({ profileId }: { profileId: string | null 
       </div>
       <p className="text-[11px] text-muted-foreground">
         {profileId
-          ? 'Off by default. Runs after each completed scan, only against this profile’s targets, through the same rate governor. Read-only requests: no exploitation, no brute force. Saved immediately.'
+          ? "Off by default. Runs after each completed scan, only against this profile's targets, through the same rate governor. Read-only requests: no exploitation, no brute force. Saved immediately."
           : 'Save the profile first, then enable Verify here.'}
         {view?.last_run && ` Last run ${formatRelativeTime(view.last_run.finished_at)}: ${view.last_run.stats.findings} confirmed on ${view.last_run.stats.targets} services.`}
       </p>

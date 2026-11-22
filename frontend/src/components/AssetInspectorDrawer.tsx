@@ -103,8 +103,6 @@ function QueryChip({ q, children, title }: { q: string; children: React.ReactNod
 
 type TabId = 'services' | 'overview' | 'heatmap' | 'summary' | 'timeline';
 
-/* ---------- small presentational helpers ---------- */
-
 function KV({ label, children, className }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('min-w-0', className)}>
@@ -256,8 +254,6 @@ function HostIdentityLine({ host, rules }: { host: Host; rules: TagRule[] | null
   );
 }
 
-/* ---------- main component ---------- */
-
 export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
   const { can } = useAuth();
   const toast = useToast();
@@ -266,7 +262,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('services');
 
-  // Host override form state
   const [hostname, setHostname] = useState('');
   const [environment, setEnvironment] = useState('');
   const [owner, setOwner] = useState('');
@@ -275,7 +270,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
   const [notes, setNotes] = useState('');
   const [savingHost, setSavingHost] = useState(false);
 
-  // Expanded service cards & evidence & history
   const [expandedServiceId, setExpandedServiceId] = useState<string | null>(null);
   const [expandedTechKey, setExpandedTechKey] = useState<string | null>(null);
   const [obsByService, setObsByService] = useState<Record<string, ServiceObservation[]>>({});
@@ -440,8 +434,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
     }
   };
 
-  // Triage decisions (accepted risk / false positive with reason + expiry). Errors propagate
-  // to the TriageEditor so it can show the server's validation message inline.
+  // Errors propagate so the TriageEditor can show the server's validation message inline.
   const handleSaveServiceTriage = async (svcId: string, patch: TriagePatch | null) => {
     await api.patchServiceOverrides(svcId, { triage: patch });
     if (host) await loadHost(host.id, true);
@@ -493,7 +486,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
 
   const lc = lifecycleMeta(host?.lifecycle_state);
 
-  // Build 4-slot time-of-day map
   const statsMap = new Map<string, TimeSlotStat>();
   for (const s of host?.time_of_day_stats || []) {
     statsMap.set(s.slot, s);
@@ -515,7 +507,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
         side="right"
         className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"
       >
-        {/* Header */}
         <SheetHeader className="gap-3 border-b border-border p-6 pr-16">
           {!ready || !host ? (
             <SheetTitle className="text-sm text-muted-foreground">Loading…</SheetTitle>
@@ -599,7 +590,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {/* ===== SERVICES: Evidence + Confidence ===== */}
               <TabsContent value="services" className="p-6">
                 <VerifyHostBar hostId={host.id} canRun={canWrite} onDone={() => loadHost(host.id, true)} />
                 {(host.services || []).length === 0 ? (
@@ -615,7 +605,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
 
                       return (
                         <div key={svc.id}>
-                          {/* Service row */}
                           <div
                             role="button"
                             tabIndex={0}
@@ -666,11 +655,9 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                             </Pill>
                           </div>
 
-                          {/* Service details */}
                           {isOpen && (
                             <div className="space-y-6 border-t border-border bg-muted/20 px-4 py-5">
                               <PolicyViolationNotice hits={(svc as { policy_violations?: Parameters<typeof PolicyViolationNotice>[0]['hits'] }).policy_violations} />
-                              {/* Action bar */}
                               <div className="space-y-2">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div className="min-w-0 flex-1">
@@ -736,7 +723,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                               <VerifiedEvidence service={svc} />
                               <VulnEvidence service={svc} />
 
-                              {/* Service override editor */}
                               {isEditing && canWrite && (
                                 <div className="border border-border bg-card px-4 py-2">
                                   {[
@@ -816,7 +802,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 </div>
                               )}
 
-                              {/* Confidence (Noisy-OR) */}
                               {(svc.technologies?.length || 0) > 0 && (
                                 <div className="space-y-2">
                                   <SectionTitle>Confidence</SectionTitle>
@@ -897,7 +882,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 </div>
                               )}
 
-                              {/* HTTP Evidence */}
                               {http && (
                                 <div className="space-y-2">
                                   <SectionTitle>Evidence · HTTP</SectionTitle>
@@ -973,7 +957,7 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                     {(http.redirect_chain?.length || 0) > 0 && (
                                       <div className="space-y-1.5 border-t border-border pt-3">
                                         <div className="text-[10px] font-semibold tracking-widest text-muted-foreground uppercase">
-                                          Przekierowania
+                                          Redirects
                                         </div>
                                         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
                                           {http.redirect_chain!.map((hop, i) => (
@@ -1100,7 +1084,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                     )}
                                   </div>
 
-                                  {/* TLS */}
                                   {tls && (
                                     <div className="space-y-4 border border-border bg-card p-4">
                                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1158,7 +1141,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 </div>
                               )}
 
-                              {/* Banner */}
                               {svc.banner && (
                                 <div className="space-y-2">
                                   <SectionTitle>Banner</SectionTitle>
@@ -1168,7 +1150,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                                 </div>
                               )}
 
-                              {/* Observation history */}
                               <div className="space-y-2">
                                 <Button
                                   type="button"
@@ -1212,7 +1193,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                 )}
               </TabsContent>
 
-              {/* ===== SUMMARY ===== */}
               <TabsContent value="summary" className="space-y-6 p-6">
                 <div className="grid grid-cols-2 gap-5 border border-border bg-card p-4">
                   <KV label="First seen">{formatDateTime(host.first_seen)}</KV>
@@ -1308,12 +1288,10 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                 )}
               </TabsContent>
 
-              {/* ===== TIMELINE ===== */}
               <TabsContent value="timeline" className="p-6">
                 <HostTimeline hostId={host.id} />
               </TabsContent>
 
-              {/* ===== HEATMAP ===== */}
               <TabsContent value="heatmap" className="space-y-6 p-6">
                 <div className="space-y-3">
                   <SectionTitle>Availability by time of day</SectionTitle>
@@ -1365,7 +1343,6 @@ export function AssetInspectorDrawer({ hostId, onClose, onUpdated }: Props) {
                 </div>
               </TabsContent>
 
-              {/* ===== OVERRIDES ===== */}
               <TabsContent value="overview" className="space-y-5 p-6">
                 <TriageEditor
                   status={host.triage_status}

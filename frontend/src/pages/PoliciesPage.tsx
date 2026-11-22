@@ -133,8 +133,6 @@ export function PoliciesPage() {
   );
 }
 
-/* ------------------------------------------------------------------ violations */
-
 function ViolationsView({
   data,
   categories,
@@ -373,8 +371,6 @@ function ViolationRow({
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ zones editor */
 
 function emptyZone(): PolicyZone {
   return { name: 'New zone', cidrs: [], enabled: true, preset: CUSTOM, rules: { no_services: false, require_tls: false, forbidden: [] } };
