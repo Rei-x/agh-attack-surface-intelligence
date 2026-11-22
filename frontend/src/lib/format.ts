@@ -32,6 +32,25 @@ export function formatClock(value?: string | null): string {
   return d.toLocaleTimeString('en-GB', { hour12: false });
 }
 
+/** True for a real calendar day written as YYYY-MM-DD. */
+export function isIsoDay(value?: string | null): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+}
+
+/**
+ * "2026-12-22" -> "22 Dec". The day comes from the server already in the instance timezone,
+ * so it is formatted as a calendar day, never shifted by the browser's zone.
+ */
+export function formatIsoDay(day?: string | null): string {
+  if (!day || !isIsoDay(day)) return '';
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+}
+
 export function formatRelativeTime(value?: string | null): string {
   if (!value) return 'n/a';
   const d = new Date(value);
