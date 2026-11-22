@@ -80,6 +80,27 @@ jest z niego wyprowadzany (albo `DZIECIOL_JWT_SECRET`).
 | `DZIECIOL_ADMIN_PASSWORD` | losowe | hasło konta `admin` w trybie produkcyjnym (min. 10 znaków) |
 | `DZIECIOL_CORS_ORIGINS` | brak | dodatkowe originy z dostępem do API (lista po przecinku) |
 | `DZIECIOL_CHUNK_WORKERS` | 4 | równoległe procesy nmap |
+| `DZIECIOL_RETENTION` | włączona | `off` wyłącza retencję historii (wszystkie limity poniżej) |
+| `DZIECIOL_RETENTION_DAYS` | 90 | wiek zdarzeń zmian i obserwacji usług (najnowsza obserwacja usługi zostaje zawsze) |
+| `DZIECIOL_RETENTION_OBSERVATIONS` | 30 | obserwacje (historia dowodów) na usługę; starsze niż 3 najnowsze mają skrócony odcisk HTTP |
+| `DZIECIOL_RETENTION_CHANGES_PER_HOST` | 200 | zdarzenia zmian na host; starsze trafiają do podsumowania na osi czasu hosta |
+| `DZIECIOL_RETENTION_SNAPSHOTS` | 10 | skany z migawką inwentarza (porównanie skanów) plus 2 najnowsze każdego profilu |
+| `DZIECIOL_RETENTION_RAW_XML` | 10 | zakończone skany z surowym XML nmapa (pobieranie, import do DefectDojo) |
+| `DZIECIOL_RETENTION_CHUNK_DETAIL` | 10 | zakończone skany z listą adresów i poleceniami nmap per paczka |
+| `DZIECIOL_RETENTION_AUDIT` | 20000 | wpisy dziennika audytu |
+| `DZIECIOL_RETENTION_EXPORTS` | 1000 | wpisy dziennika eksportów do DefectDojo |
+
+Wartość `0` zachowuje dany rodzaj historii bez limitu. Bieżący inwentarz (hosty, usługi, korekty
+analityka, triage, sygnatury, użytkownicy, ustawienia) nigdy nie jest przycinany. Retencja działa
+przy starcie (zmniejszony magazyn jest zapisywany od razu) i po każdym skanie lub imporcie, każdy
+przebieg jest logowany jako `[INFO] retention (...)`. W trybie PostgreSQL te same limity są
+realizowane zapytaniami `DELETE`.
+
+`dzieciol store-stats` (tylko odczyt, można uruchomić obok działającego serwera) pokazuje rozmiar
+każdej kolekcji magazynu, rozmiar pliku, zajętość sterty po wczytaniu i to, co retencja usunie przy
+następnym starcie (`--heap-profile plik` zapisuje profil pprof). W kontenerze z limitem pamięci
+Dzięcioł sam ustawia miękki limit pamięci Go na 80% limitu kontenera (widać to w logu `serve`);
+`GOMEMLIMIT` nadpisuje tę wartość, `GOMEMLIMIT=off` ją wyłącza.
 
 ## 5. Zabezpieczenia aplikacji (dla audytu)
 

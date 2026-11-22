@@ -51,6 +51,10 @@ dependency-free static binary. A pure-Go SQLite (modernc.org) would add several 
 binary and require a third 1,800-line `Store` implementation plus migrations. The trade-off is
 that the whole state is rewritten on save. Measured on an M-series Mac with 10,000 hosts and
 20,000 services: 7.6 MB on disk, 0.10 s per save, 0.11 s to load.
+A save streams the state field by field through gzip into one buffer laid out as the final
+file and seals that buffer in place; a load decrypts the file buffer in place and decodes the
+gzip stream entry by entry. Neither holds more than the file plus the live state. History is
+bounded by the retention policy below.
 For bigger multi-user deployments use PostgreSQL (`DATABASE_URL`).
 
 **Single writer:** `dzieciol serve`, `dzieciol scan` and `dzieciol import` take the lock. If a server
@@ -61,6 +65,61 @@ set, every command uses PostgreSQL and no lock is taken.
 
 **Exclusions:** stored target exclusions apply to CLI scans too. The default `127.0.0.0/8`
 safety exclusion means a local test needs `--ignore-exclusions`.
+
+### History retention and memory
+
+The current inventory (hosts, services, analyst overrides and triage, signatures, users,
+settings) is never trimmed. Per-run history is bounded, so continuous scanning does not grow
+the store, and with the file store the process heap, without limit:
+
+| Variable | Default | What is kept |
+| :--- | :--- | :--- |
+| `DZIECIOL_RETENTION_DAYS` | `90` | change events and service observations younger than this (the newest observation of every service always stays) |
+| `DZIECIOL_RETENTION_OBSERVATIONS` | `30` | newest observations (evidence history) per service; all but the newest 3 keep a slim HTTP fingerprint (title, status, server header, TLS identity), which is what the evidence history and the host timeline show |
+| `DZIECIOL_RETENTION_CHANGES_PER_HOST` | `200` | newest change events per host; older ones are folded into a per-host summary shown as one row on the host timeline. Events of the newest 3 runs and of unfinished runs are never removed. |
+| `DZIECIOL_RETENTION_SNAPSHOTS` | `10` | runs that keep their inventory snapshot (scan diff, `dzieciol export --scan`), plus the newest 2 runs of every profile so the default comparison always works. Comparing a run whose snapshot was removed answers `410 Gone` with an explanation. |
+| `DZIECIOL_RETENTION_RAW_XML` | `10` | finished runs that keep their merged raw nmap XML (download, DefectDojo import) |
+| `DZIECIOL_RETENTION_CHUNK_DETAIL` | `10` | finished runs that keep per-chunk target lists and nmap command lines; older runs keep the chunk ledger (status, counts, timing). Paused runs keep everything (resume needs it). |
+| `DZIECIOL_RETENTION_AUDIT` | `20000` | newest audit log entries |
+| `DZIECIOL_RETENTION_EXPORTS` | `1000` | newest DefectDojo export log entries |
+| `DZIECIOL_RETENTION` | on | `off` keeps all history (disables every limit above) |
+
+`0` keeps that kind of history forever. Retention runs when a writable store is opened (the
+compacted file is written back before the server listens) and after every ingest (local scans,
+agent uploads, imports); every pass that changes something is logged as
+`[INFO] retention (...)`. With PostgreSQL the same limits are applied with SQL deletes in one
+transaction at startup and after every ingest (older observations keep their full fingerprint
+there: the history lives in tables, not in the heap). Inventory snapshots are slim (what the
+diff compares and shows) and, like the raw nmap XML, gzipped inside their per-row AES-256-GCM
+envelope in both stores.
+
+**Upgrading:** the first start of this version on an older file store migrates it once: the
+kept snapshots become slim and compressed and raw XML is compressed. Expect a one-off higher
+peak during that start (about the old file size plus the old state).
+
+**Inspecting a store:** `dzieciol store-stats` (read-only, safe while the server runs) prints
+the size of every collection, the file size, the heap after load and what retention would trim
+on the next start; `--heap-profile FILE` writes a pprof heap profile, `--json` machine output.
+
+**Memory limit:** in a container dzieciol sets a Go soft memory limit of 80% of the cgroup
+memory limit at startup (logged by `serve`), so the garbage collector works harder before an
+ingest spike reaches the container limit. `GOMEMLIMIT` overrides it (`GOMEMLIMIT=off`
+disables it).
+
+Measured with `go run ./cmd/storebench` (synthetic /18 lab driven through the real ingest
+pipeline and file store; every number from its own process, M-series Mac):
+
+| Store | File | Heap after load | Peak heap / RSS while loading | Peak heap / RSS ingesting one more /18 run |
+| :--- | ---: | ---: | ---: | ---: |
+| Before: 1 500 hosts, 4 038 services, 30 runs | 366 MB | 396 MB | 1.6 GB / 2.1 GB | 3.0 GB / 3.6 GB |
+| Same lab built by this version | 27 MB | 53 MB | 85 MB / 111 MB | 166 MB / 257 MB |
+| The 366 MB store above, first start (one-off migration) | 27 MB | 53 MB | 777 MB / 1.2 GB | 162 MB / 259 MB |
+| 1 500 hosts, 120 daily runs (four months) | 39 MB | 85 MB | 126 MB / 159 MB | 225 MB / 340 MB |
+| 5 000 hosts, 13 500 services, 60 daily runs | 112 MB | 232 MB | 376 MB / 429 MB | 599 MB / 881 MB |
+
+Observations are the largest collection at steady state (up to 30 rows per service). For
+tens of thousands of services on the file store, lower `DZIECIOL_RETENTION_OBSERVATIONS` or
+use PostgreSQL.
 
 ### Scanner prerequisites
 
@@ -306,6 +365,8 @@ Automates a 10-stage verification covering: health & crypto status, 4-role RBAC 
 | `DZIECIOL_AGENT_OFFLINE_AFTER` | No | `90s` | Silence after which a remote agent is marked offline and its running scan is parked (resumed when it returns). |
 | `DZIECIOL_CHROME_PATH` | No | *(auto: chrome-headless-shell, chromium, google-chrome on PATH)* | Browser used for web screenshots. `DZIECIOL_SCREENSHOTS=false` turns them off. |
 | `TZ` | No | `Europe/Warsaw` | Default timezone for scan windows and logs. |
+| `DZIECIOL_RETENTION` / `DZIECIOL_RETENTION_*` | No | on, see [History retention](#history-retention-and-memory) | Bounds per-run history (observations, change events, scan snapshots, raw XML, chunk detail, audit and export logs). `DZIECIOL_RETENTION=off` keeps everything. |
+| `GOMEMLIMIT` | No | 80% of the container (cgroup) memory limit, none outside containers | Go runtime soft memory limit; set it to override the automatic value, `off` to disable. |
 | `DZIECIOL_DEFECTDOJO_PRODUCT_TYPE_NAME` / `_PRODUCT_NAME` / `_ENGAGEMENT_NAME` | No | `Dzięcioł` / `AGH Attack Surface` / `Dzięcioł continuous discovery` | DefectDojo context names used when no product/engagement is pinned by ID (same levels as the secureCodeBox DefectDojo hook annotations, see `docs/SECURECODEBOX.md`). |
 | `DZIECIOL_DEFECTDOJO_DEDUPLICATE_ON_ENGAGEMENT` | No | `false` | Sends `deduplication_on_engagement=true` when DefectDojo auto-creates the engagement. |
 | `DZIECIOL_DEFECTDOJO_MINIMUM_SEVERITY` | No | `Info` | `minimum_severity` for reimports (`Info`, `Low`, `Medium`, `High`, `Critical`). |
