@@ -85,6 +85,14 @@ func EstimateTargets(ctx context.Context, req EstimateRequest) (*domain.TargetEs
 			estSec = 1
 		}
 	}
+	// Small scopes with long port lists (auto: all 65535 ports for 1-4 IPs): the sweep sends
+	// one probe per (IP, port), plus about 20 s of version detection and HTTP fingerprinting.
+	// (Large scopes keep the calibrated model above.)
+	if effectiveIPs > 0 && effectiveIPs <= AutoTopPortsMaxIPs {
+		if floor := int64(math.Ceil(float64(effectiveIPs)*float64(len(ports))/float64(maxRate))) + 20; estSec < floor {
+			estSec = floor
+		}
+	}
 
 	now := req.Now
 	if now.IsZero() {
