@@ -109,7 +109,7 @@ func TestStripNUL(t *testing.T) {
 	}
 }
 
-// --- fuzzing: parsers must never panic or hang on arbitrary input ---------------------
+// The fuzz targets check that parsers never panic or hang on arbitrary input.
 
 func FuzzParseCSV(f *testing.F) {
 	f.Add([]byte("ip,port\n10.0.0.1,22\n"))

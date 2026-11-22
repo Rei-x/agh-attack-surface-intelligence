@@ -287,8 +287,6 @@ type WindowEntry struct {
 	NextOpen string    `json:"next_open,omitempty"`
 }
 
-// Fingerprinting & evidence structures.
-
 // RedirectHop is one step of an HTTP redirect chain followed during fingerprinting.
 type RedirectHop struct {
 	URL        string `json:"url"`
@@ -642,9 +640,9 @@ type DefectDojoSyncState struct {
 	LastRunID  string     `json:"last_run_id,omitempty"`
 	TestID     int        `json:"test_id,omitempty"` // the one "Dzięcioł changes" test
 	TestURL    string     `json:"test_url,omitempty"`
-	// ChangesContext is the product type / product / engagement TestID lives in. Empty in
-	// the state of versions with one change test per profile, which makes the next sync
-	// look for those tests and retire them.
+	// ChangesContext is the product type / product / engagement TestID lives in. It is empty
+	// in state written by versions with one change test per profile; the next sync then looks
+	// for those tests and retires them.
 	ChangesContext string                            `json:"changes_context,omitempty"`
 	ProductID      int                               `json:"product_id,omitempty"`
 	ProductURL     string                            `json:"product_url,omitempty"`
@@ -706,7 +704,7 @@ type LiveEvent struct {
 	Payload   map[string]any `json:"payload"`
 }
 
-// TargetEstimate returned by POST /api/v1/targets/estimate.
+// TargetEstimate is the response of POST /api/v1/targets/estimate.
 type TargetEstimate struct {
 	TotalIPs             int   `json:"total_ips"`
 	ExcludedIPs          int   `json:"excluded_ips"`
@@ -723,7 +721,7 @@ type TargetEstimate struct {
 	MaxRatePPS int `json:"max_rate_pps"`
 }
 
-// ServiceCluster for grouping similar services.
+// ServiceCluster is a group of similar services.
 type ServiceCluster struct {
 	ClusterKey  string   `json:"cluster_key"`
 	GroupBy     string   `json:"group_by"` // favicon, tech_stack, http_title, tls_issuer, service_product
@@ -734,8 +732,6 @@ type ServiceCluster struct {
 	MaxScore    int      `json:"max_interestingness"`
 	SampleTechs []string `json:"sample_techs"`
 }
-
-// Graph structures for the interactive attack surface graph.
 
 // GraphNode is a node (scope, host, service, technology, signature) of the attack surface graph.
 type GraphNode struct {

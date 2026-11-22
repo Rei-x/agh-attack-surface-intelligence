@@ -1,10 +1,7 @@
-// Package policy implements zone policies (exposure policy as code): each network zone
-// (one or more CIDRs) declares what may run there, for example "user network: no servers"
-// or "server zone: web only". After every ingest and on every policy change the whole
-// inventory is evaluated and every service breaking the rules of its zone becomes a
-// violation with severity, evidence, owner and first/last seen. Violations resolve on their
-// own when the service is gone, and both transitions are emitted as change events so they
-// reach the Diff view, the alert webhook and DefectDojo.
+// Package policy implements zone policies: each network zone (one or more CIDRs) declares
+// what may run there, and after every ingest or policy change every service breaking its
+// zone's rules becomes a violation. Violations resolve on their own when the service is
+// gone; both transitions are emitted as change events.
 package policy
 
 import "github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"

@@ -185,8 +185,8 @@ type MemoryStore struct {
 	ddExports    []domain.DefectDojoExport
 	auditLogs    []domain.AuditLog
 
-	// svcByHost indexes services by host (not persisted, rebuilt on load). Reading a host
-	// with its services, deleting a host and upserting a service used to scan every service.
+	// svcByHost indexes services by host (not persisted, rebuilt on load), so reading or
+	// deleting a host and upserting a service do not scan every service.
 	svcByHost map[string]map[string]struct{}
 
 	// changeRollups summarizes per host the change events removed by retention (retention.go).
@@ -465,8 +465,6 @@ func (m *MemoryStore) RawHostIPCiphertext(hostID string) string {
 	return m.hosts[hostID].IPEnc
 }
 
-// --- Roles & Users ---
-
 func (m *MemoryStore) ListRoles(_ context.Context) ([]domain.Role, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -676,8 +674,6 @@ func (m *MemoryStore) DeleteUser(_ context.Context, id string) error {
 	return nil
 }
 
-// --- Targets & Exclusions ---
-
 func (m *MemoryStore) ListTargets(_ context.Context) ([]domain.Target, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -746,8 +742,6 @@ func (m *MemoryStore) DeleteExclusion(_ context.Context, id string) error {
 	return nil
 }
 
-// --- Scan Profiles ---
-
 func (m *MemoryStore) ListProfiles(_ context.Context) ([]domain.ScanProfile, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -806,8 +800,6 @@ func (m *MemoryStore) DeleteProfile(_ context.Context, id string) error {
 	delete(m.profiles, id)
 	return nil
 }
-
-// --- Scan Runs & Chunks ---
 
 // decryptScanRunLocked decrypts a run row. The raw nmap XML (megabytes for a large range) is
 // only decrypted when withXML is set: run lists never return it (json:"-") and the scheduler,
@@ -1047,8 +1039,6 @@ func (m *MemoryStore) GetScanChunks(_ context.Context, scanRunID string) ([]doma
 	defer m.mu.RUnlock()
 	return append([]domain.ScanChunk(nil), m.scanChunks[scanRunID]...), nil
 }
-
-// --- Hosts, Services, Observations & Overrides ---
 
 func overrideKey(entityType, entityID string) string {
 	return entityType + ":" + entityID
@@ -1591,8 +1581,6 @@ func (m *MemoryStore) PatchOverrides(_ context.Context, entityType, entityID str
 	return nil
 }
 
-// --- Changes & Snapshots ---
-
 func (m *MemoryStore) AddChangeEvent(_ context.Context, ev *domain.ChangeEvent) error {
 	m.mu.Lock()
 	defer m.unlockDirty()
@@ -1758,8 +1746,6 @@ func (m *MemoryStore) GetScanSnapshot(_ context.Context, scanRunID string) ([]do
 	return hosts, nil
 }
 
-// --- Signatures ---
-
 func (m *MemoryStore) ListSignatures(_ context.Context) ([]domain.Signature, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -1818,8 +1804,6 @@ func (m *MemoryStore) DeleteSignature(_ context.Context, id string) error {
 	delete(m.signatures, id)
 	return nil
 }
-
-// --- DefectDojo ---
 
 func (m *MemoryStore) GetDefectDojoConfig(_ context.Context) (*domain.DefectDojoConfig, error) {
 	m.mu.RLock()
@@ -1891,8 +1875,6 @@ func (m *MemoryStore) ListDefectDojoExports(_ context.Context, limit int) ([]dom
 	}
 	return out, nil
 }
-
-// --- Audit Logs ---
 
 func (m *MemoryStore) AddAuditLog(_ context.Context, entry *domain.AuditLog) error {
 	m.mu.Lock()

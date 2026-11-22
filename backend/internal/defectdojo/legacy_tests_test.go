@@ -54,7 +54,7 @@ func seedLegacyLayout(t *testing.T, sim *dojoSim, hosts []domain.Host, profiles 
 	// /18 under its old name: stale since the rename, misses the host found later. Dzięcioł
 	// marked its RDP finding false positive then; the analyst withdrew that decision since,
 	// which this test never got.
-	l.t18old = sim.addTest(eng, "Dzięcioł changes: Lab AGH — cała sieć /18", genericScanType)
+	l.t18old = sim.addTest(eng, "Dzięcioł changes: Lab AGH - cała sieć /18", genericScanType)
 	for _, sf := range sim.seed(l.t18old, pick(in22)) {
 		if strings.Contains(sf.Title, "RDP") {
 			sf.FalseP, sf.Active, sf.IsMitigated = true, false, true
@@ -297,7 +297,7 @@ func TestRealDefectDojoMigration(t *testing.T) {
 		}
 		return imp
 	}
-	old18 := seed("Dzięcioł changes: Lab AGH — cała sieć /18", pick(in22))
+	old18 := seed("Dzięcioł changes: Lab AGH - cała sieć /18", pick(in22))
 	cur18 := seed("Dzięcioł changes: Lab AGH · cała sieć /18", pick(in18))
 	cur22 := seed("Dzięcioł changes: Lab AGH · szybki test /22", pick(in22))
 	var eolUID, jenkinsUID string

@@ -28,7 +28,7 @@ import (
 // tags, banners, products, technologies and HTTP titles (each word must match).
 //
 // Service-level terms (port, tech, title, cert, service, product, version, admin, triage)
-// must all be satisfied by the SAME service of a host, so "port:443 tech:wordpress" means
+// must all be satisfied by the same service of a host, so "port:443 tech:wordpress" means
 // WordPress on 443, not WordPress anywhere plus something on 443.
 
 // QueryTerm is a single key:value condition.

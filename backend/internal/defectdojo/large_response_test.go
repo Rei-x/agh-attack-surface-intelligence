@@ -11,8 +11,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 )
 
-// A page of full DefectDojo findings easily exceeds 4 MB; the listing used to be cut there and
-// failed with "unexpected end of JSON input" on large tests.
+// A page of full DefectDojo findings easily exceeds 4 MB and must still be read whole.
 func TestListPagedReadsLargePages(t *testing.T) {
 	pad := strings.Repeat("x", 30000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

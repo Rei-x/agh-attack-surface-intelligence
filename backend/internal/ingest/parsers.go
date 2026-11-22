@@ -25,7 +25,7 @@ type ManualEntryRequest struct {
 	Tags        []string                 `json:"tags,omitempty"`
 	Notes       string                   `json:"notes,omitempty"`
 	Services    []domain.ObservedService `json:"services,omitempty"`
-	// Convenience flat fields if user submits a single service directly in form
+	// Flat fields for a form that submits a single service.
 	Port        int                     `json:"port,omitempty"`
 	Protocol    string                  `json:"protocol,omitempty"`
 	ServiceName string                  `json:"service_name,omitempty"`
@@ -262,7 +262,6 @@ func ParseJSON(r io.Reader) ([]domain.ObservedHost, error) {
 		return nil, errors.New("empty json payload")
 	}
 
-	// 1. Try wrapped object {"hosts": [...]} or {"observations": [...]} or {"data": [...]}
 	if raw[0] == '{' {
 		var wrapper map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &wrapper); err == nil {
@@ -271,12 +270,12 @@ func ParseJSON(r io.Reader) ([]domain.ObservedHost, error) {
 					return ParseJSON(strings.NewReader(string(sub)))
 				}
 			}
-			// Single host object
+			// No wrapper key: a single host object.
 			return ParseJSON(strings.NewReader("[" + string(raw) + "]"))
 		}
 	}
 
-	// 2. Try array of generic objects so both nested ObservedHost and flat rows work seamlessly
+	// Generic objects, so both nested ObservedHost records and flat rows parse.
 	var items []map[string]any
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, fmt.Errorf("parse json array: %w", err)
@@ -287,7 +286,6 @@ func ParseJSON(r io.Reader) ([]domain.ObservedHost, error) {
 	order := make([]string, 0)
 
 	for _, item := range items {
-		// Check if it already matches domain.ObservedHost shape with "services" array
 		if _, hasSvcs := item["services"]; hasSvcs {
 			b, _ := json.Marshal(item)
 			var h domain.ObservedHost
@@ -308,7 +306,7 @@ func ParseJSON(r io.Reader) ([]domain.ObservedHost, error) {
 			}
 		}
 
-		// Flat record style (like CSV rows in JSON)
+		// Flat record (a CSV row as JSON).
 		ip := firstAnyString(item, "ip", "host", "address", "host_ip")
 		if ip == "" {
 			continue

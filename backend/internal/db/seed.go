@@ -16,7 +16,6 @@ import (
 func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 	now := time.Now().UTC()
 
-	// 1. Seed 4 predefined RBAC roles
 	roleIDs := make(map[string]string, len(auth.DefaultRoles))
 	for _, spec := range auth.DefaultRoles {
 		existing, err := store.GetRoleBySlug(ctx, spec.Slug)
@@ -42,7 +41,6 @@ func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 		roleIDs[spec.Slug] = role.ID
 	}
 
-	// 2. Seed 4 demo accounts when DZIECIOL_SEED_DEMO=true
 	if seedDemo {
 		for _, demo := range auth.DemoAccounts {
 			existing, err := store.GetUserByUsername(ctx, demo.Username)
@@ -73,7 +71,6 @@ func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 		}
 	}
 
-	// 3. Seed starter scan profiles if none exist yet
 	profiles, err := store.ListProfiles(ctx)
 	if err == nil && len(profiles) == 0 {
 		starterProfiles := []*domain.ScanProfile{
@@ -130,9 +127,9 @@ func SeedDefaults(ctx context.Context, store Store, seedDemo bool) error {
 		}
 	}
 
-	// 4. Older versions seeded a 127.0.0.0/8 "loopback safety" exclusion. It silently blocked
-	// the most common first test (scanning a lab on localhost), so it is no longer created,
-	// and the system-created copy is removed. Exclusions added by a user are kept.
+	// Older versions seeded a 127.0.0.0/8 "loopback safety" exclusion that silently blocked
+	// the most common first test (a lab on localhost). The system-created copy is removed;
+	// exclusions added by a user are kept.
 	if exclusions, err := store.ListExclusions(ctx); err == nil {
 		for _, ex := range exclusions {
 			if ex.CreatedBy == "system" && ex.Value == "127.0.0.0/8" {

@@ -46,9 +46,8 @@ type dojoNote struct {
 	} `json:"author"`
 }
 
-// findingsPageSize keeps each findings page well under DefectDojo's response limits; a
-// change test of a /18 holds several thousand findings.
-// findingsPageSize keeps one page of full DefectDojo finding objects well under maxResponseBytes.
+// findingsPageSize keeps one page of full DefectDojo finding objects well under
+// maxResponseBytes; a change test of a /18 holds several thousand findings.
 const findingsPageSize = 200
 
 // listFindings returns every finding of a test matching the extra query (for example

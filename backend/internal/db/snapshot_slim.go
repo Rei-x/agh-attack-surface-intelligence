@@ -9,12 +9,11 @@ const maxSnapshotBanner = 1024
 // SlimSnapshotHosts returns the per-run inventory snapshot that SaveScanSnapshot stores.
 //
 // A snapshot is a copy of the whole inventory taken after every run, used by the scan diff
-// (UI and `dzieciol diff`) and `dzieciol export --scan`. A full copy repeats every HTTP
-// fingerprint (headers, cookies, body snippet, TLS chain, safe-path hits), technology
-// evidence and the availability model of every host, which made snapshots more than 80% of
-// a long-running store. The slim copy keeps what the diff compares and shows (host identity,
-// lifecycle state, owner, ports, product/version, banner, admin flag, HTTP title, status and
-// response time) plus the cheap descriptive fields an export of an older run needs.
+// (UI and `dzieciol diff`) and `dzieciol export --scan`. A full copy would repeat every HTTP
+// fingerprint, technology evidence and availability model and dominate a long-running
+// store. The slim copy keeps what the diff compares and shows (host identity, lifecycle
+// state, owner, ports, product/version, banner, admin flag, HTTP title, status and response
+// time) plus the cheap descriptive fields an export of an older run needs.
 func SlimSnapshotHosts(hosts []domain.Host) []domain.Host {
 	out := make([]domain.Host, len(hosts))
 	for i := range hosts {

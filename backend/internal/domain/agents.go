@@ -2,8 +2,8 @@ package domain
 
 import "time"
 
-// Remote scanning agents (dzieciol agent): a lightweight scanner inside another network segment
-// that connects OUT to this server, pulls scan jobs and uploads results (internal/agenthub).
+// Agent statuses. An agent (dzieciol agent) is a scanner inside another network segment that
+// connects out to this server, pulls scan jobs and uploads results (internal/agenthub).
 const (
 	AgentStatusOnline   = "online"
 	AgentStatusOffline  = "offline"
@@ -20,7 +20,7 @@ type AgentCapabilities struct {
 	Hostname    string `json:"hostname,omitempty"`
 	// Screenshots: a headless Chromium was found, so web services are captured as pictures.
 	Screenshots bool `json:"screenshots,omitempty"`
-	// AllowCIDRs is the agent's LOCAL allowlist (--allow-cidr): it refuses any target outside
+	// AllowCIDRs is the agent's local allowlist (--allow-cidr): it refuses any target outside
 	// it, whatever the server asks. Empty = no local restriction.
 	AllowCIDRs []string `json:"allow_cidrs,omitempty"`
 }

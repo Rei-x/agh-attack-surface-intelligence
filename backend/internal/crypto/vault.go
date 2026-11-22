@@ -24,7 +24,7 @@ const (
 )
 
 // Status contains safe encryption metadata suitable for admin telemetry and proof views.
-// It NEVER exposes KEK, DEK, or HMAC key material.
+// It never exposes KEK, DEK, or HMAC key material.
 type Status struct {
 	Active           bool   `json:"active"`
 	Algorithm        string `json:"algorithm"`
@@ -87,21 +87,18 @@ func parseMasterKey(raw string) ([]byte, bool, error) {
 		return b, true, nil
 	}
 
-	// 1. Hex encoded 32 bytes (64 hex chars)
 	if len(raw) == 64 {
 		if decoded, err := hex.DecodeString(raw); err == nil && len(decoded) == 32 {
 			return decoded, false, nil
 		}
 	}
 
-	// 2. Base64 encoded 32 bytes (standard or raw)
 	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
 		if decoded, err := enc.DecodeString(raw); err == nil && len(decoded) == 32 {
 			return decoded, false, nil
 		}
 	}
 
-	// 3. Fallback: derive 32-byte key via SHA-256 from passphrase
 	log.Printf("[WARN] DZIECIOL_MASTER_KEY is not raw 32-byte hex/base64; deriving 256-bit KEK via SHA-256")
 	sum := sha256.Sum256([]byte(raw))
 	return sum[:], false, nil
