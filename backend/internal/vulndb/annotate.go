@@ -157,11 +157,22 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 		Version:        c.version,
 		Via:            c.via,
 		CPE:            c.def.CPEs[0],
-		Total:          len(hits),
 		DistroBackport: distro,
 		DataAsOf:       dateOnly(d.snap.GeneratedAt),
 	}
+	ps := protocolsOf(svc)
 	for _, h := range hits {
+		app := applicability(RequirementOf(h.CVE), ps)
+		if app.state == domain.ApplicabilityNotApplicable {
+			ref := cveRef(h)
+			app.apply(&ref)
+			vs.Suppressed = append(vs.Suppressed, ref)
+			continue
+		}
+		if app.state == domain.ApplicabilityUnverified {
+			vs.Unverified++
+		}
+		vs.Total++
 		if h.Possible {
 			vs.Possible++
 		}
@@ -192,9 +203,12 @@ func (d *DB) summarize(svc *domain.Service, c candidate, hits []Hit) domain.Vuln
 		}
 		vs.CVEIDs = append(vs.CVEIDs, h.CVE.ID)
 		if len(vs.Top) < 3 {
-			vs.Top = append(vs.Top, cveRef(h))
+			ref := cveRef(h)
+			app.apply(&ref)
+			vs.Top = append(vs.Top, ref)
 		}
 	}
+	vs.SuppressedCount = len(vs.Suppressed)
 	// Confidence of the version match.
 	label := nonEmpty(viaLabels[c.via], c.via)
 	exactParts := numericParts(nv) >= c.def.FullParts || hasSuffix(nv)
@@ -250,6 +264,9 @@ func Annotate(svc *domain.Service, _ time.Time) []domain.InterestingnessFactor {
 		for _, v := range svc.Vulns {
 			for _, id := range v.CVEIDs {
 				covered[id] = true
+			}
+			for _, c := range v.Suppressed {
+				covered[c.ID] = true // ruled out by the protocol probe: no passive hint either
 			}
 		}
 		kept := svc.KnownVulns[:0:0]

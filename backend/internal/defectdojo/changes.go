@@ -192,6 +192,9 @@ func serviceFindings(h *domain.Host, s *domain.Service, baseline, now time.Time)
 			})
 	}
 	for _, v := range s.Vulns {
+		if v.Total == 0 {
+			continue // every match ruled out by the protocol probe (e.g. HTTP/2 off): nothing to fix
+		}
 		v := v
 		add(KindKnownVuln, ":vulndb:"+tagSlug(v.Product), vulnTitle(v, where), vulnSeverity(v), vulnEvidence(v),
 			func(g *genericFinding) { applyVulnFields(g, v) })

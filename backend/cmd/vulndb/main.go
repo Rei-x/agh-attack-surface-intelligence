@@ -5,6 +5,7 @@
 //	cd backend && go run ./cmd/vulndb          # full rebuild (about 10 minutes without an API key)
 //	NVD_API_KEY=... go run ./cmd/vulndb        # faster with an NVD API key
 //	go run ./cmd/vulndb -enrich-only           # refresh KEV + EPSS only
+//	go run ./cmd/vulndb -retag                 # re-tag HTTP/2 / HTTP/3 preconditions, offline
 package main
 
 import (
@@ -23,6 +24,7 @@ func main() {
 	out := flag.String("out", "internal/vulndb/snapshot.json.gz", "output file")
 	in := flag.String("in", "", "existing snapshot to enrich (default: -out)")
 	enrichOnly := flag.Bool("enrich-only", false, "only refresh KEV and EPSS of an existing snapshot")
+	retag := flag.Bool("retag", false, "only re-tag protocol preconditions (HTTP/2, HTTP/3) of an existing snapshot, offline")
 	flag.Parse()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -31,7 +33,26 @@ func main() {
 	start := time.Now()
 	var snap *vulndb.Snapshot
 	var err error
-	if *enrichOnly {
+	if *retag {
+		src := *in
+		if src == "" {
+			src = *out
+		}
+		raw, rerr := os.ReadFile(src)
+		if rerr != nil {
+			log.Fatal(rerr)
+		}
+		if snap, err = vulndb.Parse(raw); err == nil {
+			st := vulndb.TagRequirements(snap)
+			fmt.Printf("tagged %d HTTP/2 and %d HTTP/3 CVEs (%d from the explicit table)\n", st.ByRequirement[vulndb.ReqHTTP2], st.ByRequirement[vulndb.ReqHTTP3], st.FromTable)
+			for _, e := range st.Examples {
+				if len(e) > 140 {
+					e = e[:140] + "..."
+				}
+				fmt.Println("  " + e)
+			}
+		}
+	} else if *enrichOnly {
 		src := *in
 		if src == "" {
 			src = *out

@@ -30,6 +30,34 @@ type VulnSummary struct {
 	Top            []CVERef `json:"top"`     // up to 3, KEV first, then EPSS, then CVSS
 	CVEIDs         []string `json:"cve_ids"` // every matched CVE, same order
 	DataAsOf       string   `json:"data_as_of"`
+	// Suppressed are version matches the scan ruled out: their protocol precondition (HTTP/2)
+	// is off on this port. Shown greyed with the reason; excluded from every count above, the
+	// KEV badge, the score, the query terms and DefectDojo.
+	Suppressed      []CVERef `json:"suppressed,omitempty"`
+	SuppressedCount int      `json:"suppressed_count,omitempty"` // len(Suppressed), kept in slim lists
+	// Unverified counts the CVEs above whose precondition could not be checked (protocol not
+	// probed or probe inconclusive): plain version matches.
+	Unverified int `json:"unverified,omitempty"`
+}
+
+// Applicability of a protocol-dependent CVE on one service (CVERef.Applicability).
+const (
+	ApplicabilityApplicable    = "applicable"     // the protocol is on
+	ApplicabilityNotApplicable = "not_applicable" // the protocol is off: suppressed
+	ApplicabilityUnverified    = "unverified"     // version match only, protocol not checked
+)
+
+// HasFindings reports whether any CVE is left after suppression.
+func (v VulnSummary) HasFindings() bool { return v.Total > 0 }
+
+// AnyVulnFindings reports whether a service has at least one applicable CVE match.
+func AnyVulnFindings(vulns []VulnSummary) bool {
+	for _, v := range vulns {
+		if v.Total > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // CVERef is one CVE as shown on a service.
@@ -45,6 +73,12 @@ type CVERef struct {
 	Possible       bool    `json:"possible,omitempty"`
 	Range          string  `json:"range,omitempty"`
 	URL            string  `json:"url"`
+	// Requires is the protocol the vulnerable code needs (http2, http3); Applicability says
+	// whether this service has it, with the probe evidence and time.
+	Requires          string     `json:"requires,omitempty"`
+	Applicability     string     `json:"applicability,omitempty"`
+	ApplicabilityNote string     `json:"applicability_note,omitempty"`
+	CheckedAt         *time.Time `json:"checked_at,omitempty"`
 }
 
 // VerifiedFinding is the result of one safe verification check (internal/verify) run
