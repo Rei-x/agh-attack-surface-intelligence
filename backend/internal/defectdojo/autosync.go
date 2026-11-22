@@ -28,8 +28,13 @@ type ChangeSyncResult struct {
 	Findings     int           `json:"findings"`
 	TriageSynced int           `json:"triage_synced"`
 	TriageError  string        `json:"triage_error,omitempty"`
-	Warnings     []string      `json:"warnings,omitempty"`
+	// Retired lists the change tests of older versions (one per profile) this sync closed.
+	Retired  []domain.DefectDojoLegacyTest `json:"retired,omitempty"`
+	Warnings []string                      `json:"warnings,omitempty"`
 }
+
+// maxLegacyTests bounds the retired tests remembered in the sync state.
+const maxLegacyTests = 50
 
 // changesPush is what pushChanges did in DefectDojo.
 type changesPush struct {
@@ -38,6 +43,7 @@ type changesPush struct {
 	Refs          []FindingRef // one per finding; nil when the test could not be listed
 	TriageChanged int
 	TriageErr     error
+	Retired       []domain.DefectDojoLegacyTest // old change tests closed by this push
 	Warnings      []string
 }
 
@@ -82,7 +88,13 @@ func SyncChanges(ctx context.Context, store db.Store, c *Client, cfg *domain.Def
 		return res, err
 	}
 	imp := push.Import
-	res.Import, res.TriageSynced, res.Warnings = imp, push.TriageChanged, push.Warnings
+	res.Import, res.TriageSynced, res.Retired, res.Warnings = imp, push.TriageChanged, push.Retired, push.Warnings
+	if len(push.Retired) > 0 {
+		st.LegacyTests = append(st.LegacyTests, push.Retired...)
+		if n := len(st.LegacyTests); n > maxLegacyTests {
+			st.LegacyTests = st.LegacyTests[n-maxLegacyTests:]
+		}
+	}
 	exp.Status, exp.ExternalID, exp.ExternalURL = "success", imp.ExternalID, imp.ExternalURL
 	if push.TriageErr != nil {
 		res.TriageError = push.TriageErr.Error()
@@ -120,7 +132,18 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 	}
 	out := &changesPush{Context: ic.key()}
 	target := reimportTarget{Context: ic, Title: ChangesTest}
-	if knownTestID > 0 && knownContext == out.Context {
+	var open map[int][]dojoFinding // open findings of the old change tests, from the adoption
+	adopting := knownTestID <= 0 || knownContext != out.Context
+	if adopting {
+		// First sync of this version (or of a new context): reuse the old change test that
+		// already holds most of today's findings (legacy_tests.go).
+		id, listed, warns, aerr := c.adoptChangesTest(ctx, cfg, ic, findings)
+		out.Warnings = append(out.Warnings, warns...)
+		if aerr != nil {
+			out.Warnings = append(out.Warnings, "looking for the change tests of older versions: "+aerr.Error())
+		}
+		target.TestID, open = id, listed
+	} else {
 		target.TestID = knownTestID
 	}
 	imp, err := c.importChanges(ctx, cfg, target, runLabel, findings)
@@ -137,6 +160,11 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 		out.Refs, _, _ = c.SyncTriage(ctx, cfg, 0, imp.ProductID, findings)
 		return out, nil
 	}
+	if adopting {
+		if perr := c.patchJSON(ctx, cfg, fmt.Sprintf("/api/v2/tests/%d/", imp.TestID), map[string]any{"description": changesTestDescription}); perr != nil {
+			out.Warnings = append(out.Warnings, fmt.Sprintf("describe change test #%d: %v", imp.TestID, perr))
+		}
+	}
 	// Open findings only: after the reimport every finding of the payload is open.
 	existing, lerr := c.listFindings(ctx, cfg, imp.TestID, "&is_mitigated=false")
 	if lerr != nil {
@@ -144,6 +172,13 @@ func (c *Client) pushChanges(ctx context.Context, cfg *domain.DefectDojoConfig, 
 		return out, nil
 	}
 	out.Refs, out.TriageChanged, out.TriageErr = c.syncTriage(ctx, cfg, imp.TestID, imp.ProductID, findings, existing)
+	// Close the other change tests of the product (the per-profile ones of older versions),
+	// carrying analyst notes and DefectDojo-side triage over first. Needs the links above.
+	if imp.ProductID > 0 {
+		retired, warns := c.retireLegacyTests(ctx, cfg, imp, findings, out.Refs, existing, open)
+		out.Retired = retired
+		out.Warnings = append(out.Warnings, warns...)
+	}
 	return out, nil
 }
 

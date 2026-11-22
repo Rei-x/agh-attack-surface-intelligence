@@ -17,7 +17,7 @@ import (
 
 // SyncTriage: FP -> false_p, accepted risk -> risk_accepted (enabling simple risk acceptance
 // on the product when DefectDojo refuses), withdrawn -> active; already-correct and
-// mitigated findings are left alone.
+// mitigated findings are left alone, and so is a false positive set in DefectDojo itself.
 func TestSyncTriageMirrorsDecisions(t *testing.T) {
 	var mu sync.Mutex
 	patches := map[string]map[string]any{}
@@ -31,9 +31,14 @@ func TestSyncTriageMirrorsDecisions(t *testing.T) {
 			_, _ = io.WriteString(w, `{"results":[
 				{"id":1,"unique_id_from_tool":"u-fp","active":true},
 				{"id":2,"unique_id_from_tool":"u-ra","active":true},
-				{"id":3,"unique_id_from_tool":"u-back","active":false,"false_p":true},
+				{"id":3,"unique_id_from_tool":"u-back","active":false,"false_p":true,"notes":[
+					{"id":30,"entry":"Dzięcioł triage: False positive by ana on 2026-11-20. Reason: sinkhole"}]},
 				{"id":4,"unique_id_from_tool":"u-ok","active":true},
-				{"id":5,"unique_id_from_tool":"u-fixed","active":false,"is_mitigated":true}]}`)
+				{"id":5,"unique_id_from_tool":"u-fixed","active":false,"is_mitigated":true},
+				{"id":6,"unique_id_from_tool":"u-dd","active":false,"false_p":true,"notes":[
+					{"id":61,"entry":"Not our host, belongs to the ISP"},
+					{"id":60,"entry":"Dzięcioł: analyst decision withdrawn or expired - finding is active again."},
+					{"id":59,"entry":"Dzięcioł triage: False positive by ana on 2026-11-01. Reason: lab"}]}]}`)
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v2/products/7/":
 			productRA = true
 			w.WriteHeader(http.StatusOK)
@@ -69,13 +74,14 @@ func TestSyncTriageMirrorsDecisions(t *testing.T) {
 		mk("u-ok", nil),
 		mk("u-fixed", nil),
 		mk("u-new", nil),
+		mk("u-dd", nil),
 	}
 	cfg := &domain.DefectDojoConfig{URL: srv.URL, APIToken: "t"}
 	refs, changed, err := NewClient().SyncTriage(context.Background(), cfg, 9, 7, findings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed != 3 || len(refs) != 6 {
+	if changed != 3 || len(refs) != 7 {
 		t.Fatalf("changed=%d refs=%d", changed, len(refs))
 	}
 	if p := patches["/api/v2/findings/1/"]; p["false_p"] != true || p["active"] != false {
@@ -93,10 +99,14 @@ func TestSyncTriageMirrorsDecisions(t *testing.T) {
 	if _, ok := patches["/api/v2/findings/5/"]; ok {
 		t.Error("mitigated finding re-activated")
 	}
+	if _, ok := patches["/api/v2/findings/6/"]; ok {
+		t.Error("false positive set in DefectDojo (after the Dzięcioł decision was withdrawn) re-activated")
+	}
 	if notes != 3 {
 		t.Errorf("notes=%d, want 3", notes)
 	}
-	want := map[string]string{"svc-u-fp": DojoStateFalsePos, "svc-u-ra": DojoStateRiskAccepted, "svc-u-back": DojoStateActive, "svc-u-fixed": DojoStateMitigated}
+	want := map[string]string{"svc-u-fp": DojoStateFalsePos, "svc-u-ra": DojoStateRiskAccepted, "svc-u-back": DojoStateActive,
+		"svc-u-fixed": DojoStateMitigated, "svc-u-dd": DojoStateFalsePos}
 	for _, r := range refs {
 		if w, ok := want[r.ServiceID]; ok && r.State != w {
 			t.Errorf("%s state %s, want %s", r.ServiceID, r.State, w)

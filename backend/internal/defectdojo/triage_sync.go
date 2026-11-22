@@ -64,27 +64,9 @@ type dojoNote struct {
 const findingsPageSize = 1000
 
 // listFindings returns every finding of a test matching the extra query (for example
-// "&is_mitigated=false"), following DefectDojo's limit/offset pagination. The offset is
-// computed here rather than taken from "next", which carries DefectDojo's own host name.
+// "&is_mitigated=false"), following DefectDojo's limit/offset pagination.
 func (c *Client) listFindings(ctx context.Context, cfg *domain.DefectDojoConfig, testID int, query string) ([]dojoFinding, error) {
-	var out []dojoFinding
-	for offset, pages := 0, 0; pages < 500; pages++ {
-		var page struct {
-			Count   int           `json:"count"`
-			Next    *string       `json:"next"`
-			Results []dojoFinding `json:"results"`
-		}
-		path := fmt.Sprintf("/api/v2/findings/?test=%d%s&limit=%d&offset=%d", testID, query, findingsPageSize, offset)
-		if err := c.getJSON(ctx, cfg, path, &page); err != nil {
-			return out, err
-		}
-		out = append(out, page.Results...)
-		offset += len(page.Results)
-		if page.Next == nil || *page.Next == "" || len(page.Results) == 0 || (page.Count > 0 && offset >= page.Count) {
-			break
-		}
-	}
-	return out, nil
+	return listPaged[dojoFinding](ctx, c, cfg, fmt.Sprintf("/api/v2/findings/?test=%d%s", testID, query), findingsPageSize)
 }
 
 // indexByUID maps unique_id_from_tool to the finding Dzięcioł should look at: an open one
@@ -126,12 +108,53 @@ func desiredState(t *domain.TriageInfo) string {
 	return DojoStateActive
 }
 
+// Notes SyncTriage leaves on a finding when it changes its state. The latest of them tells
+// whether a false positive / risk accepted state is Dzięcioł's to revert.
+const (
+	triageNotePrefix    = "Dzięcioł triage: "
+	withdrawnNotePrefix = "Dzięcioł: analyst decision withdrawn"
+)
+
+// decidedByDzieciol reports whether Dzięcioł set the finding's current false positive or
+// risk accepted state: its latest Dzięcioł note is the triage note of that state. A state
+// set in DefectDojo itself (no such note, or a later "withdrawn" one) is the decision of an
+// analyst there.
+func decidedByDzieciol(notes []dojoNote, state string) bool {
+	var latest *dojoNote
+	for i := range notes {
+		n := &notes[i]
+		e := strings.TrimSpace(n.Entry)
+		if !strings.HasPrefix(e, triageNotePrefix) && !strings.HasPrefix(e, withdrawnNotePrefix) {
+			continue
+		}
+		if latest == nil || n.ID > latest.ID || (n.ID == latest.ID && n.Date > latest.Date) {
+			latest = n
+		}
+	}
+	if latest == nil {
+		return false
+	}
+	rest, ok := strings.CutPrefix(strings.TrimSpace(latest.Entry), triageNotePrefix)
+	if !ok {
+		return false
+	}
+	switch state {
+	case DojoStateFalsePos:
+		return strings.HasPrefix(rest, "False positive")
+	case DojoStateRiskAccepted:
+		return strings.HasPrefix(rest, "Accepted risk")
+	}
+	return false
+}
+
 // SyncTriage mirrors the analysts' decisions onto the findings of the change test just
 // reimported: false positive -> false_p, accepted risk -> risk_accepted (simple risk
 // acceptance; reason, author and expiry go into a note), withdrawn/expired -> active again.
-// Fixed items are mitigated by the reimport itself (close_old_findings). It returns one
-// FindingRef per change finding (DefectDojo id, link and resulting state) and the number of
-// findings whose state was changed.
+// Only a state Dzięcioł set is reverted: a false positive or risk acceptance an analyst set
+// in DefectDojo, on a finding Dzięcioł has no decision for, stays. Fixed items are mitigated
+// by the reimport itself (close_old_findings). It returns one FindingRef per change finding
+// (DefectDojo id, link and resulting state) and the number of findings whose state was
+// changed.
 func (c *Client) SyncTriage(ctx context.Context, cfg *domain.DefectDojoConfig, testID, productID int, findings []ChangeFinding) ([]FindingRef, int, error) {
 	now := time.Now().UTC()
 	refs := make([]FindingRef, 0, len(findings))
@@ -175,6 +198,10 @@ func (c *Client) syncTriage(ctx context.Context, cfg *domain.DefectDojoConfig, t
 		// itself sends verified=false (a multipart form cannot leave it unset).
 		if f.Verified && !df.Verified && want == DojoStateActive && have == DojoStateActive {
 			_ = c.patchJSON(ctx, cfg, fmt.Sprintf("/api/v2/findings/%d/", df.ID), map[string]any{"verified": true})
+		}
+		if want == DojoStateActive && (have == DojoStateFalsePos || have == DojoStateRiskAccepted) && !decidedByDzieciol(df.Notes, have) {
+			refs = append(refs, ref) // decided in DefectDojo, not withdrawn in Dzięcioł
+			continue
 		}
 		if want != have && !(want == DojoStateActive && have == DojoStateMitigated) {
 			err := c.setFindingState(ctx, cfg, df.ID, productID, want, &simpleRAEnabled)
@@ -222,13 +249,13 @@ func (c *Client) setFindingState(ctx context.Context, cfg *domain.DefectDojoConf
 
 func triageNote(t *domain.TriageInfo) string {
 	if t == nil {
-		return "Dzięcioł: analyst decision withdrawn or expired - finding is active again."
+		return withdrawnNotePrefix + " or expired - finding is active again."
 	}
 	label := "Accepted risk"
 	if t.Status == domain.TriageFalsePositive {
 		label = "False positive"
 	}
-	note := fmt.Sprintf("Dzięcioł triage: %s by %s on %s. Reason: %s", label, nonEmpty(t.By, "analyst"), t.At.UTC().Format("2006-01-02"), nonEmpty(t.Reason, "-"))
+	note := fmt.Sprintf("%s%s by %s on %s. Reason: %s", triageNotePrefix, label, nonEmpty(t.By, "analyst"), t.At.UTC().Format("2006-01-02"), nonEmpty(t.Reason, "-"))
 	if t.ExpiresAt != nil {
 		note += fmt.Sprintf(". Expires %s (Dzięcioł re-activates the finding then).", t.ExpiresAt.UTC().Format("2006-01-02"))
 	}
