@@ -62,7 +62,8 @@ type dojoNote struct {
 
 // findingsPageSize keeps each findings page well under DefectDojo's response limits; a
 // change test of a /18 holds several thousand findings.
-const findingsPageSize = 1000
+// findingsPageSize keeps one page of full DefectDojo finding objects well under maxResponseBytes.
+const findingsPageSize = 200
 
 // listFindings returns every finding of a test matching the extra query (for example
 // "&active=true"), following DefectDojo's limit/offset pagination.

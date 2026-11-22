@@ -243,12 +243,19 @@ func (c *Client) getJSON(ctx context.Context, cfg *domain.DefectDojoConfig, path
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
+	if len(body) > maxResponseBytes {
+		return fmt.Errorf("DefectDojo response for %s is larger than %d MB; use a smaller page size", path, maxResponseBytes>>20)
+	}
 	return json.Unmarshal(body, out)
 }
+
+// maxResponseBytes caps one API response. DefectDojo finding objects are several KB each, so
+// listings must be paged (findingsPageSize) rather than read in one large page.
+const maxResponseBytes = 64 << 20
 
 type reimportResponse struct {
 	Test         int    `json:"test"`
@@ -516,14 +523,12 @@ func (c *Client) PushFindings(ctx context.Context, cfg *domain.DefectDojoConfig,
 	// Map unique_id_from_tool -> DefectDojo finding id for deep links.
 	ids := map[string]int{}
 	if res.Test > 0 {
-		var page struct {
-			Results []struct {
-				ID               int    `json:"id"`
-				UniqueIDFromTool string `json:"unique_id_from_tool"`
-			} `json:"results"`
+		type idRow struct {
+			ID               int    `json:"id"`
+			UniqueIDFromTool string `json:"unique_id_from_tool"`
 		}
-		if err := c.getJSON(ctx, cfg, fmt.Sprintf("/api/v2/findings/?test=%d&limit=1000", res.Test), &page); err == nil {
-			for _, r := range page.Results {
+		if rows, err := listPaged[idRow](ctx, c, cfg, fmt.Sprintf("/api/v2/findings/?test=%d", res.Test), findingsPageSize); err == nil {
+			for _, r := range rows {
 				ids[r.UniqueIDFromTool] = r.ID
 			}
 		}

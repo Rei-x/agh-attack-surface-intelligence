@@ -159,8 +159,9 @@ func TestSyncTriagePagesThroughLargeTests(t *testing.T) {
 	if err != nil || changed != 1 || refs[0].FindingID != total {
 		t.Fatalf("refs=%+v changed=%d err=%v (queries %v)", refs, changed, err, queries)
 	}
-	if len(queries) != 4 || !patched[fmt.Sprintf("/api/v2/findings/%d/", total)] {
-		t.Fatalf("want 3 pages of open findings, 1 of false positives and a patch of finding %d, got %v %v", total, queries, patched)
+	openPages := (total + findingsPageSize - 1) / findingsPageSize
+	if len(queries) != openPages+1 || !patched[fmt.Sprintf("/api/v2/findings/%d/", total)] {
+		t.Fatalf("want %d pages of open findings, 1 of false positives and a patch of finding %d, got %v %v", openPages, total, queries, patched)
 	}
 }
 
