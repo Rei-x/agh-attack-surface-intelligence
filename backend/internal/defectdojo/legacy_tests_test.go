@@ -18,12 +18,12 @@ import (
 // profiles, integration leftovers in an older engagement of the same name, plus tests the
 // migration must not touch.
 type legacyLayout struct {
-	product                            *simProduct
-	t18old, t18, t22, rest, integ      *simTest
-	nmap, obs, peer, otherProduct      *simTest
-	eolUID, jenkinsUID                 string
-	eolNoteOn, jenkinsFP               *simFinding
-	canonEOLBefore, canonJenkinsBefore int
+	product                              *simProduct
+	t18old, t18, t22, rest, integ, empty *simTest
+	nmap, obs, peer, otherProduct        *simTest
+	eolUID, jenkinsUID                   string
+	eolNoteOn, jenkinsFP                 *simFinding
+	canonEOLBefore, canonJenkinsBefore   int
 }
 
 func seedLegacyLayout(t *testing.T, sim *dojoSim, hosts []domain.Host, profiles []domain.ScanProfile) *legacyLayout {
@@ -81,6 +81,7 @@ func seedLegacyLayout(t *testing.T, sim *dojoSim, hosts []domain.Host, profiles 
 	}
 	l.rest = sim.addTest(eng, ChangesTest, genericScanType)
 	sim.seed(l.rest, pick(outside))
+	l.empty = sim.addTest(eng, "Dzięcioł changes: CBI AGH Lab: quick scan demo", genericScanType) // a profile that never found anything
 	l.integ = sim.addTest(oldEng, "Dzięcioł changes: integration-20261121-185056", genericScanType)
 	sim.seed(l.integ, pick(in22)[:2])
 
@@ -158,7 +159,7 @@ func TestSyncChangesRetiresPerProfileTests(t *testing.T) {
 		t.Fatalf("adopted EOL finding lost its id: %+v", f)
 	}
 
-	for _, old := range []*simTest{l.t18old, l.t22, l.rest, l.integ} {
+	for _, old := range []*simTest{l.t18old, l.t22, l.rest, l.integ, l.empty} {
 		if n := activeIn(sim, old); n != 0 {
 			t.Errorf("superseded test #%d %q still has %d active findings", old.ID, old.Title, n)
 		}
@@ -202,7 +203,7 @@ func TestSyncChangesRetiresPerProfileTests(t *testing.T) {
 	}
 
 	st := db.LoadDefectDojoSync(ctx, store)
-	if st.TestID != l.t18.ID || st.ChangesContext == "" || len(st.LegacyTests) != 4 || len(res.Retired) != 4 {
+	if st.TestID != l.t18.ID || st.ChangesContext == "" || len(st.LegacyTests) != 5 || len(res.Retired) != 5 {
 		t.Fatalf("state after migration: test %d context %q legacy %+v", st.TestID, st.ChangesContext, st.LegacyTests)
 	}
 	carriedNotes, carriedTriage := 0, 0
@@ -236,7 +237,7 @@ func TestSyncChangesRetiresPerProfileTests(t *testing.T) {
 			t.Errorf("second sync reimported elsewhere: %+v", f)
 		}
 	}
-	if len(res2.Retired) != 0 || len(db.LoadDefectDojoSync(ctx, store).LegacyTests) != 4 {
+	if len(res2.Retired) != 0 || len(db.LoadDefectDojoSync(ctx, store).LegacyTests) != 5 {
 		t.Errorf("second sync retired again: %+v", res2.Retired)
 	}
 	if notesWith(findingByUID(sim, l.t18, l.eolUID), "INC-42") != 1 {

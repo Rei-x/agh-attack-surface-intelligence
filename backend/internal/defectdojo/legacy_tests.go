@@ -52,6 +52,7 @@ type dojoTest struct {
 	Engagement   int    `json:"engagement"`
 	ScanType     string `json:"scan_type"`
 	TestTypeName string `json:"test_type_name"`
+	Version      string `json:"version"`
 }
 
 type dojoEngagement struct {
@@ -261,57 +262,83 @@ func (c *Client) retireLegacyTests(ctx context.Context, cfg *domain.DefectDojoCo
 	co := newCarryOver(c, cfg, imp, findings, refs, existing)
 	base := baseURL(cfg.URL)
 	var out []domain.DefectDojoLegacyTest
+	version := supersededVersion(imp.TestID)
 	for _, t := range legacy {
-		// Only tests with open findings: once closed (every finding mitigated) a test costs one
-		// small request per sync. Carrying looks at all findings, since DefectDojo marks a
-		// false positive mitigated too.
+		// Only tests with open findings are closed: once closed (every finding mitigated) a
+		// test costs one small request per sync. Carrying looks at all findings, since
+		// DefectDojo marks a false positive mitigated too.
 		fs, cached := listed[t.ID]
-		if !cached {
+		open := 0
+		if cached {
+			for _, f := range fs {
+				if !f.IsMitigated {
+					open++
+				}
+			}
+		} else {
 			n, cerr := c.countFindings(ctx, cfg, t.ID, "&is_mitigated=false")
 			if cerr != nil {
 				warnings = append(warnings, fmt.Sprintf("count findings of test #%d: %v", t.ID, cerr))
 				continue
 			}
-			if n == 0 {
-				continue // retired earlier
+			open = n
+		}
+		rec := domain.DefectDojoLegacyTest{TestID: t.ID, Title: t.Title, URL: fmt.Sprintf("%s/test/%d", base, t.ID), RetiredAt: time.Now().UTC()}
+		if open == 0 {
+			// Nothing open (an empty per-profile test, or one closed earlier): only say that
+			// it is superseded, once.
+			if !strings.HasPrefix(t.Version, supersededVersionPrefix) {
+				if perr := c.patchJSON(ctx, cfg, fmt.Sprintf("/api/v2/tests/%d/", t.ID), map[string]any{
+					"version": version, "description": supersededDescription(rec.RetiredAt, imp.TestID, false)}); perr != nil {
+					warnings = append(warnings, fmt.Sprintf("label superseded test #%d: %v", t.ID, perr))
+				} else {
+					out = append(out, rec)
+				}
 			}
-			if fs, err = c.listFindings(ctx, cfg, t.ID, ""); err != nil {
-				warnings = append(warnings, fmt.Sprintf("list findings of test #%d: %v", t.ID, err))
+			continue
+		}
+		if !cached {
+			var lerr error
+			if fs, lerr = c.listFindings(ctx, cfg, t.ID, ""); lerr != nil {
+				warnings = append(warnings, fmt.Sprintf("list findings of test #%d: %v", t.ID, lerr))
 				continue
 			}
 		}
-		openFindings := 0
-		for _, f := range fs {
-			if !f.IsMitigated {
-				openFindings++
-			}
-		}
-		if openFindings == 0 {
-			continue
-		}
-		rec := domain.DefectDojoLegacyTest{TestID: t.ID, Title: t.Title, URL: fmt.Sprintf("%s/test/%d", base, t.ID), RetiredAt: time.Now().UTC()}
 		for _, f := range fs {
 			if f.Active {
 				rec.Closed++
 			}
 		}
 		rec.NotesCarried, rec.TriageCarried = co.carry(ctx, t, fs)
-		version := fmt.Sprintf("superseded by test #%d (%s)", imp.TestID, ChangesTest)
 		if _, err := c.importChanges(ctx, cfg, reimportTarget{TestID: t.ID}, version, nil); err != nil {
 			warnings = append(warnings, fmt.Sprintf("close superseded test #%d: %v", t.ID, err))
 			continue
 		}
-		desc := fmt.Sprintf("Superseded on %s by test #%d %q. Dzięcioł now keeps one change test for the whole "+
-			"inventory, so a host covered by several scan profiles gives one finding. The open findings of this test "+
-			"were closed by an empty reimport; analyst notes and false positive / risk accepted states set in "+
-			"DefectDojo on findings that are still current were copied to the matching findings of test #%d.",
-			rec.RetiredAt.Format("2006-01-02"), imp.TestID, ChangesTest, imp.TestID)
-		if perr := c.patchJSON(ctx, cfg, fmt.Sprintf("/api/v2/tests/%d/", t.ID), map[string]any{"description": desc}); perr != nil {
+		if perr := c.patchJSON(ctx, cfg, fmt.Sprintf("/api/v2/tests/%d/", t.ID), map[string]any{"description": supersededDescription(rec.RetiredAt, imp.TestID, true)}); perr != nil {
 			warnings = append(warnings, fmt.Sprintf("describe superseded test #%d: %v", t.ID, perr))
 		}
 		out = append(out, rec)
 	}
 	return out, append(warnings, co.warnings...)
+}
+
+const supersededVersionPrefix = "superseded by test #"
+
+// supersededVersion is the version a superseded test gets (shown in DefectDojo's test lists).
+func supersededVersion(changesTestID int) string {
+	return fmt.Sprintf("%s%d (%s)", supersededVersionPrefix, changesTestID, ChangesTest)
+}
+
+// supersededDescription explains on a superseded test what happened to it.
+func supersededDescription(at time.Time, changesTestID int, closed bool) string {
+	d := fmt.Sprintf("Superseded on %s by test #%d %q. Dzięcioł now keeps one change test for the whole inventory, "+
+		"so a host covered by several scan profiles gives one finding.", at.Format("2006-01-02"), changesTestID, ChangesTest)
+	if closed {
+		d += fmt.Sprintf(" The open findings of this test were closed by an empty reimport; analyst notes and false "+
+			"positive / risk accepted states set in DefectDojo on findings that are still current were copied to the "+
+			"matching findings of test #%d.", changesTestID)
+	}
+	return d
 }
 
 // carryOver copies what an analyst left on a superseded test's findings onto the matching

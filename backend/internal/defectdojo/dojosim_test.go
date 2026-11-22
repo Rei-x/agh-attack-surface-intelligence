@@ -217,7 +217,7 @@ func (s *dojoSim) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var res []any
 		for _, t := range s.tests {
 			if q.Get("engagement") == "" || q.Get("engagement") == strconv.Itoa(t.Engagement) {
-				res = append(res, map[string]any{"id": t.ID, "title": t.Title, "engagement": t.Engagement, "scan_type": t.ScanType, "test_type_name": t.ScanType})
+				res = append(res, map[string]any{"id": t.ID, "title": t.Title, "engagement": t.Engagement, "scan_type": t.ScanType, "test_type_name": t.ScanType, "version": t.Version})
 			}
 		}
 		s.page(w, r, res)
@@ -234,6 +234,9 @@ func (s *dojoSim) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if v, ok := body["description"]; ok {
 			t.Description = v
+		}
+		if v, ok := body["version"]; ok {
+			t.Version = v
 		}
 		_, _ = io.WriteString(w, `{}`)
 	case kind == "tests" && r.Method == http.MethodPost && sub == "notes":
