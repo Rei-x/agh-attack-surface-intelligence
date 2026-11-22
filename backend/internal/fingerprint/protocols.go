@@ -131,7 +131,7 @@ func probeALPN(ctx context.Context, addr, ip, sni string, timeout time.Duration,
 	}
 	where := ""
 	if noSNI {
-		where = " (no SNI: default virtual host)"
+		where = "; no SNI, so the default virtual host"
 	}
 	switch p := tc.ConnectionState().NegotiatedProtocol; p {
 	case "h2":
