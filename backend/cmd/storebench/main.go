@@ -50,6 +50,8 @@ type meta struct {
 	Flap      float64   `json:"flap"`
 	Seed      int64     `json:"seed"`
 	Base      time.Time `json:"base"`
+	// Every is the time between two runs (3h: a busy lab day; 24h: daily scanning).
+	Every time.Duration `json:"every"`
 }
 
 func main() {
@@ -65,6 +67,7 @@ func main() {
 	fullEvery := fs.Int("full-every", 5, "every Nth run scans the whole /18, the others one /22 (gen)")
 	flap := fs.Float64("flap", 0.10, "share of hosts that answer only some of the time (gen)")
 	seed := fs.Int64("seed", 1, "random seed (gen)")
+	every := fs.Duration("every", 3*time.Hour, "time between two runs (gen)")
 	heapProfile := fs.String("heapprofile", "", "write a heap profile here (load, ingest)")
 	jsonOut := fs.Bool("json", false, "print the measurement as JSON")
 	useRetention := fs.Bool("retention", true, "apply the history retention policy (DZIECIOL_RETENTION_* env, defaults otherwise) on open and after every ingest, like dzieciol serve")
@@ -81,7 +84,7 @@ func main() {
 	var err error
 	switch cmd {
 	case "gen":
-		err = cmdGen(*dir, meta{Hosts: *hosts, Runs: *runs, FullEvery: *fullEvery, Flap: *flap, Seed: *seed})
+		err = cmdGen(*dir, meta{Hosts: *hosts, Runs: *runs, FullEvery: *fullEvery, Flap: *flap, Seed: *seed, Every: *every})
 	case "load":
 		err = cmdLoad(*dir, *heapProfile, *jsonOut)
 	case "ingest":
@@ -210,7 +213,11 @@ func (l *lab) evolve(r int) {
 }
 
 func (l *lab) runTime(r int) time.Time {
-	return l.m.Base.Add(time.Duration(r) * 3 * time.Hour)
+	every := l.m.Every
+	if every <= 0 {
+		every = 3 * time.Hour
+	}
+	return l.m.Base.Add(time.Duration(r) * every)
 }
 
 // scope returns the IPs scanned by run r: the whole /18, or one rotating /22.
@@ -560,7 +567,7 @@ func cmdGen(dir string, m meta) error {
 		return err
 	}
 	_ = os.Remove(filepath.Join(dir, storeFile))
-	m.Base = time.Now().UTC().Truncate(time.Hour).Add(-time.Duration(m.Runs+1) * 3 * time.Hour)
+	m.Base = time.Now().UTC().Truncate(time.Hour).Add(-time.Duration(m.Runs+1) * m.Every)
 	raw, _ := json.MarshalIndent(m, "", "  ")
 	if err := os.WriteFile(filepath.Join(dir, metaFile), raw, 0o600); err != nil {
 		return err
