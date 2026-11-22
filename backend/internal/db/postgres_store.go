@@ -1214,6 +1214,7 @@ func (s *PostgresStore) DeleteHost(ctx context.Context, id string) error {
 	defer tx.Rollback(ctx)
 	_, _ = tx.Exec(ctx, `DELETE FROM asset_overrides WHERE entity_type='host' AND entity_id=$1`, id)
 	_, _ = tx.Exec(ctx, `DELETE FROM asset_overrides WHERE entity_type='service' AND entity_id IN (SELECT id FROM services WHERE host_id=$1)`, id)
+	_, _ = tx.Exec(ctx, `DELETE FROM change_rollups WHERE host_id=$1`, id)
 	tag, err := tx.Exec(ctx, `DELETE FROM hosts WHERE id=$1`, id)
 	if err != nil {
 		return err

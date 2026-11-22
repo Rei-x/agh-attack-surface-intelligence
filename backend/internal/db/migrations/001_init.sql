@@ -323,3 +323,14 @@ ALTER TABLE scan_profiles ADD COLUMN IF NOT EXISTS agent_id TEXT NOT NULL DEFAUL
 
 -- Web screenshots: per-profile switch (default on).
 ALTER TABLE scan_profiles ADD COLUMN IF NOT EXISTS capture_screenshots BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- History retention (db.RetentionPolicy): per-host summary of change events that retention
+-- removed, shown on the host timeline. Counts only, no sensitive fields.
+CREATE TABLE IF NOT EXISTS change_rollups (
+    host_id TEXT PRIMARY KEY,
+    count INTEGER NOT NULL DEFAULT 0,
+    by_type JSONB NOT NULL DEFAULT '{}'::jsonb,
+    by_severity JSONB NOT NULL DEFAULT '{}'::jsonb,
+    first_at TIMESTAMPTZ,
+    last_at TIMESTAMPTZ
+);
