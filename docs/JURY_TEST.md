@@ -130,4 +130,24 @@ Options: `--only "vulnerable"`, `--skip-latency`, `--target <host IP>`, `--bin .
 
 ## Rehearsal result
 
-RESULT_TABLE_PLACEHOLDER
+`scripts/jury_lab_test.sh --lab ./agh-lab` on the rehearsal VM (Ubuntu 24.04, 4 vCPU, Docker
+29.1, nmap 7.94, root), commit 82a54c6: **48 passed, 0 failed**.
+
+| Area | Checks | Notes |
+|---|---|---|
+| modern | 10/10 | scan 32 s; NPM 2.17.1, Redis 7.4.12 no auth, WordPress 7.1.5 installer, phpMyAdmin 5.2.3 |
+| modern-proxy | 7/7 | scan 38 s; Traefik Dashboard / API 3.1.7, Toxiproxy API 2.12.0 |
+| vulnerable | 8/8 | scan 56 s; vsftpd 3.0.2 (CVE-2015-1419), WordPress 4.7.5 (CVE-2017-16510, PHP 5.6 EOL), Adminer 6.3.0, DVWA 1.10 |
+| custom-network | 10/10 | scan 40 s; RabbitMQ 3.13.7, PostgreSQL on 15432, Gitea installer, httpbin |
+| repeat scans | 4/4 | no service changes on an unchanged stack (only the host moving NEW -> ACTIVE) |
+| quickstart | 9/9 | scan 2: only `SERVICE_CLOSED 8787`; scan 3: only `SERVICE_REOPENED 8787` |
+| latency | 3/3 | 8085 median 19 ms -> 518 ms, `RESPONSE_TIME_CHANGED`, nothing timed out |
+
+Also checked by hand: `dzieciol scan --no-nmap localhost` (25 s, same ports, fewer versions),
+a non-root user (nmap connect scan, 41 s), the host's LAN IP as root, the UI quick scan and
+profile runs through the API (same diffs as the CLI), a stack switch (old ports closed, new
+ones new), and screenshots under the systemd agent unit.
+
+Not covered: WordPress 4.7 is reported with CVE hints but not as end of life, because the
+4.7 branch still receives security backports (endoflife.date). DefectDojo export was not
+part of this rehearsal.
