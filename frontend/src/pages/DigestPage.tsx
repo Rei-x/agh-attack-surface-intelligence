@@ -7,6 +7,8 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
+  FIX_REASON_HINT,
+  fixLabel,
   kindCategory,
   ownerLabel,
   remediationApi,
@@ -14,6 +16,7 @@ import {
   type DigestRisk,
   type DigestSettings,
   type DigestSummary,
+  type FixReason,
 } from '@/lib/remediation';
 import { Empty, Field, Notice, PageHeader, Pill, SectionTitle, SimpleSelect, Stat, StatStrip } from '@/components/common';
 import { CategoryBadge } from '@/components/CategoryBadge';
@@ -126,7 +129,7 @@ function SettingsPanel() {
             <Field label="Send at">
               <Input type="time" value={s.send_at} onChange={(e) => setS({ ...s, send_at: e.target.value })} />
             </Field>
-            <Field label="Timezone">
+            <Field label="Send time zone" hint="Dates inside the digest use the instance timezone (Remediation, Delivery channels).">
               <Input value={s.timezone} onChange={(e) => setS({ ...s, timezone: e.target.value })} />
             </Field>
             <Field
@@ -302,7 +305,12 @@ export function DigestPage() {
                   <>
                     {d.fixed.map((t) => (
                       <Link key={t.id} to={`/remediation?status=fixed&ticket=${t.id}`} className="flex items-center gap-3 px-5 py-2.5 text-xs hover:bg-muted/40">
-                        <Pill tone="success">Fixed</Pill>
+                        <Pill
+                          tone={t.fixed_reason === 'service_removed' || t.fixed_reason === 'manual' ? 'info' : 'success'}
+                          title={t.fixed_reason ? FIX_REASON_HINT[t.fixed_reason as FixReason] : undefined}
+                        >
+                          {t.outcome || fixLabel({ fixed_reason: t.fixed_reason, verified: true })}
+                        </Pill>
                         <span className="min-w-0 flex-1 truncate">{t.title}</span>
                         <span className="truncate text-muted-foreground">{t.note}</span>
                       </Link>
