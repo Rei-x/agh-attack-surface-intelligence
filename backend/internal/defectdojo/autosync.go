@@ -145,7 +145,11 @@ func SyncAllProfiles(ctx context.Context, store db.Store, c *Client, cfg *domain
 		return nil, err
 	}
 	profiles, _ := store.ListProfiles(ctx)
-	label := "manual sync " + time.Now().UTC().Format("2006-01-02 15:04")
+	// The label lands in the DefectDojo test "version" field, so say what triggered the sync.
+	label := "push now (" + exportedBy + ") " + time.Now().UTC().Format("2006-01-02 15:04")
+	if exportedBy == "triage-sync" {
+		label = "auto sync after triage change " + time.Now().UTC().Format("2006-01-02 15:04")
+	}
 	var out []*ChangeSyncResult
 	if len(profiles) == 0 {
 		r, err := SyncChangeFindings(ctx, store, c, cfg, hosts, ChangesTestTitle(""), label, "", exportedBy)
