@@ -46,7 +46,7 @@ mkdir -p "$WORK"
 RESULTS=()
 FAILS=0
 record() { # record STATUS AREA CHECK DETAIL
-  RESULTS+=("$1|$2|$3|$4")
+  RESULTS+=("$1"$'\x1f'"$2"$'\x1f'"$3"$'\x1f'"$4")
   [ "$1" = PASS ] || FAILS=$((FAILS + 1))
   printf '  %-4s %-15s %-42s %s\n' "$1" "$2" "$3" "$4"
 }
@@ -229,7 +229,7 @@ all_down
 echo
 echo "RESULT TABLE"
 printf '%-5s %-15s %-42s %s\n' STATUS AREA CHECK DETAIL
-for r in "${RESULTS[@]}"; do IFS='|' read -r st ar ch de <<<"$r"; printf '%-5s %-15s %-42s %s\n' "$st" "$ar" "$ch" "$de"; done
+for r in "${RESULTS[@]}"; do IFS=$'\x1f' read -r st ar ch de <<<"$r"; printf '%-5s %-15s %-42s %s\n' "$st" "$ar" "$ch" "$de"; done
 echo
 echo "$(( ${#RESULTS[@]} - FAILS )) passed, $FAILS failed. JSON reports and logs: $WORK"
 [ "$FAILS" -eq 0 ]
