@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/outbound"
 )
 
@@ -11,7 +12,7 @@ const listCap = 10
 
 // Title is the digest subject line.
 func (d *Digest) Title() string {
-	return "Dzięcioł digest " + d.CreatedAt.Format("2006-01-02")
+	return "Dzięcioł digest " + d.Day()
 }
 
 // Markdown renders the full digest.
@@ -19,7 +20,7 @@ func (d *Digest) Markdown() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", d.Title())
 	fmt.Fprintf(&b, "%s\n\n", d.Headline)
-	fmt.Fprintf(&b, "Window: %s to %s UTC", d.Since.UTC().Format("2006-01-02 15:04"), d.CreatedAt.UTC().Format("2006-01-02 15:04"))
+	fmt.Fprintf(&b, "Window: %s to %s", locale.DateTime(d.Since, d.loc()), locale.DateTime(d.CreatedAt, d.loc()))
 	if d.ScanName != "" {
 		fmt.Fprintf(&b, " (after scan %q)", d.ScanName)
 	}
@@ -30,7 +31,7 @@ func (d *Digest) Markdown() string {
 	rows := [][2]any{
 		{"New risky exposures", d.Counts.Risky}, {"New services", d.Counts.NewServices},
 		{"Closed services", d.Counts.ClosedServices}, {"New hosts", d.Counts.NewHosts},
-		{"Hosts gone", d.Counts.GoneHosts}, {"Fixes verified", d.Counts.Fixed},
+		{"Hosts gone", d.Counts.GoneHosts}, {"Tickets closed as fixed", d.Counts.Fixed},
 		{"Overdue tickets", d.Counts.Overdue}, {"Open tickets", d.Counts.OpenTickets},
 	}
 	for _, r := range rows {
@@ -58,7 +59,7 @@ func (d *Digest) Markdown() string {
 	if len(d.Fixed) > 0 || len(d.Overdue) > 0 {
 		b.WriteString("## Remediation\n\n")
 		for _, t := range d.Fixed {
-			fmt.Fprintf(&b, "- Fixed: %s on %s (owner: %s)", t.Title, t.Where, ownerText(t.Owner))
+			fmt.Fprintf(&b, "- %s: %s on %s (owner: %s)", fixedLabel(t), t.Title, t.Where, ownerText(t.Owner))
 			if t.Note != "" {
 				fmt.Fprintf(&b, ", %s", t.Note)
 			}
@@ -67,7 +68,7 @@ func (d *Digest) Markdown() string {
 		for _, t := range d.Overdue {
 			due := ""
 			if t.DueAt != nil {
-				due = ", due " + t.DueAt.Format("2006-01-02")
+				due = ", due " + nonEmpty(t.DueDate, locale.DueDay(*t.DueAt, d.loc()))
 			}
 			fmt.Fprintf(&b, "- Overdue: %s on %s (owner: %s%s)\n", t.Title, t.Where, ownerText(t.Owner), due)
 		}
@@ -90,7 +91,7 @@ func (d *Digest) Markdown() string {
 				fmt.Fprintf(&b, "- Host gone: %s %s\n", h.IP, h.Hostname)
 			}
 			for _, t := range g.Fixed {
-				fmt.Fprintf(&b, "- Fixed: %s\n", t.Title)
+				fmt.Fprintf(&b, "- %s: %s\n", fixedLabel(t), t.Title)
 			}
 			for _, t := range g.Overdue {
 				fmt.Fprintf(&b, "- Overdue: %s\n", t.Title)
@@ -129,9 +130,9 @@ func (d *Digest) Message(link string) outbound.Message {
 		}
 	}
 	if len(d.Fixed) > 0 {
-		fmt.Fprintf(&b, "\nFixed overnight: %d\n", len(d.Fixed))
+		fmt.Fprintf(&b, "\nClosed as fixed overnight: %d\n", len(d.Fixed))
 		for _, t := range d.Fixed {
-			fmt.Fprintf(&b, "- %s on %s\n", t.Title, t.Where)
+			fmt.Fprintf(&b, "- %s: %s on %s\n", fixedLabel(t), t.Title, t.Where)
 		}
 	}
 	if len(d.Overdue) > 0 {
@@ -154,6 +155,17 @@ func (d *Digest) Message(link string) outbound.Message {
 		},
 		Data: d,
 	}
+}
+
+// fixedLabel is "Fixed (service removed)", "Fixed (upgraded to nginx 1.30.1)": a port the
+// scanner no longer reaches is not reported like a patch.
+func fixedLabel(t TicketItem) string {
+	o := strings.TrimPrefix(strings.TrimPrefix(t.Outcome, "Fixed: "), "Fixed ")
+	o = strings.Trim(o, "()")
+	if o == "" || o == "Fixed" {
+		return "Fixed"
+	}
+	return "Fixed (" + o + ")"
 }
 
 func capRisk(r []RiskItem) []RiskItem {

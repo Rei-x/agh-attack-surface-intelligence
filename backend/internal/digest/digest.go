@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/remediation"
 )
 
@@ -57,7 +58,13 @@ type TicketItem struct {
 	Title  string     `json:"title"`
 	Owner  string     `json:"owner,omitempty"`
 	DueAt  *time.Time `json:"due_at,omitempty"`
-	Note   string     `json:"note,omitempty"`
+	// DueDate is the due day in the instance timezone.
+	DueDate string `json:"due_date,omitempty"`
+	Note    string `json:"note,omitempty"`
+	// FixedReason / Outcome say what closed a fixed ticket: a removed (unreachable)
+	// service is not an upgrade.
+	FixedReason string `json:"fixed_reason,omitempty"`
+	Outcome     string `json:"outcome,omitempty"`
 }
 
 // OwnerGroup is everything that concerns one owner.
@@ -85,9 +92,11 @@ type Counts struct {
 
 // Digest is one morning digest.
 type Digest struct {
-	ID             string        `json:"id"`
-	CreatedAt      time.Time     `json:"created_at"`
-	Since          time.Time     `json:"since"`
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	Since     time.Time `json:"since"`
+	// Timezone the digest's dates are written in (the instance timezone when it was built).
+	Timezone       string        `json:"timezone,omitempty"`
 	ScanRunID      string        `json:"scan_run_id,omitempty"`
 	ScanName       string        `json:"scan_name,omitempty"`
 	Headline       string        `json:"headline"`
@@ -109,12 +118,14 @@ type Digest struct {
 
 // Input is everything Build needs.
 type Input struct {
-	Now     time.Time
-	Since   time.Time
-	Run     *domain.ScanRun
-	Changes []domain.ChangeEvent
-	Hosts   []domain.Host // with services
-	Tickets []remediation.Ticket
+	Now   time.Time
+	Since time.Time
+	// Timezone of the instance ("": Europe/Warsaw).
+	Timezone string
+	Run      *domain.ScanRun
+	Changes  []domain.ChangeEvent
+	Hosts    []domain.Host // with services
+	Tickets  []remediation.Ticket
 }
 
 // riskyEventTypes are the change types whose service is checked for issues.
@@ -124,7 +135,8 @@ var riskyEventTypes = map[string]bool{
 
 // Build assembles the digest. It is pure: same input, same digest.
 func Build(in Input) *Digest {
-	d := &Digest{CreatedAt: in.Now, Since: in.Since}
+	d := &Digest{CreatedAt: in.Now, Since: in.Since, Timezone: locale.Location(in.Timezone).String()}
+	loc := d.loc()
 	if in.Run != nil {
 		d.ScanRunID, d.ScanName = in.Run.ID, in.Run.Name
 	}
@@ -249,9 +261,13 @@ func Build(in Input) *Digest {
 	for i := range in.Tickets {
 		t := &in.Tickets[i]
 		ti := TicketItem{ID: t.ID, HostID: t.HostID, Where: t.Where(), Title: t.Title, Owner: t.Owner, DueAt: t.DueAt}
+		if t.DueAt != nil {
+			ti.DueDate = locale.DueDay(*t.DueAt, loc)
+		}
 		switch {
 		case t.Status == remediation.StatusFixed && t.FixedAt != nil && !t.FixedAt.Before(in.Since):
 			ti.Note = t.LastCheckNote
+			ti.FixedReason, ti.Outcome = t.FixedReason, t.FixOutcome()
 			d.Fixed = append(d.Fixed, ti)
 		case t.Active():
 			d.Counts.OpenTickets++
@@ -398,13 +414,19 @@ func headline(c Counts) string {
 	add(c.NewHosts, "new host", "new hosts")
 	add(c.GoneHosts, "host gone", "hosts gone")
 	add(c.ClosedServices, "service closed", "services closed")
-	add(c.Fixed, "fix verified", "fixes verified")
+	add(c.Fixed, "ticket closed as fixed", "tickets closed as fixed")
 	add(c.Overdue, "ticket overdue", "tickets overdue")
 	if len(parts) == 0 {
 		return "Quiet night: nothing new on the network."
 	}
 	return strings.Join(parts, ", ") + "."
 }
+
+// loc is the timezone the digest is written in (digests of older versions: the default).
+func (d *Digest) loc() *time.Location { return locale.Location(d.Timezone) }
+
+// Day is the digest's local date ("2026-11-22").
+func (d *Digest) Day() string { return locale.Date(d.CreatedAt, d.loc()) }
 
 func nonEmpty(a, b string) string {
 	if strings.TrimSpace(a) != "" {

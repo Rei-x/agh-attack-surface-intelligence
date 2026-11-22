@@ -237,7 +237,7 @@ func (s *Service) Compose(ctx context.Context, run *domain.ScanRun) (*Digest, er
 	if s.tickets != nil {
 		tickets, _ = s.tickets.List(ctx)
 	}
-	d := Build(Input{Now: now, Since: since, Run: run, Changes: changes, Hosts: hosts, Tickets: tickets})
+	d := Build(Input{Now: now, Since: since, Timezone: outbound.Load(ctx, s.store).Timezone, Run: run, Changes: changes, Hosts: hosts, Tickets: tickets})
 	return d, nil
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/auth"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/digest"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/locale"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/outbound"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/remediation"
 )
@@ -154,6 +155,18 @@ type ticketView struct {
 	remediation.Ticket
 	AgeDays int  `json:"age_days"`
 	PastDue bool `json:"past_due"`
+	// DueDate is the due day in the instance timezone (YYYY-MM-DD).
+	DueDate string `json:"due_date,omitempty"`
+	// FixOutcome is the label of a closed fix ("Fixed: upgraded to nginx 1.30.1").
+	FixOutcome string `json:"fix_outcome,omitempty"`
+}
+
+func viewTicket(t remediation.Ticket, now time.Time, loc *time.Location) ticketView {
+	v := ticketView{Ticket: t, AgeDays: t.AgeDays(now), PastDue: t.PastDue(now), FixOutcome: t.FixOutcome()}
+	if t.DueAt != nil {
+		v.DueDate = locale.DueDay(*t.DueAt, loc)
+	}
+	return v
 }
 
 func (s *Server) handleListTickets(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +176,7 @@ func (s *Server) handleListTickets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC()
+	loc := s.remediation.Prefs(r.Context()).Loc
 	q := r.URL.Query()
 	status, owner, hostID := q.Get("status"), strings.TrimSpace(q.Get("owner")), q.Get("host_id")
 	activeOnly := queryBool(r, "active")
@@ -182,7 +196,7 @@ func (s *Server) handleListTickets(w http.ResponseWriter, r *http.Request) {
 		case activeOnly && !t.Active():
 			continue
 		}
-		out = append(out, ticketView{Ticket: t, AgeDays: t.AgeDays(now), PastDue: t.PastDue(now)})
+		out = append(out, viewTicket(t, now, loc))
 	}
 	ownerList := make([]string, 0, len(owners))
 	for o := range owners {
@@ -192,9 +206,10 @@ func (s *Server) handleListTickets(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(ownerList)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"tickets": out,
-		"stats":   remediation.ComputeStats(ts, now),
-		"owners":  ownerList,
+		"tickets":  out,
+		"stats":    remediation.ComputeStats(ts, now),
+		"owners":   ownerList,
+		"timezone": loc.String(),
 	})
 }
 
@@ -204,8 +219,7 @@ func (s *Server) handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		writeRemediationErr(w, err)
 		return
 	}
-	now := time.Now().UTC()
-	writeJSON(w, http.StatusOK, ticketView{Ticket: *t, AgeDays: t.AgeDays(now), PastDue: t.PastDue(now)})
+	writeJSON(w, http.StatusOK, viewTicket(*t, time.Now().UTC(), s.remediation.Prefs(r.Context()).Loc))
 }
 
 func (s *Server) handleRemediationDraft(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +228,7 @@ func (s *Server) handleRemediationDraft(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusBadRequest, "host_id is required")
 		return
 	}
-	d, err := s.remediation.Draft(r.Context(), q.Get("host_id"), q.Get("service_id"), q.Get("issue_key"))
+	d, err := s.remediation.Draft(r.Context(), q.Get("host_id"), q.Get("service_id"), q.Get("issue_key"), q.Get("lang"))
 	if err != nil {
 		writeRemediationErr(w, err)
 		return
@@ -309,9 +323,25 @@ func (s *Server) handleVerifyTickets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"scan_run_id": scanID, "outcomes": out})
 }
 
+// noticeView is the non-secret notice configuration every reader may see (the dialog and
+// the board format dates with it).
+type noticeView struct {
+	Language   string          `json:"notice_language"`
+	Languages  []string        `json:"languages"`
+	Timezone   string          `json:"timezone"`
+	SLADays    remediation.SLA `json:"sla_days"`
+	DefaultSLA remediation.SLA `json:"default_sla_days"`
+}
+
 func (s *Server) handleGetChannels(w http.ResponseWriter, r *http.Request) {
 	st := outbound.Load(r.Context(), s.store)
-	resp := map[string]any{"available": s.remediation.Deliver.Channels(r.Context())}
+	resp := map[string]any{
+		"available": s.remediation.Deliver.Channels(r.Context()),
+		"notices": noticeView{
+			Language: st.Language(), Languages: locale.Languages, Timezone: st.Location().String(),
+			SLADays: remediation.EffectiveSLA(st.SLADays), DefaultSLA: remediation.DefaultSLA,
+		},
+	}
 	if u := auth.UserFromContext(r.Context()); u != nil && auth.HasPermission(u.Permissions, domain.PermAdminSettings) {
 		resp["settings"] = outbound.Public(st)
 	}
@@ -342,10 +372,8 @@ func (s *Server) handleTestChannels(w http.ResponseWriter, r *http.Request) {
 		Channel string `json:"channel"`
 	}
 	_ = decodeJSON(r, &req)
-	msg := outbound.Message{
-		Subject: "Dzięcioł test message",
-		Body:    "This is a test from Dzięcioł. If you can read it, owner notifications and the digest will reach you here.",
-	}
+	subject, body := remediation.TestMessage(outbound.Load(r.Context(), s.store).Language())
+	msg := outbound.Message{Subject: subject, Body: body}
 	if req.To != "" {
 		msg.To = []string{req.To}
 	}
@@ -425,7 +453,7 @@ func (s *Server) handleDigestMarkdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="dzieciol-digest-`+d.CreatedAt.Format("2006-01-02")+`.md"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="dzieciol-digest-`+d.Day()+`.md"`)
 	_, _ = w.Write([]byte(d.Markdown()))
 }
 
