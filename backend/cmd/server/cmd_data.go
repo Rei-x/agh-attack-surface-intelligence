@@ -423,10 +423,16 @@ func cmdDiff(args []string) error {
 
 	fromHosts, err := store.GetScanSnapshot(ctx, fromID)
 	if err != nil {
+		if gone := api.RetiredSnapshotError(ctx, store, fromID, err); gone != nil {
+			return gone
+		}
 		fromHosts = []domain.Host{}
 	}
 	toHosts, err := store.GetScanSnapshot(ctx, toID)
 	if err != nil {
+		if gone := api.RetiredSnapshotError(ctx, store, toID, err); gone != nil {
+			return gone
+		}
 		toHosts = []domain.Host{}
 	}
 	toChanges, _ := store.ListChangeEvents(ctx, db.ChangeFilter{ScanRunID: toID, Limit: 500})

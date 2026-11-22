@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
+	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/db"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/domain"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/ingest"
 )
@@ -39,6 +42,21 @@ type ScanDiffResponse struct {
 	ChangedServices []ChangedServiceDiff `json:"changed_services"`
 	TimeAnomalies   []domain.ChangeEvent `json:"time_anomalies"`
 	Summary         ScanDiffSummary      `json:"summary"`
+}
+
+// RetiredSnapshotError explains why a run has no inventory snapshot when history retention
+// removed it (db.RetentionPolicy.SnapshotRuns): the run completed and found hosts, so it
+// had one. It returns nil for every other lookup error (empty or failed runs never had a
+// snapshot and keep diffing against an empty inventory).
+func RetiredSnapshotError(ctx context.Context, store db.Store, runID string, lookupErr error) error {
+	if !errors.Is(lookupErr, db.ErrNotFound) {
+		return nil
+	}
+	run, err := store.GetScanRun(ctx, runID)
+	if err != nil || run.Status != domain.ScanStatusCompleted || run.ActiveHosts == 0 {
+		return nil
+	}
+	return fmt.Errorf("the inventory snapshot of run %q was removed by history retention, which keeps snapshots of the newest runs (DZIECIOL_RETENTION_SNAPSHOTS); compare newer runs", run.Name)
 }
 
 // ComputeScanDiff compares two scan snapshots and associated change events.

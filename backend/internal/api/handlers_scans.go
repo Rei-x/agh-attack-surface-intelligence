@@ -442,10 +442,18 @@ func (s *Server) handleScanDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	fromHosts, err := s.store.GetScanSnapshot(ctx, fromID)
 	if err != nil {
+		if gone := RetiredSnapshotError(ctx, s.store, fromID, err); gone != nil {
+			writeErr(w, http.StatusGone, gone.Error())
+			return
+		}
 		fromHosts = []domain.Host{}
 	}
 	toHosts, err := s.store.GetScanSnapshot(ctx, toID)
 	if err != nil {
+		if gone := RetiredSnapshotError(ctx, s.store, toID, err); gone != nil {
+			writeErr(w, http.StatusGone, gone.Error())
+			return
+		}
 		toHosts, _, _ = s.store.ListHosts(ctx, db.HostFilter{})
 	}
 	toChanges, _ := s.store.ListChangeEvents(ctx, db.ChangeFilter{ScanRunID: toID, Limit: 500})
