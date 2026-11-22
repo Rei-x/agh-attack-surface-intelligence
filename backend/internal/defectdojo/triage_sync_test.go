@@ -106,3 +106,53 @@ func TestSyncTriageMirrorsDecisions(t *testing.T) {
 		}
 	}
 }
+
+// A change test of a large scope holds thousands of findings: SyncTriage must page through
+// all of them (DefectDojo caps a page), not decide on the first page only.
+func TestSyncTriagePagesThroughLargeTests(t *testing.T) {
+	const total = 2500
+	var queries []string
+	patched := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/findings/":
+			q := r.URL.Query()
+			queries = append(queries, r.URL.RawQuery)
+			if q.Get("is_mitigated") != "false" {
+				t.Errorf("listing must skip mitigated findings: %s", r.URL.RawQuery)
+			}
+			limit, offset := atoiQ(q.Get("limit")), atoiQ(q.Get("offset"))
+			var res []map[string]any
+			for i := offset; i < total && i < offset+limit; i++ {
+				res = append(res, map[string]any{"id": i + 1, "unique_id_from_tool": fmt.Sprintf("u-%d", i), "active": true})
+			}
+			var next any
+			if offset+limit < total {
+				next = "http://dojo.internal/api/v2/findings/?offset=x"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"count": total, "next": next, "results": res})
+		case r.Method == http.MethodPatch:
+			patched[r.URL.Path] = true
+		case r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+		}
+	}))
+	defer srv.Close()
+	f := ChangeFinding{Kind: KindExposure, Triage: &domain.TriageInfo{Status: domain.TriageFalsePositive, Reason: "lab"}}
+	f.UniqueIDFromTool = fmt.Sprintf("u-%d", total-1) // on the last page
+	refs, changed, err := NewClient().SyncTriage(context.Background(), &domain.DefectDojoConfig{URL: srv.URL}, 5, 0, []ChangeFinding{f})
+	if err != nil || changed != 1 || refs[0].FindingID != total {
+		t.Fatalf("refs=%+v changed=%d err=%v (queries %v)", refs, changed, err, queries)
+	}
+	if len(queries) != 3 || !patched[fmt.Sprintf("/api/v2/findings/%d/", total)] {
+		t.Fatalf("want 3 pages and a patch of finding %d, got %v %v", total, queries, patched)
+	}
+}
+
+func atoiQ(s string) int {
+	n := 0
+	for _, c := range s {
+		n = n*10 + int(c-'0')
+	}
+	return n
+}
