@@ -44,7 +44,15 @@ type memoryState struct {
 	ScheduleStates map[string]domain.ScheduleState `json:"schedule_states,omitempty"`
 	// Encrypted settings documents (CIDR tag rules, alert webhook): key -> vault ciphertext.
 	Settings map[string]string `json:"settings,omitempty"`
+	// Per-host summaries of change events removed by retention (no sensitive fields).
+	ChangeRollups map[string]domain.ChangeRollup `json:"change_rollups,omitempty"`
+	// SnapshotFormat is snapshotFormatSlim when every scan snapshot is slim and compressed;
+	// absent (0) in files written before, whose snapshots are migrated on the next compaction.
+	SnapshotFormat int `json:"snapshot_format,omitempty"`
 }
+
+// snapshotFormatSlim marks stores whose scan snapshots are all SlimSnapshotHosts payloads.
+const snapshotFormatSlim = 2
 
 // unlockDirty releases the write lock and records that state may have changed.
 // All mutating MemoryStore methods use it instead of m.mu.Unlock().
@@ -207,6 +215,12 @@ func (m *MemoryStore) WriteState(w io.Writer) (uint64, error) {
 	if len(m.settings) > 0 {
 		writeMap(sw, "settings", m.settings)
 	}
+	if len(m.changeRollups) > 0 {
+		writeMap(sw, "change_rollups", m.changeRollups)
+	}
+	if m.snapshotFormat != 0 {
+		sw.value("snapshot_format", m.snapshotFormat)
+	}
 	sw.raw("}")
 	if sw.err != nil {
 		return 0, fmt.Errorf("marshal store state: %w", sw.err)
@@ -289,7 +303,7 @@ func decodeState(r io.Reader) (*memoryState, error) {
 	small := map[string]any{
 		"version": &st.Version, "crypto_keys": &st.CryptoKeys, "active_kid": &st.ActiveKID, "roles": &st.Roles,
 		"targets": &st.Targets, "exclusions": &st.Exclusions, "profiles": &st.Profiles, "dd_config": &st.DDConfig,
-		"schedule_states": &st.ScheduleStates,
+		"schedule_states": &st.ScheduleStates, "snapshot_format": &st.SnapshotFormat,
 	}
 	large := map[string]func() error{
 		"users":           func() error { return readMap(dec, &st.Users) },
@@ -304,6 +318,7 @@ func decodeState(r io.Reader) (*memoryState, error) {
 		"snapshots":       func() error { return readMap(dec, &st.Snapshots) },
 		"signatures":      func() error { return readMap(dec, &st.Signatures) },
 		"settings":        func() error { return readMap(dec, &st.Settings) },
+		"change_rollups":  func() error { return readMap(dec, &st.ChangeRollups) },
 		"dd_exports":      func() error { return readSlice(dec, &st.DDExports) },
 		"audit_logs":      func() error { return readSlice(dec, &st.AuditLogs) },
 	}
@@ -369,6 +384,11 @@ func (m *MemoryStore) ReadState(r io.Reader) (map[string]string, string, error) 
 	m.auditLogs = st.AuditLogs
 	m.scheduleStates = st.ScheduleStates
 	m.settings = st.Settings
+	m.changeRollups = orEmpty(st.ChangeRollups)
+	m.snapshotFormat = st.SnapshotFormat
+	if len(m.snapshots) == 0 {
+		m.snapshotFormat = snapshotFormatSlim // nothing to migrate
+	}
 	// Rebuild the blind-index lookup if an older snapshot lacked it.
 	if len(m.hostByIPHMAC) == 0 && len(m.hosts) > 0 {
 		for id, h := range m.hosts {

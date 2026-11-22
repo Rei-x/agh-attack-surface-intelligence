@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/api"
 	"github.com/Rei-x/agh-attack-surface-intelligence/backend/internal/crypto"
@@ -74,7 +75,8 @@ type appRuntime struct {
 	Lock       *localdata.Lock
 	KeySource  localdata.KeySource
 	Postgres   bool
-	FirstRun   bool // no users existed before seeding (fresh installation)
+	Retention  db.RetentionPolicy // history limits (DZIECIOL_RETENTION_*), applied on open and after every ingest
+	FirstRun   bool               // no users existed before seeding (fresh installation)
 	ServerBusy *localdata.LockInfo
 
 	shotsOnce sync.Once
@@ -87,7 +89,7 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 		return nil, err
 	}
 	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	rt := &appRuntime{Postgres: dbURL != ""}
+	rt := &appRuntime{Postgres: dbURL != "", Retention: db.RetentionFromEnv()}
 
 	// The data dir holds master.key even in PostgreSQL mode (unless DZIECIOL_MASTER_KEY is set).
 	dir, err := localdata.Open(dirPath)
@@ -153,8 +155,15 @@ func openRuntime(ctx context.Context, opts runtimeOptions) (*appRuntime, error) 
 			return fail(fmt.Errorf("connect PostgreSQL: %w", err))
 		}
 		rt.Store = pg
+		if !opts.ReadOnly {
+			cctx, cancelCompact := context.WithTimeout(ctx, 2*time.Minute)
+			db.CompactAndLog(cctx, pg, rt.Retention, "startup")
+			cancelCompact()
+		}
 	} else {
-		fsStore, err := db.OpenFileStore(dir.StorePath(), rt.Vault, db.FileStoreOptions{ReadOnly: opts.ReadOnly})
+		// Retention runs on load (writable stores) and the compacted file is written back
+		// before the store is used.
+		fsStore, err := db.OpenFileStore(dir.StorePath(), rt.Vault, db.FileStoreOptions{ReadOnly: opts.ReadOnly, Retention: &rt.Retention})
 		if err != nil {
 			return fail(err)
 		}
@@ -208,6 +217,7 @@ func (rt *appRuntime) newPipeline(hub *api.SSEHub) *ingest.Pipeline {
 		emit = hub.Publish
 	}
 	p := ingest.NewPipeline(rt.Store, NewIntelligenceAnalyzer(), emit)
+	p.SetRetention(rt.Retention)
 	rt.attachScreenshots(p, emit)
 	return p
 }

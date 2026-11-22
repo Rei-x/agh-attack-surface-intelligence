@@ -90,6 +90,8 @@ type encObservationRow struct {
 	BannerEnc   string
 	HTTPEnc     string
 	ObservedAt  time.Time
+	// Slim is set once retention replaced the full HTTP fingerprint by SlimHTTP.
+	Slim bool `json:",omitempty"`
 }
 
 type encOverrideRow struct {
@@ -183,6 +185,12 @@ type MemoryStore struct {
 	ddExports    []domain.DefectDojoExport
 	auditLogs    []domain.AuditLog
 
+	// changeRollups summarizes per host the change events removed by retention (retention.go).
+	changeRollups map[string]domain.ChangeRollup
+	// snapshotFormat is snapshotFormatSlim once every stored scan snapshot is in the slim,
+	// compressed form; stores loaded from older files are migrated by the next Compact.
+	snapshotFormat int
+
 	scheduleStates map[string]domain.ScheduleState // lazily initialized (schedule_state.go)
 	settings       map[string]string               // key -> encrypted JSON (settings.go), lazily initialized
 	// Change tracking for the encrypted file-backed store (see memory_snapshot.go).
@@ -211,6 +219,9 @@ func NewMemoryStore(vault *crypto.Vault) *MemoryStore {
 		changes:      make(map[string]encChangeRow),
 		snapshots:    make(map[string]string),
 		signatures:   make(map[string]domain.Signature),
+
+		changeRollups:  make(map[string]domain.ChangeRollup),
+		snapshotFormat: snapshotFormatSlim,
 	}
 }
 
@@ -1299,6 +1310,7 @@ func (m *MemoryStore) DeleteHost(_ context.Context, id string) error {
 	delete(m.hosts, id)
 	delete(m.hostByIPHMAC, row.IPHMAC)
 	delete(m.overrides, overrideKey("host", id))
+	delete(m.changeRollups, id)
 	for sid, s := range m.services {
 		if s.HostID == id {
 			delete(m.services, sid)

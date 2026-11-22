@@ -773,9 +773,21 @@ type WebhookConfig struct {
 	LastSentAt         *time.Time `json:"last_sent_at,omitempty"`
 }
 
+// ChangeRollup summarizes the change events of one host that history retention removed
+// (older than the retention window or beyond the per-host cap), so the host timeline still
+// shows how much happened before the events it keeps.
+type ChangeRollup struct {
+	HostID     string         `json:"host_id"`
+	Count      int            `json:"count"`
+	ByType     map[string]int `json:"by_type"`
+	BySeverity map[string]int `json:"by_severity,omitempty"`
+	From       time.Time      `json:"from"`
+	To         time.Time      `json:"to"`
+}
+
 // HostTimelineEntry is one row of the host incident-response timeline.
 type HostTimelineEntry struct {
-	Kind      string         `json:"kind"` // change, observation, first_seen
+	Kind      string         `json:"kind"` // change, observation, first_seen, compacted
 	At        time.Time      `json:"at"`
 	Until     *time.Time     `json:"until,omitempty"`
 	Count     int            `json:"count,omitempty"`

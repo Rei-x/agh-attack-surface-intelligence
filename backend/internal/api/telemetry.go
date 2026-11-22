@@ -111,6 +111,10 @@ func (s *Server) observeRunTelemetry(ev domain.LiveEvent) {
 	case "scan.window_resumed":
 		t.WindowEvents = append(t.WindowEvents, domain.WindowEntry{At: at, Kind: "resumed"})
 	}
+	// A run paused and resumed by its window every night for months would grow without end.
+	if len(t.WindowEvents) > maxThrottleEntries {
+		t.WindowEvents = t.WindowEvents[len(t.WindowEvents)-maxThrottleEntries:]
+	}
 	t.UpdatedAt = time.Now().UTC()
 	_ = ss.SaveSetting(ctx, runTelemetryKey(ev.ScanRunID), t)
 }

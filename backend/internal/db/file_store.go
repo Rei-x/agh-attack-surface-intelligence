@@ -39,6 +39,10 @@ type FileStoreOptions struct {
 	Interval time.Duration
 	// ReadOnly loads the snapshot but never writes it back (used by export/diff).
 	ReadOnly bool
+	// Retention, when set, is applied right after loading (writable stores only) and the
+	// compacted state is written back before OpenFileStore returns. Callers apply it again
+	// after every ingest (ingest.Pipeline.SetRetention).
+	Retention *RetentionPolicy
 }
 
 // FileStore is a MemoryStore persisted to a single AES-256-GCM encrypted snapshot file with
@@ -121,10 +125,23 @@ func OpenFileStore(path string, vault *crypto.Vault, opts FileStoreOptions) (*Fi
 		close(fs.doneCh)
 		return fs, nil
 	}
-	if fs.isNew {
-		// Persist immediately so the master key and the wrapped DEKs are paired on disk.
+	if opts.Retention != nil && !fs.isNew {
+		rep, err := fs.Compact(context.Background(), *opts.Retention)
+		switch {
+		case err != nil:
+			log.Printf("[WARN] retention on load: %v", err)
+		case !rep.Empty():
+			log.Printf("[INFO] retention on load (%s): %s", opts.Retention, rep)
+		}
+	}
+	if fs.isNew || fs.Generation() != fs.savedGen {
+		// A new store is persisted immediately so the master key and the wrapped DEKs are
+		// paired on disk; a compacted one so the smaller file replaces the old one now.
 		if err := fs.Flush(); err != nil {
 			return nil, err
+		}
+		if !fs.isNew {
+			debug.FreeOSMemory()
 		}
 	}
 	fs.SetChangeHook(fs.notify)

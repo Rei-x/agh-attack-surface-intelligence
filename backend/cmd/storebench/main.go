@@ -67,7 +67,13 @@ func main() {
 	seed := fs.Int64("seed", 1, "random seed (gen)")
 	heapProfile := fs.String("heapprofile", "", "write a heap profile here (load, ingest)")
 	jsonOut := fs.Bool("json", false, "print the measurement as JSON")
+	useRetention := fs.Bool("retention", true, "apply the history retention policy (DZIECIOL_RETENTION_* env, defaults otherwise) on open and after every ingest, like dzieciol serve")
 	_ = fs.Parse(args)
+	if *useRetention {
+		pol := db.RetentionFromEnv()
+		retention = &pol
+		log.Printf("retention: %s", pol)
+	}
 	if *dir == "" {
 		log.Fatal("-dir is required")
 	}
@@ -88,6 +94,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// retention is the policy applied like `dzieciol serve` does (nil with -retention=false).
+var retention *db.RetentionPolicy
+
+func newPipeline(store db.Store) *ingest.Pipeline {
+	p := ingest.NewPipeline(store, ingest.NewDefaultAnalyzer(), nil)
+	if retention != nil {
+		p.SetRetention(*retention)
+	}
+	return p
 }
 
 // ---------- synthetic lab ----------
@@ -549,7 +566,7 @@ func cmdGen(dir string, m meta) error {
 		return err
 	}
 	// Long debounce: generation is not measured, one flush at the end is enough.
-	fs, _, err := openStore(dir, db.FileStoreOptions{Debounce: time.Hour, MaxDelay: time.Hour, Interval: time.Hour})
+	fs, _, err := openStore(dir, db.FileStoreOptions{Debounce: time.Hour, MaxDelay: time.Hour, Interval: time.Hour, Retention: retention})
 	if err != nil {
 		return err
 	}
@@ -561,7 +578,7 @@ func cmdGen(dir string, m meta) error {
 	if err := fs.CreateProfile(ctx, prof); err != nil {
 		return err
 	}
-	p := ingest.NewPipeline(fs, ingest.NewDefaultAnalyzer(), nil)
+	p := newPipeline(fs)
 	l := newLab(m)
 	t0 := time.Now()
 	for r := 0; r < m.Runs; r++ {
@@ -607,7 +624,7 @@ func cmdLoad(dir, heapProfile string, asJSON bool) error {
 	before := fileSize(path)
 	s := startSampler()
 	t0 := time.Now()
-	fs, _, err := openStore(dir, db.FileStoreOptions{})
+	fs, _, err := openStore(dir, db.FileStoreOptions{Retention: retention})
 	if err != nil {
 		return err
 	}
@@ -631,7 +648,7 @@ func cmdIngest(dir, heapProfile string, asJSON bool) error {
 	}
 	path := filepath.Join(dir, storeFile)
 	before := fileSize(path)
-	fs, _, err := openStore(dir, db.FileStoreOptions{}) // default debounce: flushes during the run like serve
+	fs, _, err := openStore(dir, db.FileStoreOptions{Retention: retention}) // default debounce: flushes during the run like serve
 	if err != nil {
 		return err
 	}
@@ -647,7 +664,7 @@ func cmdIngest(dir, heapProfile string, asJSON bool) error {
 	for r := 0; r < m.Runs; r++ {
 		l.evolve(r) // replay the drift so the next run continues the same lab
 	}
-	p := ingest.NewPipeline(fs, ingest.NewDefaultAnalyzer(), nil)
+	p := newPipeline(fs)
 	runtime.GC()
 	var ms0 runtime.MemStats
 	runtime.ReadMemStats(&ms0)
