@@ -408,6 +408,11 @@ func (c *Client) ImportChangeFindings(ctx context.Context, cfg *domain.DefectDoj
 	if err != nil {
 		return nil, err
 	}
+	return c.importChanges(ctx, cfg, reimportTarget{Context: ic, Title: testTitle}, runLabel, findings)
+}
+
+// importChanges is ImportChangeFindings into an explicit target (a test id or a title).
+func (c *Client) importChanges(ctx context.Context, cfg *domain.DefectDojoConfig, t reimportTarget, runLabel string, findings []ChangeFinding) (*ImportResult, error) {
 	doc := struct {
 		Findings []genericFinding `json:"findings"`
 	}{Findings: make([]genericFinding, 0, len(findings))}
@@ -418,16 +423,20 @@ func (c *Client) ImportChangeFindings(ctx context.Context, cfg *domain.DefectDoj
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.reimport(ctx, cfg, ic, "Generic Findings Import", testTitle, runLabel, "dzieciol-changes.json", raw, true)
+	res, err := c.reimport(ctx, cfg, t, "Generic Findings Import", runLabel, "dzieciol-changes.json", raw, true)
 	if err != nil {
 		return nil, err
+	}
+	where := fmt.Sprintf("%q", t.Title)
+	if t.TestID > 0 {
+		where = fmt.Sprintf("#%d", t.TestID)
 	}
 	out := &ImportResult{
 		TestID:       res.Test,
 		EngagementID: res.EngagementID,
 		ProductID:    res.ProductID,
 		ScanType:     "Generic Findings Import",
-		Message:      fmt.Sprintf("%d change findings sent to DefectDojo test %q", len(findings), testTitle),
+		Message:      fmt.Sprintf("%d change findings sent to DefectDojo test %s", len(findings), where),
 	}
 	if res.Test > 0 {
 		out.ExternalID = strconv.Itoa(res.Test)

@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -264,25 +265,62 @@ type reimportResponse struct {
 	} `json:"statistics"`
 }
 
-// reimport posts to /api/v2/reimport-scan/ with auto_create_context. DefectDojo creates the
-// product type/product/engagement/test on first use and afterwards updates the same test,
-// deduplicating by its own hash or unique_id_from_tool.
-func (c *Client) reimport(ctx context.Context, cfg *domain.DefectDojoConfig, ic importContext, scanType, testTitle, version, fileName string, data []byte, closeOld bool) (*reimportResponse, error) {
+// reimportTarget names the test a reimport lands in: by id when TestID is set, otherwise by
+// title inside the product type / product / engagement of Context.
+type reimportTarget struct {
+	Context importContext
+	Title   string
+	TestID  int
+}
+
+// httpError is a non-2xx answer from DefectDojo.
+type httpError struct {
+	Op     string
+	Status int
+	Body   string
+}
+
+func (e *httpError) Error() string {
+	return fmt.Sprintf("defectdojo %s failed (HTTP %d): %s", e.Op, e.Status, truncate(e.Body, 300))
+}
+
+// isMissingTest reports whether a reimport by test id failed because the test is gone
+// (deleted in DefectDojo): DefectDojo answers 400 {"test": ["Invalid pk ..."]} or 404.
+func isMissingTest(err error) bool {
+	var he *httpError
+	if !errors.As(err, &he) {
+		return false
+	}
+	return (he.Status == http.StatusBadRequest || he.Status == http.StatusNotFound) && strings.Contains(strings.ToLower(he.Body), "test")
+}
+
+// reimport posts to /api/v2/reimport-scan/. By title it sends the context names with
+// auto_create_context: DefectDojo creates the product type/product/engagement/test on first
+// use and afterwards updates the same test, deduplicating by its own hash or
+// unique_id_from_tool. By id it sends only the test: DefectDojo rejects a test id that does
+// not belong to the engagement the names resolve to, and the id alone is unambiguous.
+func (c *Client) reimport(ctx context.Context, cfg *domain.DefectDojoConfig, t reimportTarget, scanType, version, fileName string, data []byte, closeOld bool) (*reimportResponse, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	fields := [][2]string{
-		{"scan_type", scanType},
-		{"product_type_name", ic.ProductType},
-		{"product_name", ic.Product},
-		{"engagement_name", ic.Engagement},
-		{"test_title", testTitle},
-		{"auto_create_context", "true"},
+	fields := [][2]string{{"scan_type", scanType}}
+	if t.TestID > 0 {
+		fields = append(fields, [2]string{"test", strconv.Itoa(t.TestID)})
+	} else {
+		fields = append(fields,
+			[2]string{"product_type_name", t.Context.ProductType},
+			[2]string{"product_name", t.Context.Product},
+			[2]string{"engagement_name", t.Context.Engagement},
+			[2]string{"test_title", t.Title},
+			[2]string{"auto_create_context", "true"},
+		)
+	}
+	fields = append(fields, [][2]string{
 		{"active", "true"},
 		{"verified", "false"},
 		{"close_old_findings", strconv.FormatBool(closeOld)},
 		{"scan_date", time.Now().UTC().Format("2006-01-02")},
 		{"minimum_severity", minimumSeverity()},
-	}
+	}...)
 	fields = append(fields, extraReimportFields()...)
 	if version != "" {
 		fields = append(fields, [2]string{"version", version})
@@ -316,7 +354,7 @@ func (c *Client) reimport(ctx context.Context, cfg *domain.DefectDojoConfig, ic 
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("defectdojo reimport-scan (%s) failed (HTTP %d): %s", scanType, resp.StatusCode, truncate(string(body), 300))
+		return nil, &httpError{Op: "reimport-scan (" + scanType + ")", Status: resp.StatusCode, Body: string(body)}
 	}
 	var parsed reimportResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
@@ -355,7 +393,7 @@ func (c *Client) ImportNmapXML(ctx context.Context, cfg *domain.DefectDojoConfig
 	if testTitle == "" {
 		testTitle = NmapTestPrefix
 	}
-	res, err := c.reimport(ctx, cfg, ic, "Nmap Scan", testTitle, runLabel, "dzieciol-nmap.xml", []byte(xmlData), true)
+	res, err := c.reimport(ctx, cfg, reimportTarget{Context: ic, Title: testTitle}, "Nmap Scan", runLabel, "dzieciol-nmap.xml", []byte(xmlData), true)
 	if err != nil {
 		return nil, err
 	}
@@ -466,7 +504,7 @@ func (c *Client) PushFindings(ctx context.Context, cfg *domain.DefectDojoConfig,
 		return nil, err
 	}
 
-	res, err := c.reimport(ctx, cfg, ic, "Generic Findings Import", ObservationsTest, "", "dzieciol-observations.json", raw, false)
+	res, err := c.reimport(ctx, cfg, reimportTarget{Context: ic, Title: ObservationsTest}, "Generic Findings Import", "", "dzieciol-observations.json", raw, false)
 	if err != nil {
 		for i := range results {
 			results[i].Status = "failed"

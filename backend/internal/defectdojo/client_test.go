@@ -57,7 +57,15 @@ func (f *fakeDojo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for k, v := range r.MultipartForm.Value {
 			form[k] = v[0]
 		}
-		if form["auto_create_context"] != "true" || form["product_name"] == "" || form["engagement_name"] == "" || form["test_title"] == "" {
+		byID := form["test"] != ""
+		if byID && (form["product_name"] != "" || form["engagement_name"] != "") {
+			// Real DefectDojo rejects a test id outside the engagement the names resolve to;
+			// the client must send the id alone.
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"detail":"test id sent together with context names"}`))
+			return
+		}
+		if !byID && (form["auto_create_context"] != "true" || form["product_name"] == "" || form["engagement_name"] == "" || form["test_title"] == "") {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"detail":"test or product/engagement names required"}`))
 			return
@@ -71,7 +79,18 @@ func (f *fakeDojo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.forms = append(f.forms, form)
 		f.files = append(f.files, string(b))
 		id, ok := f.tests[form["test_title"]]
-		if !ok {
+		if byID {
+			id = atoiQ(form["test"])
+			known := false
+			for _, tid := range f.tests {
+				known = known || tid == id
+			}
+			if !known {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"test":["Invalid pk \"` + form["test"] + `\" - object does not exist."]}`))
+				return
+			}
+		} else if !ok {
 			id = 40 + len(f.tests)
 			f.tests[form["test_title"]] = id
 		}
@@ -140,6 +159,18 @@ func TestDefectDojoClientUsesReimportWithResolvedContext(t *testing.T) {
 	// Second run of the same profile lands in the same test.
 	if imp2, err := client.ImportNmapXML(ctx, cfg, 0, NmapTestTitle("Kampus nocny"), "Run #4", xmlPayload); err != nil || imp2.TestID != 40 {
 		t.Fatalf("second run should reimport into test 40: %+v %v", imp2, err)
+	}
+
+	// By test id: only the id goes out (no context names), and a deleted test is reported
+	// as such so the caller can fall back to the title.
+	if imp3, err := client.importChanges(ctx, cfg, reimportTarget{TestID: 40, Title: "ignored"}, "run-5", nil); err != nil || imp3.TestID != 40 {
+		t.Fatalf("reimport by id: %+v %v", imp3, err)
+	}
+	if last := fd.forms[len(fd.forms)-1]; last["test"] != "40" || last["test_title"] != "" || last["auto_create_context"] != "" {
+		t.Fatalf("reimport by id must send the id alone: %+v", last)
+	}
+	if _, err := client.importChanges(ctx, cfg, reimportTarget{TestID: 99}, "run-6", nil); err == nil || !isMissingTest(err) {
+		t.Fatalf("deleted test must be reported as missing: %v", err)
 	}
 
 	res, err := client.PushFindings(ctx, cfg, 0, []FindingInput{{
